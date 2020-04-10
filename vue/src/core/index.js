@@ -3,6 +3,7 @@ import { initGlobalAPI } from './global-api/index'
 import { isServerRendering } from 'core/util/env'
 import { FunctionalRenderContext } from 'core/vdom/create-functional-component'
 
+// 将 Vue 作为参数传入，初始化全局 Vue Api 例如 nextTick set 等
 initGlobalAPI(Vue)
 
 Object.defineProperty(Vue.prototype, '$isServer', {

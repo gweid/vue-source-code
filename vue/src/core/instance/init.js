@@ -12,6 +12,8 @@ import { extend, mergeOptions, formatComponentName } from '../util/index'
 
 let uid = 0
 
+// Vue 初始化
+// new Vue({el: '', data: '', ...}) 主要就干了几件事情，合并配置，初始化命周期，初始化事件中心，初始化渲染，初始化 data、props、computed、watcher 等等。
 export function initMixin (Vue: Class<Component>) {
   Vue.prototype._init = function (options?: Object) {
     const vm: Component = this
@@ -35,6 +37,7 @@ export function initMixin (Vue: Class<Component>) {
       // internal component options needs special treatment.
       initInternalComponent(vm, options)
     } else {
+      // 进行 options 的合并,合并到 $options 中，那么 $options.data 可以访问到 data
       vm.$options = mergeOptions(
         resolveConstructorOptions(vm.constructor),
         options || {},
@@ -49,11 +52,11 @@ export function initMixin (Vue: Class<Component>) {
     }
     // expose real self
     vm._self = vm
-    initLifecycle(vm)
-    initEvents(vm)
-    initRender(vm)
+    initLifecycle(vm) // 初始化生命周期
+    initEvents(vm) // 初始化事件中心           
+    initRender(vm) // 初始化渲染
     callHook(vm, 'beforeCreate')
-    initInjections(vm) // resolve injections before data/props
+    initInjections(vm) // resolve injections before data/props  在 data/props 之前解决注入
     initState(vm)
     initProvide(vm) // resolve provide after data/props
     callHook(vm, 'created')
@@ -65,6 +68,13 @@ export function initMixin (Vue: Class<Component>) {
       measure(`vue ${vm._name} init`, startTag, endTag)
     }
 
+    // 最后, 如果有根元素，那么就挂载
+    // options = {
+    //   el: "#app",
+    //   data: {},
+    //   methods: {},
+    //   ...
+    // }
     if (vm.$options.el) {
       vm.$mount(vm.$options.el)
     }

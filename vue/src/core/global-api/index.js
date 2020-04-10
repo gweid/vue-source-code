@@ -18,6 +18,8 @@ import {
   defineReactive
 } from '../util/index'
 
+// Vue.js 在整个初始化过程中，除了给它的原型 prototype 上扩展方法，还会给 Vue 这个对象本身扩展全局的静态方法
+// 例如： set  nextTick 等
 export function initGlobalAPI (Vue: GlobalAPI) {
   // config
   const configDef = {}
@@ -52,6 +54,7 @@ export function initGlobalAPI (Vue: GlobalAPI) {
   }
 
   Vue.options = Object.create(null)
+  // ASSET_TYPES 中主要是 component、directive、filter 挂载到 Vue.options
   ASSET_TYPES.forEach(type => {
     Vue.options[type + 's'] = Object.create(null)
   })
@@ -60,10 +63,10 @@ export function initGlobalAPI (Vue: GlobalAPI) {
   // components with in Weex's multi-instance scenarios.
   Vue.options._base = Vue
 
-  extend(Vue.options.components, builtInComponents)
+  extend(Vue.options.components, builtInComponents)  // builtInComponents 主要是一些内置组件
 
-  initUse(Vue)
-  initMixin(Vue)
-  initExtend(Vue)
-  initAssetRegisters(Vue)
+  initUse(Vue)              // Vue.use
+  initMixin(Vue)            // Vue.mixin
+  initExtend(Vue)           // Vue.extend
+  initAssetRegisters(Vue)   //  component、directive、filter 挂载到 Vue
 }
