@@ -36,12 +36,16 @@ const sharedPropertyDefinition = {
 }
 
 export function proxy (target: Object, sourceKey: string, key: string) {
+  // target: vm  sourceKey: _data  key: key
   sharedPropertyDefinition.get = function proxyGetter () {
-    return this[sourceKey][key]
+    return this[sourceKey][key]  // vm['_data'].key
   }
   sharedPropertyDefinition.set = function proxySetter (val) {
     this[sourceKey][key] = val
   }
+  // 使用 Object.defineProperty 对 targrt 的 key 的访问进行了一层 getter 和 setter
+  // 所以 sharedPropertyDefinition.get 中的 this[sourceKey][key] 实际上就是 vm['_data'].key
+  // target 就是 vm
   Object.defineProperty(target, key, sharedPropertyDefinition)
 }
 
@@ -109,12 +113,15 @@ function initProps (vm: Component, propsOptions: Object) {
   toggleObserving(true)
 }
 
+// data
 function initData (vm: Component) {
   let data = vm.$options.data
+  // 判断 data 是函数还是对象，并把 vm.$options.data 挂到 vm._data 上
   data = vm._data = typeof data === 'function'
     ? getData(data, vm)
     : data || {}
   if (!isPlainObject(data)) {
+    // 如果 data 不是 object 类型，就报警告
     data = {}
     process.env.NODE_ENV !== 'production' && warn(
       'data functions should return an object:\n' +
@@ -144,9 +151,12 @@ function initData (vm: Component) {
         vm
       )
     } else if (!isReserved(key)) {
+      // 对 vm 下的 key 逐个代理
+      // 对 data 做了 proxy 处理，这样一来，访问 this.xxx 时实际上就相当于访问了this._data.xxx
       proxy(vm, `_data`, key)
     }
   }
+  // 响应式数据的处理
   // observe data
   observe(data, true /* asRootData */)
 }
@@ -155,6 +165,7 @@ export function getData (data: Function, vm: Component): any {
   // #7573 disable dep collection when invoking data getters
   pushTarget()
   try {
+    // 如果 data 是一个函数，简单的调用一下，返回对象
     return data.call(vm, vm)
   } catch (e) {
     handleError(e, vm, `data()`)
