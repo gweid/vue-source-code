@@ -138,12 +138,18 @@ export function lifecycleMixin (Vue: Class<Component>) {
   }
 }
 
+
+// 调用 vm._render 方法先生成虚拟 Node，再实例化一个渲染 Watcher ，在它的回调函数中会调用 updateComponent 方法，最终调用 vm._update 更新 DOM。
+// mountComponent 的核心方法就是 vm._render 和 vm._update
 export function mountComponent (
   vm: Component,
   el: ?Element,
   hydrating?: boolean
 ): Component {
+
+  // 首先将 el 做缓存 
   vm.$el = el
+  // 如果没有 render 函数
   if (!vm.$options.render) {
     vm.$options.render = createEmptyVNode
     if (process.env.NODE_ENV !== 'production') {
@@ -194,6 +200,13 @@ export function mountComponent (
   // we set this to vm._watcher inside the watcher's constructor
   // since the watcher's initial patch may call $forceUpdate (e.g. inside child
   // component's mounted hook), which relies on vm._watcher being already defined
+  /**
+   * vm 当前实例
+   * updateComponent 函数
+   * noop 这里指空函数    在 util/index 中
+   * {} 配置
+   * isRenderWatcher  是否渲染 watcher
+   */
   new Watcher(vm, updateComponent, noop, {
     before () {
       if (vm._isMounted && !vm._isDestroyed) {
@@ -205,6 +218,9 @@ export function mountComponent (
 
   // manually mounted instance, call mounted on self
   // mounted is called for render-created child components in its inserted hook
+  // vm.$vnode 表示 Vue 实例的父虚拟 node，为 null 则表示 当前是根 Vue 实例
+  // 设置 vm._isMounted 为 true，表示该实例已经挂载
+  // 最后调用 mounted 钩子函数
   if (vm.$vnode == null) {
     vm._isMounted = true
     callHook(vm, 'mounted')

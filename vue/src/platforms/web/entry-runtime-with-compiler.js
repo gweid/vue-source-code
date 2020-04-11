@@ -14,14 +14,18 @@ const idToTemplate = cached(id => {
   return el && el.innerHTML
 })
 
+// 首先缓存了原型上的 $mount 方法
 const mount = Vue.prototype.$mount
+// 再重新定义 $mount
 Vue.prototype.$mount = function (
   el?: string | Element,
   hydrating?: boolean
 ): Component {
+  // 通过 query 将 el 转化为 dom 对象
   el = el && query(el)
 
   /* istanbul ignore if */
+  // 对 el 做了限制，Vue 不能挂载在 body 、 html 这样的根节点上， 因为其会覆盖
   if (el === document.body || el === document.documentElement) {
     process.env.NODE_ENV !== 'production' && warn(
       `Do not mount Vue to <html> or <body> - mount to normal elements instead.`
@@ -31,8 +35,11 @@ Vue.prototype.$mount = function (
 
   const options = this.$options
   // resolve template/el and convert to render function
+
+  // 如果有 rander 函数，直接执行 mount.call(this, el, hydrating)， 没有，就编译 template，转化为 render，再调用 mount
   if (!options.render) {
     let template = options.template
+    // 判断有没有 template
     if (template) {
       if (typeof template === 'string') {
         if (template.charAt(0) === '#') {
@@ -46,6 +53,7 @@ Vue.prototype.$mount = function (
           }
         }
       } else if (template.nodeType) {
+        // tempalte 是一个 Dom
         template = template.innerHTML
       } else {
         if (process.env.NODE_ENV !== 'production') {
@@ -79,6 +87,7 @@ Vue.prototype.$mount = function (
       }
     }
   }
+  // 调用原先原型上的 $mount 方法挂载, 此时实际也是调用重新定义的 mount，这样做主要是为了复用
   return mount.call(this, el, hydrating)
 }
 

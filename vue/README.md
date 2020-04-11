@@ -1,5 +1,10 @@
 #### initGlobalAPI
+
 - 挂载 Vue 全局的 api 例如 nextTick set 等
+
+```
+initGlobalAPI(Vue)
+```
 
 #### new Vue() 发生了什么
 
@@ -24,7 +29,7 @@ this._init(options)
 }
 ```
 
-- new Vue 实际上就是执行了 Vue 自身的 \_init 方法, \_init 方法就是初始化 Vue 的，_init 通过 initMixin(Vue) 往 Vue 原型上添加
+- new Vue 实际上就是执行了 Vue 自身的 \_init 方法, \_init 方法就是初始化 Vue 的，\_init 通过 initMixin(Vue) 往 Vue 原型上添加
 - \_init 方法主要做了一些 options 的合并，初始化命周期，初始化事件中心，初始化渲染，初始化 data、props、computed、watcher 等等。
 
 ```
@@ -45,4 +50,52 @@ proxy(vm, `_data`, key)
 observe(data, true /* asRootData */)
 ```
 
-- 最后是 $mount 的挂载
+- 最后是 \$mount 的挂载
+
+#### \$mount 的挂载
+
+- 先是缓存了原型上的 \$mount 方法，再重新定义该方法
+
+```
+const mount = Vue.prototype.$mount
+Vue.prototype.$mount = function ()
+```
+
+- 对 el 做了限制，Vue 不能挂载在 body 、 html 这样的根节点上, 因为其会覆盖
+
+```
+if (el === document.body || el === document.documentElement) {
+    process.env.NODE_ENV !== 'production' && warn(
+      `Do not mount Vue to <html> or <body> - mount to normal elements instead.`
+    )
+    return this
+  }
+```
+
+- 调用原先原型上的 \$mount 方法挂载, 此时实际也是调用重新定义的 mount， 这样做主要是为了复用
+
+```
+return mount.call(this, el, hydrating)
+```
+
+- \$mount 主要是执行了 mountComponent, 其核心就是先调用 vm.\_render 方法先生成虚拟 Node，再实例化一个渲染 Watcher ，在它的回调函数中会调用 updateComponent 方法，最终调用 vm.\_update 更新 DOM。 vm._rendre() 主要生成 vnode
+- Watcher 在这里起到两个作用，一个是初始化的时候会执行回调函数，另一个是当 vm 实例中的监测 的数据发生变化的时候执行回调函数
+
+```
+new Watcher(vm, updateComponent, noop, {
+  before () {
+    if (vm._isMounted && !vm._isDestroyed) {
+      callHook(vm, 'beforeUpdate')
+    }
+  }
+}, true /* isRenderWatcher */)
+```
+
+- 函数最后判断为根节点的时候设置 vm.\_isMounted 为 true ， 表士这个实例已经挂载了，同时执行 mounted 钩子函数。 vm.\$vnode 表士 Vue 实例的父虚拟 Node，所以它为 Null 则表士当前是根 Vue 的实例。
+
+```
+if (vm.$vnode == null) {
+  vm._isMounted = true
+  callHook(vm, 'mounted')
+}
+```
