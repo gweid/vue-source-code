@@ -45,7 +45,9 @@ export function proxy (target: Object, sourceKey: string, key: string) {
   }
   // 使用 Object.defineProperty 对 targrt 的 key 的访问进行了一层 getter 和 setter
   // 所以 sharedPropertyDefinition.get 中的 this[sourceKey][key] 实际上就是 vm['_data'].key
+  // 即是访问 this.key 的时候是会访问 vm['_data'].key
   // target 就是 vm
+  // 这实际就是把 data 里面的 key 全部挂载到 vm 上
   Object.defineProperty(target, key, sharedPropertyDefinition)
 }
 
@@ -120,8 +122,8 @@ function initData (vm: Component) {
   data = vm._data = typeof data === 'function'
     ? getData(data, vm)
     : data || {}
+  // 如果 data 不是 object 类型，就报警告
   if (!isPlainObject(data)) {
-    // 如果 data 不是 object 类型，就报警告
     data = {}
     process.env.NODE_ENV !== 'production' && warn(
       'data functions should return an object:\n' +
@@ -136,6 +138,7 @@ function initData (vm: Component) {
   let i = keys.length
   while (i--) {
     const key = keys[i]
+    // 循环做一个对比， 是 data 里面定义的属性名不能跟 props 中的一样
     if (process.env.NODE_ENV !== 'production') {
       if (methods && hasOwn(methods, key)) {
         warn(
