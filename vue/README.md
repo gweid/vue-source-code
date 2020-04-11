@@ -78,7 +78,7 @@ if (el === document.body || el === document.documentElement) {
 return mount.call(this, el, hydrating)
 ```
 
-- \$mount 主要是执行了 mountComponent, 其核心就是先调用 vm.\_render 方法先生成虚拟 Node，再实例化一个渲染 Watcher ，在它的回调函数中会调用 updateComponent 方法，最终调用 vm.\_update 更新 DOM。 vm._rendre() 主要生成 vnode
+- \$mount 主要是执行了 mountComponent, 其核心就是先调用 vm.\_render 方法先生成虚拟 Node，再实例化一个渲染 Watcher ，在它的回调函数中会调用 updateComponent 方法，最终调用 vm.\_update 更新 DOM。 vm.\_rendre() 主要生成 vnode
 - Watcher 在这里起到两个作用，一个是初始化的时候会执行回调函数，另一个是当 vm 实例中的监测 的数据发生变化的时候执行回调函数
 
 ```
@@ -99,3 +99,6 @@ if (vm.$vnode == null) {
   callHook(vm, 'mounted')
 }
 ```
+
+#### \$mount 挂载的 Vue.prototype.\_render
+- 主要用处：把实例渲染成一个虚拟 Node

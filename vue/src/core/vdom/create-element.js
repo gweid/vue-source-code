@@ -25,6 +25,7 @@ const ALWAYS_NORMALIZE = 2
 
 // wrapper function for providing a more flexible interface
 // without getting yelled at by flow
+// createElement 是对 _createElement 的封装，在其中做参数处理
 export function createElement (
   context: Component,
   tag: any,
@@ -44,6 +45,13 @@ export function createElement (
   return _createElement(context, tag, data, children, normalizationType)
 }
 
+/**
+ * context  VNode 的上下文环境
+ * tag  标签
+ * data  VNode 数据
+ * children  VNode 的子节点
+ * normalizationType  子节点规范的类型
+ */
 export function _createElement (
   context: Component,
   tag?: string | Class<Component> | Function | Object,
