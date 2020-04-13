@@ -1,4 +1,4 @@
-#### initGlobalAPI
+### initGlobalAPI
 
 - 挂载 Vue 全局的 api 例如 nextTick set 等
 
@@ -6,7 +6,9 @@
 initGlobalAPI(Vue)
 ```
 
-#### new Vue() 发生了什么
+### 1、Vue 的数据驱动（源码流程: init --> \$mount --> compile/render --> VNode --> patch --> Dom）
+
+#### 1-1、new Vue() 发生了什么
 
 - 首先，Vue 是 Function 出来的
 
@@ -52,7 +54,7 @@ observe(data, true /* asRootData */)
 
 - 最后是 \$mount 的挂载
 
-#### \$mount 的挂载
+#### 1-2、\$mount 的挂载
 
 - 先是缓存了原型上的 \$mount 方法，再重新定义该方法
 
@@ -100,12 +102,12 @@ if (vm.$vnode == null) {
 }
 ```
 
-#### \$mount 挂载的 Vue.prototype.\_render
+#### 1-3、\$mount 挂载的 Vue.prototype.\_render
 
 - 主要用处：把实例渲染成一个虚拟 Node
-- 执行流程 （_createElement -> createElement -> $createElement -> render -> _render）
+- 执行流程 （\_createElement -> createElement -> \$createElement -> render -> \_render）
 
-#### createElement
+#### 1-4、createElement
 
 - Vue.js 利用 createElement 创建 VNode，在 src/core/vdom/create-elemenet.js 中
 - createElement 是对 \_createElement 的封装，在 createElement 中对参数进行处理， 真正创建 VNode 的函数在 \_createElement
@@ -131,8 +133,33 @@ export function createElement (
 }
 ```
 
-- _createElement 首先对 children 做处理，最终生成统一形式[vnode, vnode, ...]；然后是 VNode 的创建。整体流程就是 （_createElement -> createElement -> $createElement -> render -> _render）；执行完这一系列就是到 vm._update
+- \_createElement 首先对 children 做处理，最终生成统一形式[vnode, vnode, ...]；然后是 VNode 的创建。整体流程就是 （\_createElement -> createElement -> \$createElement -> render -> \_render）；执行完这一系列就是到 vm.\_update
 
+#### 1-5、\$mount 挂载的 Vue.prototype.\_update
 
-#### \$mount 挂载的 Vue.prototype.\_update
 - 主要作用：把生成的 VNode 渲染
+- 核心方法 patch
+
+### 2、Vue 的组件化
+
+#### 2-1、createComponent
+
+- 在 \_createElement 时，如果 tag 不是一个标签字符串，而是一个组件对象，此时通过 createComponent 创建一个组件 VNode
+
+```
+export function _createElement (
+  context: Component,
+  tag?: string | Class<Component> | Function | Object,
+  data?: VNodeData,
+  children?: any,
+  normalizationType?: number
+): VNode | Array<VNode> {
+  
+  if (typeof tag === 'string') {
+
+  } else if ((!data || !data.pre) && isDef(Ctor = resolveAsset(context.$options, 'components', tag))) {
+      // component
+      vnode = createComponent(Ctor, data, context, children, tag)
+  }
+}
+```

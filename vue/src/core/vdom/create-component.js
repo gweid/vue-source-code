@@ -109,6 +109,7 @@ export function createComponent (
     return
   }
 
+  // context.$options._base 在 initGlobalAPI 中定义， 就是 Vue 本身
   const baseCtor = context.$options._base
 
   // plain options object: turn it into a constructor
@@ -118,6 +119,7 @@ export function createComponent (
 
   // if at this stage it's not a constructor or an async component factory,
   // reject.
+  // 如果不是一个函数，返回错误，组件定义有问题
   if (typeof Ctor !== 'function') {
     if (process.env.NODE_ENV !== 'production') {
       warn(`Invalid Component definition: ${String(Ctor)}`, context)
@@ -125,6 +127,7 @@ export function createComponent (
     return
   }
 
+  // 对异步组件的处理
   // async component
   let asyncFactory
   if (isUndef(Ctor.cid)) {
@@ -182,6 +185,7 @@ export function createComponent (
     }
   }
 
+  // 安装一些组件的钩子
   // install component management hooks onto the placeholder node
   installComponentHooks(data)
 

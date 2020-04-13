@@ -106,6 +106,7 @@ export function _createElement (
   }
   let vnode, ns
   if (typeof tag === 'string') {
+    // 如果是标签
     let Ctor
     ns = (context.$vnode && context.$vnode.ns) || config.getTagNamespace(tag)
     if (config.isReservedTag(tag)) {
@@ -121,6 +122,7 @@ export function _createElement (
         undefined, undefined, context
       )
     } else if ((!data || !data.pre) && isDef(Ctor = resolveAsset(context.$options, 'components', tag))) {
+      // 如果是组件
       // component
       vnode = createComponent(Ctor, data, context, children, tag)
     } else {

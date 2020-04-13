@@ -21,21 +21,25 @@ export function initExtend (Vue: GlobalAPI) {
     const Super = this
     const SuperId = Super.cid
     const cachedCtors = extendOptions._Ctor || (extendOptions._Ctor = {})
+    // 判断缓存中有没有存在,有就直接使用
     if (cachedCtors[SuperId]) {
       return cachedCtors[SuperId]
     }
 
     const name = extendOptions.name || Super.options.name
     if (process.env.NODE_ENV !== 'production' && name) {
+      // 校验组件名
       validateComponentName(name)
     }
 
     const Sub = function VueComponent (options) {
       this._init(options)
     }
+    // js 的寄生组合继承
     Sub.prototype = Object.create(Super.prototype)
     Sub.prototype.constructor = Sub
     Sub.cid = cid++
+    // 组件自身的配置与 Vue 的配置做合并
     Sub.options = mergeOptions(
       Super.options,
       extendOptions
@@ -52,6 +56,7 @@ export function initExtend (Vue: GlobalAPI) {
       initComputed(Sub)
     }
 
+    // 把一些 Vue 中有的功能赋给组件
     // allow further extension/mixin/plugin usage
     Sub.extend = Super.extend
     Sub.mixin = Super.mixin
@@ -74,6 +79,7 @@ export function initExtend (Vue: GlobalAPI) {
     Sub.extendOptions = extendOptions
     Sub.sealedOptions = extend({}, Sub.options)
 
+    // 把继承后的 Sub 缓存，好处： 当下次创建 Sub 时，发现已有，就直接使用
     // cache constructor
     cachedCtors[SuperId] = Sub
     return Sub
