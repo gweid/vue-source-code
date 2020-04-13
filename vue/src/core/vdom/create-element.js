@@ -25,7 +25,7 @@ const ALWAYS_NORMALIZE = 2
 
 // wrapper function for providing a more flexible interface
 // without getting yelled at by flow
-// createElement 是对 _createElement 的封装，在其中做参数处理
+// createElement 是对 _createElement 的封装，在 createElement 中做参数处理
 export function createElement (
   context: Component,
   tag: any,
@@ -34,6 +34,7 @@ export function createElement (
   normalizationType: any,
   alwaysNormalize: boolean
 ): VNode | Array<VNode> {
+  // 主要是判断 data 是否存在，不存在把后面的参数往前移
   if (Array.isArray(data) || isPrimitive(data)) {
     normalizationType = children
     children = data
@@ -46,6 +47,7 @@ export function createElement (
 }
 
 /**
+ * 这个是真正创建 VNode 的函数
  * context  VNode 的上下文环境
  * tag  标签
  * data  VNode 数据
@@ -65,9 +67,11 @@ export function _createElement (
       'Always create fresh vnode data objects in each render!',
       context
     )
+    // createEmptyVNode 是创建一个注释类型的节点
     return createEmptyVNode()
   }
   // object syntax in v-bind
+  // 动态组件 v-bind:is 属性 
   if (isDef(data) && isDef(data.is)) {
     tag = data.is
   }

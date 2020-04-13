@@ -72,7 +72,8 @@ export function createPatchFunction (backend) {
   const cbs = {}
 
   const { modules, nodeOps } = backend
-
+  
+  // const hooks = ['create', 'activate', 'update', 'remove', 'destroy']  上面定义的一些钩子
   for (i = 0; i < hooks.length; ++i) {
     cbs[hooks[i]] = []
     for (j = 0; j < modules.length; ++j) {
@@ -82,6 +83,7 @@ export function createPatchFunction (backend) {
     }
   }
 
+  // 将一个真实 DOM 转换为 vnode
   function emptyNodeAt (elm) {
     return new VNode(nodeOps.tagName(elm).toLowerCase(), {}, [], undefined, elm)
   }

@@ -71,6 +71,7 @@ export default class VNode {
   }
 }
 
+// 这样创建的是一个注释类型的节点
 export const createEmptyVNode = (text: string = '') => {
   const node = new VNode()
   node.text = text

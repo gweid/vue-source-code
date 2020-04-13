@@ -20,9 +20,11 @@ import { isFalse, isTrue, isDef, isUndef, isPrimitive } from 'shared/util'
 export function simpleNormalizeChildren (children: any) {
   for (let i = 0; i < children.length; i++) {
     if (Array.isArray(children[i])) {
+      // 数组拍平 即是将二维数组转换为以为数组
       return Array.prototype.concat.apply([], children)
     }
   }
+  
   return children
 }
 

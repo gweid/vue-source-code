@@ -101,4 +101,38 @@ if (vm.$vnode == null) {
 ```
 
 #### \$mount 挂载的 Vue.prototype.\_render
+
 - 主要用处：把实例渲染成一个虚拟 Node
+- 执行流程 （_createElement -> createElement -> $createElement -> render -> _render）
+
+#### createElement
+
+- Vue.js 利用 createElement 创建 VNode，在 src/core/vdom/create-elemenet.js 中
+- createElement 是对 \_createElement 的封装，在 createElement 中对参数进行处理， 真正创建 VNode 的函数在 \_createElement
+
+```
+export function createElement (
+  context: Component,
+  tag: any,
+  data: any,
+  children: any,
+  normalizationType: any,
+  alwaysNormalize: boolean
+): VNode | Array<VNode> {
+  if (Array.isArray(data) || isPrimitive(data)) {
+    normalizationType = children
+    children = data
+    data = undefined
+  }
+  if (isTrue(alwaysNormalize)) {
+    normalizationType = ALWAYS_NORMALIZE
+  }
+  return _createElement(context, tag, data, children, normalizationType)
+}
+```
+
+- _createElement 首先对 children 做处理，最终生成统一形式[vnode, vnode, ...]；然后是 VNode 的创建。整体流程就是 （_createElement -> createElement -> $createElement -> render -> _render）；执行完这一系列就是到 vm._update
+
+
+#### \$mount 挂载的 Vue.prototype.\_update
+- 主要作用：把生成的 VNode 渲染
