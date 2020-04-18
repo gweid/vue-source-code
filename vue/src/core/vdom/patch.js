@@ -123,7 +123,8 @@ export function createPatchFunction (backend) {
   }
 
   let creatingElmInVPre = 0
-
+  
+  // 把 vnode 转换为元素节点
   function createElm (
     vnode,
     insertedVnodeQueue,
