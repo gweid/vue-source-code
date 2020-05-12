@@ -1,4 +1,6 @@
-### initGlobalAPI
+# Vue 源码阅读
+
+## initGlobalAPI
 
 - 挂载 Vue 全局的 api 例如 nextTick set 等
 
@@ -6,9 +8,9 @@
 initGlobalAPI(Vue)
 ```
 
-### 1、Vue 的数据驱动（源码流程: init --> \$mount --> compile/render --> VNode --> patch --> Dom）
+## 1、Vue 的数据驱动（源码流程: init --> \$mount --> compile/render --> VNode --> patch --> Dom）
 
-#### 1-1、new Vue() 发生了什么
+### 1-1、new Vue() 发生了什么
 
 - 首先，Vue 是 Function 出来的
 
@@ -54,7 +56,7 @@ observe(data, true /* asRootData */)
 
 - 最后是 \$mount 的挂载
 
-#### 1-2、\$mount 的挂载
+### 1-2、\$mount 的挂载
 
 - 先是缓存了原型上的 \$mount 方法，再重新定义该方法
 
@@ -102,12 +104,12 @@ if (vm.$vnode == null) {
 }
 ```
 
-#### 1-3、\$mount 挂载的 Vue.prototype.\_render
+### 1-3、\$mount 挂载的 Vue.prototype.\_render
 
 - 主要用处：把实例渲染成一个虚拟 Node
 - 执行流程 （\_createElement -> createElement -> \$createElement -> render -> \_render）
 
-#### 1-4、createElement
+### 1-4、createElement
 
 - Vue.js 利用 createElement 创建 VNode，在 src/core/vdom/create-elemenet.js 中
 - createElement 是对 \_createElement 的封装，在 createElement 中对参数进行处理， 真正创建 VNode 的函数在 \_createElement
@@ -135,16 +137,18 @@ export function createElement (
 
 - \_createElement 首先对 children 做处理，最终生成统一形式[vnode, vnode, ...]；然后是 VNode 的创建。整体流程就是 （\_createElement -> createElement -> \$createElement -> render -> \_render）；执行完这一系列就是到 vm.\_update
 
-#### 1-5、\$mount 挂载的 Vue.prototype.\_update
+### 1-5、\$mount 挂载的 Vue.prototype.\_update
 
-- 主要作用：把生成的 VNode 渲染
+- 主要作用：把生成的 VNode 渲染, 在 core/instance/lifecyle.js 中定义
 - 核心方法 patch
 
-### 2、Vue 的组件化
+## 2、Vue 的组件化
 
-#### 2-1、createComponent
+- 首先在 this.\_init 中调用 initRender 初始化，然后 initRender 中 createElement, 在 createElement 中发现是组件, 那么 createComponent
 
-- 在 \_createElement 时，如果 tag 不是一个标签字符串，而是一个组件对象，此时通过 createComponent 创建一个组件 VNode
+### 2-1、组件的 VNode (create-element.js、create-component.js、vnode.js、extend.js)
+
+- 在 create-element.js 中的 \_createElement 时，如果 tag 不是一个标签字符串，而是一个组件对象，此时通过 createComponent 创建一个组件 VNode
 
 ```
 export function _createElement (
@@ -154,7 +158,7 @@ export function _createElement (
   children?: any,
   normalizationType?: number
 ): VNode | Array<VNode> {
-  
+
   if (typeof tag === 'string') {
 
   } else if ((!data || !data.pre) && isDef(Ctor = resolveAsset(context.$options, 'components', tag))) {
@@ -163,3 +167,58 @@ export function _createElement (
   }
 }
 ```
+
+- 在 create-component.js 的 createComponent 中，会调用 Vue.extend(组件)(即: Ctor = baseCtor.extend(Ctor)), 这里的 extend 主要就是把 Vue 的功能赋给组件，并且合并配置, 在其中会对组件做缓存
+
+```
+// 判断缓存中有没有存在,有就直接使用
+if (cachedCtors[SuperId]) {
+  return cachedCtors[SuperId]
+}
+```
+
+- 通过在 create-component.js 的 createComponent 中安装一些组件的钩子 installComponentHooks(data)
+- 在 create-component.js 中创建组件 VNode。组件 VNode 与 普通 VNode 区别: 没有 children, 多了 componentOptions
+
+```
+const vnode = new VNode(
+  `vue-component-${Ctor.cid}${name ? `-${name}` : ''}`,
+  data, undefined, undefined, undefined, context,
+  { Ctor, propsData, listeners, tag, children },
+  asyncFactory
+)
+```
+
+### 2-2、组件的 patch 过程 (patch.js、create-component.js、init.js)
+
+#### 组件 patch 的整体流程
+
+- 组件的 patch 也会调用 patch.js 中的 createElm, 其中与普通元素 patch 不一样的就是 createElm 中的 createComponent 处理
+- 在 patch.js 的 createComponent 中, vnode.componentInstance, 这个主要在 create-component.js 中创建组件 VNode 的时候挂载钩子时的，vnode.componentInstance 这个主要就是调用了 createComponentInstanceForVnode 这个去执行 Ctor 组件构造器，这个构造器又会去 init.js 中 initInternalComponent(vm, options) 合并; 继续在 init.js 中 调用 initLifecycle
+- 在 lifecycle.js 中 initLifecycle，拿到父组件 vm: let parent = options.parent, options.parent 就是父组件 vm 实例。 在 setActiveInstance 实现每次 _update 把 vm 赋给 activeInstance
+
+```
+export function initLifecycle (vm: Component) {
+  // 这个 vm 是子组件实例
+  const options = vm.$options
+
+  // locate first non-abstract parent
+  let parent = options.parent  // 此时的 parent 其实是 activeInstance，也是父组件 vm 实例
+  if (parent && !options.abstract) {
+    while (parent.$options.abstract && parent.$parent) {
+      parent = parent.$parent
+    }
+    // 将子组件实例放到父组件的 $children
+    parent.$children.push(vm)
+  }
+
+  // 父组件挂载到子组件的 $parent 上
+  vm.$parent = parent
+  vm.$root = parent ? parent.$root : vm
+}
+```
+- 继续在 create-component.js 中 child.$mount(hydrating ? vnode.elm : undefined, hydrating), 这个就会执行 entry-runtime-with-compiler.js 中的 Vue.prototype.$mount, 后执行 lifecycle.js 中的 mountComponent，执行 render 完成子组件的渲染，然后执行渲染 watcher(子组件的渲染 watcher)
+
+#### 组件 patch 流程中的 activeInstance、vm.\$vnode、vm.\_vnode
+
+#### 嵌套组件的插入顺序

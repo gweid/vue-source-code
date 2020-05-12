@@ -114,6 +114,7 @@ export function createComponent (
 
   // plain options object: turn it into a constructor
   if (isObject(Ctor)) {
+    // 相当于调用 Vue.extend
     Ctor = baseCtor.extend(Ctor)
   }
 
@@ -191,6 +192,7 @@ export function createComponent (
 
   // return a placeholder vnode
   const name = Ctor.options.name || tag
+  // 创建组件 VNode
   const vnode = new VNode(
     `vue-component-${Ctor.cid}${name ? `-${name}` : ''}`,
     data, undefined, undefined, undefined, context,
@@ -211,7 +213,8 @@ export function createComponent (
 
 export function createComponentInstanceForVnode (
   vnode: any, // we know it's MountedComponentVNode but flow doesn't
-  parent: any, // activeInstance in lifecycle state
+  // parent：是 activeInstance, 在 lifecycle 中
+  parent: any, // activeInstance in lifecycle state 
 ): Component {
   const options: InternalComponentOptions = {
     _isComponent: true,

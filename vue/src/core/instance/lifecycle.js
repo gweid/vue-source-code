@@ -30,17 +30,20 @@ export function setActiveInstance(vm: Component) {
 }
 
 export function initLifecycle (vm: Component) {
+  // 这个 vm 是子组件实例
   const options = vm.$options
 
   // locate first non-abstract parent
-  let parent = options.parent
+  let parent = options.parent  // 此时的 parent 其实是 activeInstance，也是父组件 vm 实例
   if (parent && !options.abstract) {
     while (parent.$options.abstract && parent.$parent) {
       parent = parent.$parent
     }
+    // 将子组件实例放到父组件的 $children
     parent.$children.push(vm)
   }
 
+  // 父组件挂载到子组件的 $parent 上
   vm.$parent = parent
   vm.$root = parent ? parent.$root : vm
 
@@ -62,13 +65,14 @@ export function lifecycleMixin (Vue: Class<Component>) {
     const vm: Component = this
     const prevEl = vm.$el
     const prevVnode = vm._vnode
-    const restoreActiveInstance = setActiveInstance(vm)
+    const restoreActiveInstance = setActiveInstance(vm) // 在 _update 中把 vm 赋值给 activeInstance
     vm._vnode = vnode
     // Vue.prototype.__patch__ is injected in entry points
     // based on the rendering backend used.
     if (!prevVnode) {
       // initial render
       // vm.$el: 真实的 dom   vnode: 虚拟 vnode
+      // 首次定义 vm.__patch__ 是在 runtime/index.js
       vm.$el = vm.__patch__(vm.$el, vnode, hydrating, false /* removeOnly */)
     } else {
       // updates
