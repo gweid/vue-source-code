@@ -224,6 +224,165 @@ export function initLifecycle (vm: Component) {
 
 - 继续在 create-component.js 中 child.$mount(hydrating ? vnode.elm : undefined, hydrating), 这个就会执行 entry-runtime-with-compiler.js 中的 Vue.prototype.$mount, 后执行 lifecycle.js 中的 mountComponent，执行 render 完成子组件的渲染，然后执行渲染 watcher(子组件的渲染 watcher)
 
-#### 组件 patch 流程中的 activeInstance、vm.\$vnode、vm.\_vnode
+### 2-3、组件的生命周期
 
-#### 嵌套组件的插入顺序
+- beforeCreate: data 数据没有初始化之前执行
+- created: data 数据初始化之后执行
+
+```
+// 在 init.js 中
+
+export function initMixin (Vue: Class<Component>) {
+  Vue.prototype._init = function (options?: Object) {
+
+    initLifecycle(vm)
+    initEvents(vm) // 初始化事件中心
+    initRender(vm) // 初始化渲染
+    callHook(vm, 'beforeCreate')
+    initInjections(vm) // resolve injections before data/props  在 data/props 之前解决注入
+    initState(vm)  // 初始化 data
+    initProvide(vm) // resolve provide after data/props
+    callHook(vm, 'created')
+
+  }
+}
+```
+
+- beforeMounted: 页面渲染之前执行
+- mounted: 页面渲染之后执行
+
+```
+// 在 lifecycle.js 中
+
+export function mountComponent (
+  vm: Component,
+  el: ?Element,
+  hydrating?: boolean
+): Component {
+
+  // 数据渲染之前 beforeMount
+  callHook(vm, 'beforeMount')
+
+  let updateComponent
+  /* istanbul ignore if */
+  if (process.env.NODE_ENV !== 'production' && config.performance && mark) {
+    updateComponent = () => {
+      const name = vm._name
+      const id = vm._uid
+      const startTag = `vue-perf-start:${id}`
+      const endTag = `vue-perf-end:${id}`
+
+      mark(startTag)
+      const vnode = vm._render()
+      mark(endTag)
+      measure(`vue ${name} render`, startTag, endTag)
+
+      mark(startTag)
+      vm._update(vnode, hydrating)
+      mark(endTag)
+      measure(`vue ${name} patch`, startTag, endTag)
+    }
+  } else {
+    updateComponent = () => {
+      vm._update(vm._render(), hydrating)
+    }
+  }
+
+  // manually mounted instance, call mounted on self
+  // mounted is called for render-created child components in its inserted hook
+  // vm.$vnode 表示 Vue 实例的父虚拟 node，为 null 则表示 当前是根 Vue 实例
+  // 设置 vm._isMounted 为 true，表示该实例已经挂载
+  // 最后调用 mounted 钩子函数
+  if (vm.$vnode == null) {
+    vm._isMounted = true
+    callHook(vm, 'mounted')
+  }
+  return vm
+}
+}
+```
+
+- beforeUpdate: 数据更新之前，并且首次渲染不会触发
+- updated: 数据更新之后，并且首次渲染不会触发
+
+```
+// 在 lifecycle.js 中  _isMounted 为 true 表示已挂载
+
+new Watcher(vm, updateComponent, noop, {
+  before () {
+    if (vm._isMounted && !vm._isDestroyed) {
+      callHook(vm, 'beforeUpdate')
+    }
+  }
+}, true /* isRenderWatcher */)
+```
+
+- beforeDestroy: 页面卸载之前，此时 data、method 还存在
+- destroyed: 页面卸载之后，此时 data、method 不存在
+
+### 2-4、组件的注册
+
+- 全局注册：全局注册组件就是 Vue 实例化前创建一个基于 Vue 的子类构造器，并将组件的信息加载到实例 options.components 对象中
+
+```
+在 assets.js
+
+// 组件的注册
+export function initAssetRegisters (Vue: GlobalAPI) {
+  /**
+   * Create asset registration methods.
+   */
+  ASSET_TYPES.forEach(type => {
+    Vue[type] = function (
+      id: string,
+      definition: Function | Object
+    ): Function | Object | void {
+      if (!definition) {
+        return this.options[type + 's'][id]
+      } else {
+        /* istanbul ignore if */
+        if (process.env.NODE_ENV !== 'production' && type === 'component') {
+          validateComponentName(id)
+        }
+        if (type === 'component' && isPlainObject(definition)) {
+          // 组件名称设置
+          definition.name = definition.name || id
+          // Vue.extend() 创建子组件，返回子类构造器
+          definition = this.options._base.extend(definition)
+        }
+        if (type === 'directive' && typeof definition === 'function') {
+          definition = { bind: definition, update: definition }
+        }
+        // 为Vue.options 上的 component 属性添加将子类构造器
+        this.options[type + 's'][id] = definition
+        return definition
+      }
+    }
+  })
+}
+```
+
+- 局部注册: 在 createElement 中, 发现是组件标签，就调用 createComponent
+
+```
+// create-element.js
+
+if (typeof tag === 'string') {
+
+    } else if ((!data || !data.pre) && isDef(Ctor = resolveAsset(context.$options, 'components', tag))) {
+      // 如果是组件
+      // component
+      vnode = createComponent(Ctor, data, context, children, tag)
+    } else {
+      // unknown or unlisted namespaced elements
+      // check at runtime because it may get assigned a namespace when its
+      // parent normalizes children
+      vnode = new VNode(
+        tag, data, children,
+        undefined, undefined, context
+      )
+    }
+  } else {
+    
+  }
+```

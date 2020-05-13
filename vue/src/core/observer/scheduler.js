@@ -132,7 +132,9 @@ function callUpdatedHooks (queue) {
   while (i--) {
     const watcher = queue[i]
     const vm = watcher.vm
+    // 如果是渲染 watcher 并且执行了 Mounted 并且还没有卸载 
     if (vm._watcher === watcher && vm._isMounted && !vm._isDestroyed) {
+      // 执行一次 updated
       callHook(vm, 'updated')
     }
   }
