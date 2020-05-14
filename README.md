@@ -2,7 +2,7 @@
 
 ## initGlobalAPI
 
-- 挂载 Vue 全局的 api 例如 nextTick set 等
+-   挂载 Vue 全局的 api 例如 nextTick set 等
 
 ```
 initGlobalAPI(Vue)
@@ -12,7 +12,7 @@ initGlobalAPI(Vue)
 
 ### 1-1、new Vue() 发生了什么
 
-- 首先，Vue 是 Function 出来的
+-   首先，Vue 是 Function 出来的
 
 ```
 function Vue (options) {
@@ -33,8 +33,8 @@ this._init(options)
 }
 ```
 
-- new Vue 实际上就是执行了 Vue 自身的 \_init 方法, \_init 方法就是初始化 Vue 的，\_init 通过 initMixin(Vue) 往 Vue 原型上添加
-- \_init 方法主要做了一些 options 的合并，初始化命周期，初始化事件中心，初始化渲染，初始化 data、props、computed、watcher 等等。
+-   new Vue 实际上就是执行了 Vue 自身的 \_init 方法, \_init 方法就是初始化 Vue 的，\_init 通过 initMixin(Vue) 往 Vue 原型上添加
+-   \_init 方法主要做了一些 options 的合并，初始化命周期，初始化事件中心，初始化渲染，初始化 data、props、computed、watcher 等等。
 
 ```
 initLifecycle(vm) // 初始化生命周期
@@ -47,25 +47,25 @@ initProvide(vm) // resolve provide after data/props
 callHook(vm, 'created')
 ```
 
-- initState 初始化 data，对 data 做了 proxy 处理，这样一来，访问 this.xxx 时实际上就相当于访问了 this.\_data.xxx，还有 data 响应式
+-   initState 初始化 data，对 data 做了 proxy 处理，这样一来，访问 this.xxx 时实际上就相当于访问了 this.\_data.xxx，还有 data 响应式
 
 ```
 proxy(vm, `_data`, key)
 observe(data, true /* asRootData */)
 ```
 
-- 最后是 \$mount 的挂载
+-   最后是 \$mount 的挂载
 
 ### 1-2、\$mount 的挂载
 
-- 先是缓存了原型上的 \$mount 方法，再重新定义该方法
+-   先是缓存了原型上的 \$mount 方法，再重新定义该方法
 
 ```
 const mount = Vue.prototype.$mount
 Vue.prototype.$mount = function ()
 ```
 
-- 对 el 做了限制，Vue 不能挂载在 body 、 html 这样的根节点上, 因为其会覆盖
+-   对 el 做了限制，Vue 不能挂载在 body 、 html 这样的根节点上, 因为其会覆盖
 
 ```
 if (el === document.body || el === document.documentElement) {
@@ -76,14 +76,14 @@ if (el === document.body || el === document.documentElement) {
   }
 ```
 
-- 调用原先原型上的 \$mount 方法挂载, 此时实际也是调用重新定义的 mount， 这样做主要是为了复用
+-   调用原先原型上的 \$mount 方法挂载, 此时实际也是调用重新定义的 mount， 这样做主要是为了复用
 
 ```
 return mount.call(this, el, hydrating)
 ```
 
-- \$mount 主要是执行了 mountComponent, 其核心就是先调用 vm.\_render 方法先生成虚拟 Node，再实例化一个渲染 Watcher ，在它的回调函数中会调用 updateComponent 方法，最终调用 vm.\_update 更新 DOM。 vm.\_rendre() 主要生成 vnode
-- Watcher 在这里起到两个作用，一个是初始化的时候会执行回调函数，另一个是当 vm 实例中的监测 的数据发生变化的时候执行回调函数
+-   \$mount 主要是执行了 mountComponent, 其核心就是先调用 vm.\_render 方法先生成虚拟 Node，再实例化一个渲染 Watcher ，在它的回调函数中会调用 updateComponent 方法，最终调用 vm.\_update 更新 DOM。 vm.\_rendre() 主要生成 vnode
+-   Watcher 在这里起到两个作用，一个是初始化的时候会执行回调函数，另一个是当 vm 实例中的监测 的数据发生变化的时候执行回调函数
 
 ```
 new Watcher(vm, updateComponent, noop, {
@@ -95,7 +95,7 @@ new Watcher(vm, updateComponent, noop, {
 }, true /* isRenderWatcher */)
 ```
 
-- 函数最后判断为根节点的时候设置 vm.\_isMounted 为 true ， 表士这个实例已经挂载了，同时执行 mounted 钩子函数。 vm.\$vnode 表士 Vue 实例的父虚拟 Node，所以它为 Null 则表士当前是根 Vue 的实例。
+-   函数最后判断为根节点的时候设置 vm.\_isMounted 为 true ， 表士这个实例已经挂载了，同时执行 mounted 钩子函数。 vm.\$vnode 表士 Vue 实例的父虚拟 Node，所以它为 Null 则表士当前是根 Vue 的实例。
 
 ```
 if (vm.$vnode == null) {
@@ -106,13 +106,13 @@ if (vm.$vnode == null) {
 
 ### 1-3、\$mount 挂载的 Vue.prototype.\_render
 
-- 主要用处：把实例渲染成一个虚拟 Node
-- 执行流程 （\_createElement -> createElement -> \$createElement -> render -> \_render）
+-   主要用处：把实例渲染成一个虚拟 Node
+-   执行流程 （\_createElement -> createElement -> \$createElement -> render -> \_render）
 
 ### 1-4、createElement
 
-- Vue.js 利用 createElement 创建 VNode，在 src/core/vdom/create-elemenet.js 中
-- createElement 是对 \_createElement 的封装，在 createElement 中对参数进行处理， 真正创建 VNode 的函数在 \_createElement
+-   Vue.js 利用 createElement 创建 VNode，在 src/core/vdom/create-elemenet.js 中
+-   createElement 是对 \_createElement 的封装，在 createElement 中对参数进行处理， 真正创建 VNode 的函数在 \_createElement
 
 ```
 export function createElement (
@@ -135,22 +135,22 @@ export function createElement (
 }
 ```
 
-- \_createElement 首先对 children 做处理，最终生成统一形式[vnode, vnode, ...]；然后是 VNode 的创建。整体流程就是 （\_createElement -> createElement -> \$createElement -> render -> \_render）；执行完这一系列就是到 vm.\_update
+-   \_createElement 首先对 children 做处理，最终生成统一形式[vnode, vnode, ...]；然后是 VNode 的创建。整体流程就是 （\_createElement -> createElement -> \$createElement -> render -> \_render）；执行完这一系列就是到 vm.\_update
 
 ### 1-5、\$mount 挂载的 Vue.prototype.\_update
 
-- 主要作用：把生成的 VNode 渲染, 在 core/instance/lifecyle.js 中定义
-- 核心方法 patch
+-   主要作用：把生成的 VNode 渲染, 在 core/instance/lifecyle.js 中定义
+-   核心方法 patch
 
 ## 2、Vue 的组件化
 
-- 首先在 this.\_init 中调用 initRender 初始化，然后 initRender 中 createElement, 在 createElement 中发现是组件, 那么 createComponent
+-   首先在 this.\_init 中调用 initRender 初始化，然后 initRender 中 createElement, 在 createElement 中发现是组件, 那么 createComponent
 
 ### 2-1、组件的 VNode (create-element.js、create-component.js、vnode.js、extend.js)
 
 ![VNode](/vue/imgs/img1.png)
 
-- 在 create-element.js 中的 \_createElement 时，如果 tag 不是一个标签字符串，而是一个组件对象，此时通过 createComponent 创建一个组件 VNode
+-   在 create-element.js 中的 \_createElement 时，如果 tag 不是一个标签字符串，而是一个组件对象，此时通过 createComponent 创建一个组件 VNode
 
 ```
 export function _createElement (
@@ -170,7 +170,7 @@ export function _createElement (
 }
 ```
 
-- 在 create-component.js 的 createComponent 中，会调用 Vue.extend(组件)(即: Ctor = baseCtor.extend(Ctor)), 这里的 extend 主要就是把 Vue 的功能赋给组件，并且合并配置, 在 extend 中会对组件做缓存
+-   在 create-component.js 的 createComponent 中，会调用 Vue.extend(组件)(即: Ctor = baseCtor.extend(Ctor)), 这里的 extend 主要就是把 Vue 的功能赋给组件，并且合并配置, 在 extend 中会对组件做缓存
 
 ```
 extend.js
@@ -181,8 +181,8 @@ if (cachedCtors[SuperId]) {
 }
 ```
 
-- 通过在 create-component.js 的 createComponent 中安装一些组件的钩子 installComponentHooks(data)
-- 在 create-component.js 中创建组件 VNode。组件 VNode 与 普通 VNode 区别: 没有 children, 多了 componentOptions
+-   通过在 create-component.js 的 createComponent 中安装一些组件的钩子 installComponentHooks(data)
+-   在 create-component.js 中创建组件 VNode。组件 VNode 与 普通 VNode 区别: 没有 children, 多了 componentOptions
 
 ```
 const vnode = new VNode(
@@ -199,9 +199,9 @@ const vnode = new VNode(
 
 ![VNode](/vue/imgs/img2.png)
 
-- 组件的 patch 也会调用 patch.js 中的 createElm, 其中与普通元素 patch 不一样的就是 createElm 中的 createComponent 处理
-- 在 patch.js 的 createComponent 中, vnode.componentInstance, 这个主要在 create-component.js 中创建组件 VNode 的时候挂载钩子时的，vnode.componentInstance 这个主要就是调用了 createComponentInstanceForVnode 这个去执行 Ctor 组件构造器，这个构造器又会去 init.js 中 initInternalComponent(vm, options) 合并; 继续在 init.js 中 调用 initLifecycle
-- 在 lifecycle.js 中 initLifecycle，拿到父组件 vm: let parent = options.parent, options.parent 就是父组件 vm 实例。 在 setActiveInstance 实现每次 \_update 把 vm 赋给 activeInstance
+-   组件的 patch 也会调用 patch.js 中的 createElm, 其中与普通元素 patch 不一样的就是 createElm 中的 createComponent 处理
+-   在 patch.js 的 createComponent 中, vnode.componentInstance, 这个主要在 create-component.js 中创建组件 VNode 的时候挂载钩子时的，vnode.componentInstance 这个主要就是调用了 createComponentInstanceForVnode 这个去执行 Ctor 组件构造器，这个构造器又会去 init.js 中 initInternalComponent(vm, options) 合并; 继续在 init.js 中 调用 initLifecycle
+-   在 lifecycle.js 中 initLifecycle，拿到父组件 vm: let parent = options.parent, options.parent 就是父组件 vm 实例。 在 setActiveInstance 实现每次 \_update 把 vm 赋给 activeInstance
 
 ```
 export function initLifecycle (vm: Component) {
@@ -224,12 +224,12 @@ export function initLifecycle (vm: Component) {
 }
 ```
 
-- 继续在 create-component.js 中 child.$mount(hydrating ? vnode.elm : undefined, hydrating), 这个就会执行 entry-runtime-with-compiler.js 中的 Vue.prototype.$mount, 后执行 lifecycle.js 中的 mountComponent，执行 render 完成子组件的渲染，然后执行渲染 watcher(子组件的渲染 watcher)
+-   继续在 create-component.js 中 child.$mount(hydrating ? vnode.elm : undefined, hydrating), 这个就会执行 entry-runtime-with-compiler.js 中的 Vue.prototype.$mount, 后执行 lifecycle.js 中的 mountComponent，执行 render 完成子组件的渲染，然后执行渲染 watcher(子组件的渲染 watcher)
 
 ### 2-3、组件的生命周期
 
-- beforeCreate: data 数据没有初始化之前执行
-- created: data 数据初始化之后执行
+-   beforeCreate: data 数据没有初始化之前执行
+-   created: data 数据初始化之后执行
 
 ```
 // 在 init.js 中
@@ -250,8 +250,8 @@ export function initMixin (Vue: Class<Component>) {
 }
 ```
 
-- beforeMounted: 页面渲染之前执行
-- mounted: 页面渲染之后执行
+-   beforeMounted: 页面渲染之前执行
+-   mounted: 页面渲染之后执行
 
 ```
 // 在 lifecycle.js 中
@@ -304,8 +304,8 @@ export function mountComponent (
 }
 ```
 
-- beforeUpdate: 数据更新之前，并且首次渲染不会触发
-- updated: 数据更新之后，并且首次渲染不会触发
+-   beforeUpdate: 数据更新之前，并且首次渲染不会触发
+-   updated: 数据更新之后，并且首次渲染不会触发
 
 ```
 // 在 lifecycle.js 中  _isMounted 为 true 表示已挂载
@@ -319,12 +319,12 @@ new Watcher(vm, updateComponent, noop, {
 }, true /* isRenderWatcher */)
 ```
 
-- beforeDestroy: 页面卸载之前，此时 data、method 还存在
-- destroyed: 页面卸载之后，此时 data、method 不存在
+-   beforeDestroy: 页面卸载之前，此时 data、method 还存在
+-   destroyed: 页面卸载之后，此时 data、method 不存在
 
 ### 2-4、组件的注册
 
-- 全局注册：全局注册组件就是 Vue 实例化前创建一个基于 Vue 的子类构造器，并将组件的信息加载到实例 options.components 对象中
+#### 2-4-1、全局注册：全局注册组件就是 Vue 实例化前创建一个基于 Vue 的子类构造器，并将组件的信息加载到实例 options.components 对象中
 
 ```
 在 assets.js
@@ -364,7 +364,7 @@ export function initAssetRegisters (Vue: GlobalAPI) {
 }
 ```
 
-- 局部注册: 在 createElement 中, 发现是组件标签，就调用 createComponent
+#### 2-4-2、局部注册: 在 createElement 中, 发现是组件标签，就调用 createComponent
 
 ```
 // create-element.js
@@ -385,6 +385,307 @@ if (typeof tag === 'string') {
       )
     }
   } else {
-    
+
   }
 ```
+
+### Vue 异步组件
+
+-   总的来说，异步组件的实现通常是 2 次渲染，先渲染成注释节点，组件加载成功后再通过 forceRender 重新渲染，这是异步组件的核心所在。
+
+-   当在 createComponent 中发现是异步组件, 调用 resolveAsyncComponent, 这个是异步组件的核心
+
+#### 2-5-1、工厂函数
+
+-   定义异步请求成功的函数处理，定义异步请求失败的函数处理；
+-   执行组件定义的工厂函数；
+-   同步返回请求成功的函数处理。
+-   异步组件加载完毕，会调用 resolve 定义的方法，方法会通过 ensureCtor 将加载完成的组件转换为组件构造器，并存储在 resolved 属性中
+-   组件构造器创建完毕，会进行一次视图的重新渲染。由于 Vue 是数据驱动视图渲染的，而组件在加载到完毕的过程中，并没有数据发生变化，因此需要手动强制更新视图
+-   forceRender: 这个中执行 $forceUpdate，$forceUpdate 的逻辑非常简单，就是调用渲染 watcher 的 update 方法，让渲染 watcher 对应的回调函数执行，也就是触发了组件的重新渲染。
+-   异步组件加载失败后，会调用 reject 定义的方法，方法会提示并标记错误，最后同样会强制更新视图。
+
+```
+Vue.component('async-example', function (resolve, reject) {
+  // 这个特殊的 require 语法告诉 webpack
+  // 自动将编译后的代码分割成不同的块，
+  // 这些块将通过 Ajax 请求自动下载。
+  require(['./my-async-component'], resolve)
+})
+```
+
+```
+export function resolveAsyncComponent(
+  factory: Function,
+  baseCtor: Class < Component >
+): Class < Component > | void {
+  if (isTrue(factory.error) && isDef(factory.errorComp)) {
+    return factory.errorComp
+  }
+
+  if (isDef(factory.resolved)) {
+    return factory.resolved
+  }
+
+  const owner = currentRenderingInstance
+  if (owner && isDef(factory.owners) && factory.owners.indexOf(owner) === -1) {
+    // already pending
+    factory.owners.push(owner)
+  }
+
+  if (isTrue(factory.loading) && isDef(factory.loadingComp)) {
+    return factory.loadingComp
+  }
+
+  if (owner && !isDef(factory.owners)) {
+    const owners = factory.owners = [owner]
+    let sync = true
+    let timerLoading = null
+    let timerTimeout = null
+
+    ;
+    (owner: any).$on('hook:destroyed', () => remove(owners, owner))
+
+    const forceRender = (renderCompleted: boolean) => {
+      for (let i = 0, l = owners.length; i < l; i++) {
+        // $forceUpdate 的逻辑非常简单，就是调用渲染 watcher 的 update 方法，让渲染 watcher 对应的回调函数执行，也就是触发了组件的重新渲染。
+        // 之所以这么做是因为 Vue 通常是数据驱动视图重 新渲染，但是在整个异步组件加载过程中是没有数据发生变化的，所以通过执行 $forceUpdate 可以强制组件重新渲染一次。
+        (owners[i]: any).$forceUpdate()
+      }
+
+      if (renderCompleted) {
+        owners.length = 0
+        if (timerLoading !== null) {
+          clearTimeout(timerLoading)
+          timerLoading = null
+        }
+        if (timerTimeout !== null) {
+          clearTimeout(timerTimeout)
+          timerTimeout = null
+        }
+      }
+    }
+
+    // once 确保包装的函数只执行一次
+    const resolve = once((res: Object | Class < Component > ) => {
+      // cache resolved
+      factory.resolved = ensureCtor(res, baseCtor)
+      // invoke callbacks only if this is not a synchronous resolve
+      // (async resolves are shimmed as synchronous during SSR)
+      if (!sync) {
+        forceRender(true)
+      } else {
+        owners.length = 0
+      }
+    })
+
+    const reject = once(reason => {
+      process.env.NODE_ENV !== 'production' && warn(
+        `Failed to resolve async component: ${String(factory)}` +
+        (reason ? `\nReason: ${reason}` : '')
+      )
+      if (isDef(factory.errorComp)) {
+        factory.error = true
+        forceRender(true)
+      }
+    })
+
+    // 普通工厂函数异步组件执行
+    const res = factory(resolve, reject)
+  }
+}
+```
+
+-   执行异步过程会同步为加载中的异步组件创建一个注释节点 Vnode
+
+```
+createComponent.js
+
+if (Ctor === undefined) {
+  // 是创建一个注释节点vnode
+  return createAsyncPlaceholder(asyncFactory, data, context, children, tag);
+}
+```
+
+-   执行 forceRender 触发组件的重新渲染过程时，又会再次调用 resolveAsyncComponent,这时返回值 Ctor 不再为 undefined 了，因此会正常走组件的 render,patch 过程。这时，旧的注释节点也会被取代。
+
+#### 2-5-2、Promise
+- 主要是在 res.then(resolve, reject) 这里
+
+```
+Vue.component( 'async-webpack-example', () => import('./my-async-component') )
+```
+
+```
+export function resolveAsyncComponent(
+  factory: Function,
+  baseCtor: Class < Component >
+): Class < Component > | void {
+
+    // once 确保包装的函数只执行一次
+    const resolve = once((res: Object | Class < Component > ) => {
+      // cache resolved
+      factory.resolved = ensureCtor(res, baseCtor)
+      // invoke callbacks only if this is not a synchronous resolve
+      // (async resolves are shimmed as synchronous during SSR)
+      if (!sync) {
+        forceRender(true)
+      } else {
+        owners.length = 0
+      }
+    })
+
+    const reject = once(reason => {
+      process.env.NODE_ENV !== 'production' && warn(
+        `Failed to resolve async component: ${String(factory)}` +
+        (reason ? `\nReason: ${reason}` : '')
+      )
+      if (isDef(factory.errorComp)) {
+        factory.error = true
+        forceRender(true)
+      }
+    })
+
+    // 普通工厂函数异步组件执行
+    const res = factory(resolve, reject)
+
+    if (isObject(res)) {
+      // promise 形式异步组件
+      if (isPromise(res)) {
+        // () => Promise
+        if (isUndef(factory.resolved)) {
+          res.then(resolve, reject)
+        }
+      } else if (isPromise(res.component)) {
+
+      }
+    }
+  }
+}
+```
+
+#### 2-5-3、高级异步组件
+
+```
+const AsyncComp = () => ({
+  // 需要加载的组件。应当是一个 Promise
+  component: import('./MyComp.vue'),
+  // 加载中应当渲染的组件
+  loading: LoadingComp,
+  // 出错时渲染的组件
+  error: ErrorComp,
+  // 渲染加载中组件前的等待时间。默认：200ms。
+  delay: 200,
+  // 最长等待时间。超出此时间则渲染错误组件。默认：Infinity
+  timeout: 3000
+})
+Vue.component('async-example', AsyncComp)
+```
+
+```
+export function resolveAsyncComponent(
+  factory: Function,
+  baseCtor: Class < Component >
+): Class < Component > | void {
+
+  if (owner && !isDef(factory.owners)) {
+    const owners = factory.owners = [owner]
+    let sync = true
+    let timerLoading = null
+    let timerTimeout = null
+
+    ;
+    (owner: any).$on('hook:destroyed', () => remove(owners, owner))
+
+    const forceRender = (renderCompleted: boolean) => {
+      for (let i = 0, l = owners.length; i < l; i++) {
+        // $forceUpdate 的逻辑非常简单，就是调用渲染 watcher 的 update 方法，让渲染 watcher 对应的回调函数执行，也就是触发了组件的重新渲染。
+        // 之所以这么做是因为 Vue 通常是数据驱动视图重 新渲染，但是在整个异步组件加载过程中是没有数据发生变化的，所以通过执行 $forceUpdate 可以强制组件重新渲染一次。
+        (owners[i]: any).$forceUpdate()
+      }
+
+      if (renderCompleted) {
+        owners.length = 0
+        if (timerLoading !== null) {
+          clearTimeout(timerLoading)
+          timerLoading = null
+        }
+        if (timerTimeout !== null) {
+          clearTimeout(timerTimeout)
+          timerTimeout = null
+        }
+      }
+    }
+
+    // once 确保包装的函数只执行一次
+    const resolve = once((res: Object | Class < Component > ) => {
+      // cache resolved
+      factory.resolved = ensureCtor(res, baseCtor)
+      // invoke callbacks only if this is not a synchronous resolve
+      // (async resolves are shimmed as synchronous during SSR)
+      if (!sync) {
+        forceRender(true)
+      } else {
+        owners.length = 0
+      }
+    })
+
+    const reject = once(reason => {
+      process.env.NODE_ENV !== 'production' && warn(
+        `Failed to resolve async component: ${String(factory)}` +
+        (reason ? `\nReason: ${reason}` : '')
+      )
+      if (isDef(factory.errorComp)) {
+        factory.error = true
+        forceRender(true)
+      }
+    })
+
+    // 普通工厂函数异步组件执行
+    const res = factory(resolve, reject)
+
+    if (isObject(res)) {
+      // promise 形式异步组件
+      if (isPromise(res)) {
+      } else if (isPromise(res.component)) {
+        // 高级异步组件
+        res.component.then(resolve, reject)
+
+        if (isDef(res.error)) {
+          factory.errorComp = ensureCtor(res.error, baseCtor)
+        }
+
+        if (isDef(res.loading)) {
+          factory.loadingComp = ensureCtor(res.loading, baseCtor)
+          if (res.delay === 0) {
+            factory.loading = true
+          } else {
+            timerLoading = setTimeout(() => {
+              timerLoading = null
+              if (isUndef(factory.resolved) && isUndef(factory.error)) {
+                factory.loading = true
+                forceRender(false)
+              }
+            }, res.delay || 200)
+          }
+        }
+
+        if (isDef(res.timeout)) {
+          timerTimeout = setTimeout(() => {
+            timerTimeout = null
+            if (isUndef(factory.resolved)) {
+              reject(
+                process.env.NODE_ENV !== 'production' ?
+                `timeout (${res.timeout}ms)` :
+                null
+              )
+            }
+          }, res.timeout)
+        }
+      }
+    }
+  }
+}
+```
+
+## 3、响应式原理

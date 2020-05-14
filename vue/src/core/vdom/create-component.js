@@ -133,6 +133,8 @@ export function createComponent(
       // return a placeholder node for async component, which is rendered
       // as a comment node but preserves all the raw information for the node.
       // the information will be used for async server-rendering and hydration.
+      
+      // 是创建一个注释节点vnode
       return createAsyncPlaceholder(asyncFactory, data, context, children, tag);
     }
   }
