@@ -170,9 +170,11 @@ export function _createElement (
 }
 ```
 
-- 在 create-component.js 的 createComponent 中，会调用 Vue.extend(组件)(即: Ctor = baseCtor.extend(Ctor)), 这里的 extend 主要就是把 Vue 的功能赋给组件，并且合并配置, 在其中会对组件做缓存
+- 在 create-component.js 的 createComponent 中，会调用 Vue.extend(组件)(即: Ctor = baseCtor.extend(Ctor)), 这里的 extend 主要就是把 Vue 的功能赋给组件，并且合并配置, 在 extend 中会对组件做缓存
 
 ```
+extend.js
+
 // 判断缓存中有没有存在,有就直接使用
 if (cachedCtors[SuperId]) {
   return cachedCtors[SuperId]
@@ -224,6 +226,39 @@ export function initLifecycle (vm: Component) {
 
 - 继续在 create-component.js 中 child.$mount(hydrating ? vnode.elm : undefined, hydrating), 这个就会执行 entry-runtime-with-compiler.js 中的 Vue.prototype.$mount, 后执行 lifecycle.js 中的 mountComponent，执行 render 完成子组件的渲染，然后执行渲染 watcher(子组件的渲染 watcher)
 
-#### 组件 patch 流程中的 activeInstance、vm.\$vnode、vm.\_vnode
+- 显然 Vnode 生成真实 DOM 的过程也是一个不断递归创建子节点的过程，patch 过程如果遇到子 Vnode, 会优先实例化子组件，并且执行子组件的挂载流程，而挂载流程又会回到 _render, _update 的过程。在所有的子 Vnode 递归挂载后，最终才会真正挂载根节点。
 
-#### 嵌套组件的插入顺序
+
+- 父子组件建立关联(这样子使得使用时可以通过 vm.$parent 拿到父实例，也可以在父实例中通过 vm.$children 拿到实例中的子组件)
+```
+function initLifecycle (vm) {
+    var options = vm.$options;
+    // 子组件注册时，会把父组件的实例挂载到自身选项的 parent 上
+    var parent = options.parent;
+    // 如果是子组件，并且该组件不是抽象组件时，将该组件的实例添加到父组件的 $parent 属性上，如果父组件是抽象组件，则一直往上层寻找，直到该父级组件不是抽象组件，并将，将该组件的实例添加到父组件的 $parent 属性
+    if (parent && !options.abstract) {
+        while (parent.$options.abstract && parent.$parent) {
+        parent = parent.$parent;
+        }
+        parent.$children.push(vm);
+    }
+    // 将自身的 $parent 属性指向父实例。
+    vm.$parent = parent;
+    vm.$root = parent ? parent.$root : vm;
+
+    vm.$children = [];
+    vm.$refs = {};
+
+    vm._watcher = null;
+    vm._inactive = null;
+    vm._directInactive = false;
+    // 该实例是否挂载
+    vm._isMounted = false;
+    // 该实例是否被销毁
+    vm._isDestroyed = false;
+    // 该实例是否正在被销毁
+    vm._isBeingDestroyed = false;
+}
+```
+
+### 2-3、异步组件
