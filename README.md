@@ -226,39 +226,165 @@ export function initLifecycle (vm: Component) {
 
 - 继续在 create-component.js 中 child.$mount(hydrating ? vnode.elm : undefined, hydrating), 这个就会执行 entry-runtime-with-compiler.js 中的 Vue.prototype.$mount, 后执行 lifecycle.js 中的 mountComponent，执行 render 完成子组件的渲染，然后执行渲染 watcher(子组件的渲染 watcher)
 
-- 显然 Vnode 生成真实 DOM 的过程也是一个不断递归创建子节点的过程，patch 过程如果遇到子 Vnode, 会优先实例化子组件，并且执行子组件的挂载流程，而挂载流程又会回到 _render, _update 的过程。在所有的子 Vnode 递归挂载后，最终才会真正挂载根节点。
+### 2-3、组件的生命周期
 
+- beforeCreate: data 数据没有初始化之前执行
+- created: data 数据初始化之后执行
 
-- 父子组件建立关联(这样子使得使用时可以通过 vm.$parent 拿到父实例，也可以在父实例中通过 vm.$children 拿到实例中的子组件)
 ```
-function initLifecycle (vm) {
-    var options = vm.$options;
-    // 子组件注册时，会把父组件的实例挂载到自身选项的 parent 上
-    var parent = options.parent;
-    // 如果是子组件，并且该组件不是抽象组件时，将该组件的实例添加到父组件的 $parent 属性上，如果父组件是抽象组件，则一直往上层寻找，直到该父级组件不是抽象组件，并将，将该组件的实例添加到父组件的 $parent 属性
-    if (parent && !options.abstract) {
-        while (parent.$options.abstract && parent.$parent) {
-        parent = parent.$parent;
-        }
-        parent.$children.push(vm);
-    }
-    // 将自身的 $parent 属性指向父实例。
-    vm.$parent = parent;
-    vm.$root = parent ? parent.$root : vm;
+// 在 init.js 中
 
-    vm.$children = [];
-    vm.$refs = {};
+export function initMixin (Vue: Class<Component>) {
+  Vue.prototype._init = function (options?: Object) {
 
-    vm._watcher = null;
-    vm._inactive = null;
-    vm._directInactive = false;
-    // 该实例是否挂载
-    vm._isMounted = false;
-    // 该实例是否被销毁
-    vm._isDestroyed = false;
-    // 该实例是否正在被销毁
-    vm._isBeingDestroyed = false;
+    initLifecycle(vm)
+    initEvents(vm) // 初始化事件中心
+    initRender(vm) // 初始化渲染
+    callHook(vm, 'beforeCreate')
+    initInjections(vm) // resolve injections before data/props  在 data/props 之前解决注入
+    initState(vm)  // 初始化 data
+    initProvide(vm) // resolve provide after data/props
+    callHook(vm, 'created')
+
+  }
 }
 ```
 
-### 2-3、异步组件
+- beforeMounted: 页面渲染之前执行
+- mounted: 页面渲染之后执行
+
+```
+// 在 lifecycle.js 中
+
+export function mountComponent (
+  vm: Component,
+  el: ?Element,
+  hydrating?: boolean
+): Component {
+
+  // 数据渲染之前 beforeMount
+  callHook(vm, 'beforeMount')
+
+  let updateComponent
+  /* istanbul ignore if */
+  if (process.env.NODE_ENV !== 'production' && config.performance && mark) {
+    updateComponent = () => {
+      const name = vm._name
+      const id = vm._uid
+      const startTag = `vue-perf-start:${id}`
+      const endTag = `vue-perf-end:${id}`
+
+      mark(startTag)
+      const vnode = vm._render()
+      mark(endTag)
+      measure(`vue ${name} render`, startTag, endTag)
+
+      mark(startTag)
+      vm._update(vnode, hydrating)
+      mark(endTag)
+      measure(`vue ${name} patch`, startTag, endTag)
+    }
+  } else {
+    updateComponent = () => {
+      vm._update(vm._render(), hydrating)
+    }
+  }
+
+  // manually mounted instance, call mounted on self
+  // mounted is called for render-created child components in its inserted hook
+  // vm.$vnode 表示 Vue 实例的父虚拟 node，为 null 则表示 当前是根 Vue 实例
+  // 设置 vm._isMounted 为 true，表示该实例已经挂载
+  // 最后调用 mounted 钩子函数
+  if (vm.$vnode == null) {
+    vm._isMounted = true
+    callHook(vm, 'mounted')
+  }
+  return vm
+}
+}
+```
+
+- beforeUpdate: 数据更新之前，并且首次渲染不会触发
+- updated: 数据更新之后，并且首次渲染不会触发
+
+```
+// 在 lifecycle.js 中  _isMounted 为 true 表示已挂载
+
+new Watcher(vm, updateComponent, noop, {
+  before () {
+    if (vm._isMounted && !vm._isDestroyed) {
+      callHook(vm, 'beforeUpdate')
+    }
+  }
+}, true /* isRenderWatcher */)
+```
+
+- beforeDestroy: 页面卸载之前，此时 data、method 还存在
+- destroyed: 页面卸载之后，此时 data、method 不存在
+
+### 2-4、组件的注册
+
+- 全局注册：全局注册组件就是 Vue 实例化前创建一个基于 Vue 的子类构造器，并将组件的信息加载到实例 options.components 对象中
+
+```
+在 assets.js
+
+// 组件的注册
+export function initAssetRegisters (Vue: GlobalAPI) {
+  /**
+   * Create asset registration methods.
+   */
+  ASSET_TYPES.forEach(type => {
+    Vue[type] = function (
+      id: string,
+      definition: Function | Object
+    ): Function | Object | void {
+      if (!definition) {
+        return this.options[type + 's'][id]
+      } else {
+        /* istanbul ignore if */
+        if (process.env.NODE_ENV !== 'production' && type === 'component') {
+          validateComponentName(id)
+        }
+        if (type === 'component' && isPlainObject(definition)) {
+          // 组件名称设置
+          definition.name = definition.name || id
+          // Vue.extend() 创建子组件，返回子类构造器
+          definition = this.options._base.extend(definition)
+        }
+        if (type === 'directive' && typeof definition === 'function') {
+          definition = { bind: definition, update: definition }
+        }
+        // 为Vue.options 上的 component 属性添加将子类构造器
+        this.options[type + 's'][id] = definition
+        return definition
+      }
+    }
+  })
+}
+```
+
+- 局部注册: 在 createElement 中, 发现是组件标签，就调用 createComponent
+
+```
+// create-element.js
+
+if (typeof tag === 'string') {
+
+    } else if ((!data || !data.pre) && isDef(Ctor = resolveAsset(context.$options, 'components', tag))) {
+      // 如果是组件
+      // component
+      vnode = createComponent(Ctor, data, context, children, tag)
+    } else {
+      // unknown or unlisted namespaced elements
+      // check at runtime because it may get assigned a namespace when its
+      // parent normalizes children
+      vnode = new VNode(
+        tag, data, children,
+        undefined, undefined, context
+      )
+    }
+  } else {
+    
+  }
+```
