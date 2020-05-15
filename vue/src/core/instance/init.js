@@ -31,13 +31,14 @@ export function initMixin (Vue: Class<Component>) {
     // a flag to avoid this being observed
     vm._isVue = true
     // merge options
-    // 如果是组件初始化
+    // 组件初始化时的配置合并
     if (options && options._isComponent) {
       // optimize internal component instantiation
       // since dynamic options merging is pretty slow, and none of the
       // internal component options needs special treatment.
       initInternalComponent(vm, options)
     } else {
+      // new Vue 时的配置合并
       // 进行 options 的合并,合并到 $options 中，那么 $options.data 可以访问到 data
       vm.$options = mergeOptions(
         resolveConstructorOptions(vm.constructor),

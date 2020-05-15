@@ -133,6 +133,8 @@ export function createComponent(
       // return a placeholder node for async component, which is rendered
       // as a comment node but preserves all the raw information for the node.
       // the information will be used for async server-rendering and hydration.
+      
+      // 是创建一个注释节点vnode
       return createAsyncPlaceholder(asyncFactory, data, context, children, tag);
     }
   }
@@ -223,8 +225,9 @@ export function createComponentInstanceForVnode(
   return new vnode.componentOptions.Ctor(options);
 }
 
-function installComponentHooks(data: VNodeData) {
-  const hooks = data.hook || (data.hook = {});
+// 将componentVNodeHooks 钩子函数合并到组件data.hook中 
+function installComponentHooks (data: VNodeData) {
+  const hooks = data.hook || (data.hook = {})
   for (let i = 0; i < hooksToMerge.length; i++) {
     const key = hooksToMerge[i];
     const existing = hooks[key];

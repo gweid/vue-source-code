@@ -170,9 +170,11 @@ export function _createElement (
 }
 ```
 
-- 在 create-component.js 的 createComponent 中，会调用 Vue.extend(组件)(即: Ctor = baseCtor.extend(Ctor)), 这里的 extend 主要就是把 Vue 的功能赋给组件，并且合并配置, 在其中会对组件做缓存
+- 在 create-component.js 的 createComponent 中，会调用 Vue.extend(组件)(即: Ctor = baseCtor.extend(Ctor)), 这里的 extend 主要就是把 Vue 的功能赋给组件，并且合并配置, 在 extend 中会对组件做缓存
 
 ```
+extend.js
+
 // 判断缓存中有没有存在,有就直接使用
 if (cachedCtors[SuperId]) {
   return cachedCtors[SuperId]
@@ -322,7 +324,7 @@ new Watcher(vm, updateComponent, noop, {
 
 ### 2-4、组件的注册
 
-- 全局注册：全局注册组件就是 Vue 实例化前创建一个基于 Vue 的子类构造器，并将组件的信息加载到实例 options.components 对象中
+#### 2-4-1、全局注册：全局注册组件就是 Vue 实例化前创建一个基于 Vue 的子类构造器，并将组件的信息加载到实例 options.components 对象中
 
 ```
 在全局 api 的 assets.js
@@ -362,7 +364,7 @@ export function initAssetRegisters (Vue: GlobalAPI) {
 }
 ```
 
-- 局部注册: 在 createElement 中, 发现是组件标签，就调用 createComponent
+#### 2-4-2、局部注册: 在 createElement 中, 发现是组件标签，就调用 createComponent
 
 ```
 // create-element.js
@@ -387,23 +389,510 @@ if (typeof tag === 'string') {
   }
 ```
 
-### 2-5、异步组件
+### Vue 异步组件
 
-#### 2-5-1、工厂函数方式
+- 总的来说，异步组件的实现通常是 2 次渲染，先渲染成注释节点，组件加载成功后再通过 forceRender 重新渲染，这是异步组件的核心所在。
+
+- 当在 createComponent 中发现是异步组件, 调用 resolveAsyncComponent, 这个是异步组件的核心
+
+#### 2-5-1、工厂函数
+
+- 定义异步请求成功的函数处理，定义异步请求失败的函数处理；
+- 执行组件定义的工厂函数；
+- 同步返回请求成功的函数处理。
+- 异步组件加载完毕，会调用 resolve 定义的方法，方法会通过 ensureCtor 将加载完成的组件转换为组件构造器，并存储在 resolved 属性中
+- 组件构造器创建完毕，会进行一次视图的重新渲染。由于 Vue 是数据驱动视图渲染的，而组件在加载到完毕的过程中，并没有数据发生变化，因此需要手动强制更新视图
+- forceRender: 这个中执行 $forceUpdate，$forceUpdate 的逻辑非常简单，就是调用渲染 watcher 的 update 方法，让渲染 watcher 对应的回调函数执行，也就是触发了组件的重新渲染。
+- 异步组件加载失败后，会调用 reject 定义的方法，方法会提示并标记错误，最后同样会强制更新视图。
 
 ```
-// 全局注册：
-Vue.component('asyncComponent', function(resolve, reject) {
-  require(['./test.vue'], resolve)
+Vue.component('async-example', function (resolve, reject) {
+  // 这个特殊的 require 语法告诉 webpack
+  // 自动将编译后的代码分割成不同的块，
+  // 这些块将通过 Ajax 请求自动下载。
+  require(['./my-async-component'], resolve)
 })
-// 局部注册：
-var vm = new Vue({
-  el: '#app',
-  template: '<div id="app"><asyncComponent></asyncComponent></div>',
-  components: {
-    asyncComponent: (resolve, reject) => require(['./test.vue'], resolve),
-    // 另外写法
-    asyncComponent: () => import('./test.vue'),
+```
+
+```
+export function resolveAsyncComponent(
+  factory: Function,
+  baseCtor: Class < Component >
+): Class < Component > | void {
+  if (isTrue(factory.error) && isDef(factory.errorComp)) {
+    return factory.errorComp
   }
+
+  if (isDef(factory.resolved)) {
+    return factory.resolved
+  }
+
+  const owner = currentRenderingInstance
+  if (owner && isDef(factory.owners) && factory.owners.indexOf(owner) === -1) {
+    // already pending
+    factory.owners.push(owner)
+  }
+
+  if (isTrue(factory.loading) && isDef(factory.loadingComp)) {
+    return factory.loadingComp
+  }
+
+  if (owner && !isDef(factory.owners)) {
+    const owners = factory.owners = [owner]
+    let sync = true
+    let timerLoading = null
+    let timerTimeout = null
+
+    ;
+    (owner: any).$on('hook:destroyed', () => remove(owners, owner))
+
+    const forceRender = (renderCompleted: boolean) => {
+      for (let i = 0, l = owners.length; i < l; i++) {
+        // $forceUpdate 的逻辑非常简单，就是调用渲染 watcher 的 update 方法，让渲染 watcher 对应的回调函数执行，也就是触发了组件的重新渲染。
+        // 之所以这么做是因为 Vue 通常是数据驱动视图重 新渲染，但是在整个异步组件加载过程中是没有数据发生变化的，所以通过执行 $forceUpdate 可以强制组件重新渲染一次。
+        (owners[i]: any).$forceUpdate()
+      }
+
+      if (renderCompleted) {
+        owners.length = 0
+        if (timerLoading !== null) {
+          clearTimeout(timerLoading)
+          timerLoading = null
+        }
+        if (timerTimeout !== null) {
+          clearTimeout(timerTimeout)
+          timerTimeout = null
+        }
+      }
+    }
+
+    // once 确保包装的函数只执行一次
+    const resolve = once((res: Object | Class < Component > ) => {
+      // cache resolved
+      factory.resolved = ensureCtor(res, baseCtor)
+      // invoke callbacks only if this is not a synchronous resolve
+      // (async resolves are shimmed as synchronous during SSR)
+      if (!sync) {
+        forceRender(true)
+      } else {
+        owners.length = 0
+      }
+    })
+
+    const reject = once(reason => {
+      process.env.NODE_ENV !== 'production' && warn(
+        `Failed to resolve async component: ${String(factory)}` +
+        (reason ? `\nReason: ${reason}` : '')
+      )
+      if (isDef(factory.errorComp)) {
+        factory.error = true
+        forceRender(true)
+      }
+    })
+
+    // 普通工厂函数异步组件执行
+    const res = factory(resolve, reject)
+  }
+}
+```
+
+- 执行异步过程会同步为加载中的异步组件创建一个注释节点 Vnode
+
+```
+createComponent.js
+
+if (Ctor === undefined) {
+  // 是创建一个注释节点vnode
+  return createAsyncPlaceholder(asyncFactory, data, context, children, tag);
+}
+```
+
+- 执行 forceRender 触发组件的重新渲染过程时，又会再次调用 resolveAsyncComponent,这时返回值 Ctor 不再为 undefined 了，因此会正常走组件的 render,patch 过程。这时，旧的注释节点也会被取代。
+
+#### 2-5-2、Promise
+
+- 主要是在 res.then(resolve, reject) 这里
+
+```
+Vue.component( 'async-webpack-example', () => import('./my-async-component') )
+```
+
+```
+export function resolveAsyncComponent(
+  factory: Function,
+  baseCtor: Class < Component >
+): Class < Component > | void {
+
+    // once 确保包装的函数只执行一次
+    const resolve = once((res: Object | Class < Component > ) => {
+      // cache resolved
+      factory.resolved = ensureCtor(res, baseCtor)
+      // invoke callbacks only if this is not a synchronous resolve
+      // (async resolves are shimmed as synchronous during SSR)
+      if (!sync) {
+        forceRender(true)
+      } else {
+        owners.length = 0
+      }
+    })
+
+    const reject = once(reason => {
+      process.env.NODE_ENV !== 'production' && warn(
+        `Failed to resolve async component: ${String(factory)}` +
+        (reason ? `\nReason: ${reason}` : '')
+      )
+      if (isDef(factory.errorComp)) {
+        factory.error = true
+        forceRender(true)
+      }
+    })
+
+    // 普通工厂函数异步组件执行
+    const res = factory(resolve, reject)
+
+    if (isObject(res)) {
+      // promise 形式异步组件
+      if (isPromise(res)) {
+        // () => Promise
+        if (isUndef(factory.resolved)) {
+          res.then(resolve, reject)
+        }
+      } else if (isPromise(res.component)) {
+
+      }
+    }
+  }
+}
+```
+
+#### 2-5-3、高级异步组件
+
+```
+const AsyncComp = () => ({
+  // 需要加载的组件。应当是一个 Promise
+  component: import('./MyComp.vue'),
+  // 加载中应当渲染的组件
+  loading: LoadingComp,
+  // 出错时渲染的组件
+  error: ErrorComp,
+  // 渲染加载中组件前的等待时间。默认：200ms。
+  delay: 200,
+  // 最长等待时间。超出此时间则渲染错误组件。默认：Infinity
+  timeout: 3000
 })
+Vue.component('async-example', AsyncComp)
+```
+
+```
+export function resolveAsyncComponent(
+  factory: Function,
+  baseCtor: Class < Component >
+): Class < Component > | void {
+
+  if (owner && !isDef(factory.owners)) {
+    const owners = factory.owners = [owner]
+    let sync = true
+    let timerLoading = null
+    let timerTimeout = null
+
+    ;
+    (owner: any).$on('hook:destroyed', () => remove(owners, owner))
+
+    const forceRender = (renderCompleted: boolean) => {
+      for (let i = 0, l = owners.length; i < l; i++) {
+        // $forceUpdate 的逻辑非常简单，就是调用渲染 watcher 的 update 方法，让渲染 watcher 对应的回调函数执行，也就是触发了组件的重新渲染。
+        // 之所以这么做是因为 Vue 通常是数据驱动视图重 新渲染，但是在整个异步组件加载过程中是没有数据发生变化的，所以通过执行 $forceUpdate 可以强制组件重新渲染一次。
+        (owners[i]: any).$forceUpdate()
+      }
+
+      if (renderCompleted) {
+        owners.length = 0
+        if (timerLoading !== null) {
+          clearTimeout(timerLoading)
+          timerLoading = null
+        }
+        if (timerTimeout !== null) {
+          clearTimeout(timerTimeout)
+          timerTimeout = null
+        }
+      }
+    }
+
+    // once 确保包装的函数只执行一次
+    const resolve = once((res: Object | Class < Component > ) => {
+      // cache resolved
+      factory.resolved = ensureCtor(res, baseCtor)
+      // invoke callbacks only if this is not a synchronous resolve
+      // (async resolves are shimmed as synchronous during SSR)
+      if (!sync) {
+        forceRender(true)
+      } else {
+        owners.length = 0
+      }
+    })
+
+    const reject = once(reason => {
+      process.env.NODE_ENV !== 'production' && warn(
+        `Failed to resolve async component: ${String(factory)}` +
+        (reason ? `\nReason: ${reason}` : '')
+      )
+      if (isDef(factory.errorComp)) {
+        factory.error = true
+        forceRender(true)
+      }
+    })
+
+    // 普通工厂函数异步组件执行
+    const res = factory(resolve, reject)
+
+    if (isObject(res)) {
+      // promise 形式异步组件
+      if (isPromise(res)) {
+      } else if (isPromise(res.component)) {
+        // 高级异步组件
+        res.component.then(resolve, reject)
+
+        if (isDef(res.error)) {
+          factory.errorComp = ensureCtor(res.error, baseCtor)
+        }
+
+        if (isDef(res.loading)) {
+          factory.loadingComp = ensureCtor(res.loading, baseCtor)
+          if (res.delay === 0) {
+            factory.loading = true
+          } else {
+            timerLoading = setTimeout(() => {
+              timerLoading = null
+              if (isUndef(factory.resolved) && isUndef(factory.error)) {
+                factory.loading = true
+                forceRender(false)
+              }
+            }, res.delay || 200)
+          }
+        }
+
+        if (isDef(res.timeout)) {
+          timerTimeout = setTimeout(() => {
+            timerTimeout = null
+            if (isUndef(factory.resolved)) {
+              reject(
+                process.env.NODE_ENV !== 'production' ?
+                `timeout (${res.timeout}ms)` :
+                null
+              )
+            }
+          }, res.timeout)
+        }
+      }
+    }
+  }
+}
+```
+
+## 3、响应式原理
+
+### 3-1、响应式对象
+
+#### 3-1-1、通过 Object.defineProperty 进行数据劫持
+
+#### 3-1-2、initState
+
+- 定义在 state.js 中, 在 Vue 的初始化阶段， \_init ⽅法执⾏的时候, 会执行 initState
+- initState 主要是对 props 、 methods 、 data 、 computed 和 wathcer 等属性做了初 始化操作
+- initState 中的 initProps: 通过 defineReactive 把 props 的属性变成响应式的，并且使用 proxy 将 props 的每个 key 代理到 vm 实例上, 这样 this.xx 就相当于访问 this.\_props.xxx
+
+```
+function initProps (vm: Component, propsOptions: Object) {
+  for (const key in propsOptions) {
+    keys.push(key)
+    const value = validateProp(key, propsOptions, propsData, vm)
+    /* istanbul ignore else */
+    if (process.env.NODE_ENV !== 'production') {
+      const hyphenatedKey = hyphenate(key)
+      if (isReservedAttribute(hyphenatedKey) ||
+          config.isReservedAttr(hyphenatedKey)) {
+        warn(
+          `"${hyphenatedKey}" is a reserved attribute and cannot be used as component prop.`,
+          vm
+        )
+      }
+      // 主要就是把 props 变成响应式的
+      defineReactive(props, key, value, () => {
+        if (!isRoot && !isUpdatingChildComponent) {
+          warn(
+            `Avoid mutating a prop directly since the value will be ` +
+            `overwritten whenever the parent component re-renders. ` +
+            `Instead, use a data or computed property based on the prop's ` +
+            `value. Prop being mutated: "${key}"`,
+            vm
+          )
+        }
+      })
+    } else {
+      defineReactive(props, key, value)
+    }
+
+    if (!(key in vm)) {
+      // 对 props 做了 proxy 处理，这样一来，访问 this.xxx 时实际上就相当于访问了this._props.xxx
+      proxy(vm, `_props`, key)
+    }
+  }
+}
+```
+
+- initState 中的 initData: 跟 initProps 相似, proxy 逐个代理 data 的 key 到 vm 实例, observe 响应式处理,
+  并且在这之前会先判断 key 是否有跟 props 重复的
+
+```
+function initData (vm: Component) {
+  let data = vm.$options.data
+  // 判断 data 是函数还是对象，并把 vm.$options.data 挂到 vm._data 上
+  data = vm._data = typeof data === 'function'
+    ? getData(data, vm)
+    : data || {}
+  // 如果 data 不是 object 类型，就报警告
+  if (!isPlainObject(data)) {
+    data = {}
+    process.env.NODE_ENV !== 'production' && warn(
+      'data functions should return an object:\n' +
+      'https://vuejs.org/v2/guide/components.html#data-Must-Be-a-Function',
+      vm
+    )
+  }
+  // proxy data on instance
+  const keys = Object.keys(data)
+  const props = vm.$options.props
+  const methods = vm.$options.methods
+  let i = keys.length
+  while (i--) {
+    const key = keys[i]
+    // 循环做一个对比， 是 data 里面定义的属性名不能跟 props 中的一样
+    if (process.env.NODE_ENV !== 'production') {
+      if (methods && hasOwn(methods, key)) {
+        warn(
+          `Method "${key}" has already been defined as a data property.`,
+          vm
+        )
+      }
+    }
+    if (props && hasOwn(props, key)) {
+      process.env.NODE_ENV !== 'production' && warn(
+        `The data property "${key}" is already declared as a prop. ` +
+        `Use prop default value instead.`,
+        vm
+      )
+    } else if (!isReserved(key)) {
+      // 对 vm 下的 key 逐个代理
+      // 对 data 做了 proxy 处理，这样一来，访问 this.xxx 时实际上就相当于访问了this._data.xxx
+      proxy(vm, `_data`, key)
+    }
+  }
+  // 响应式数据的处理
+  // observe data
+  observe(data, true /* asRootData */)
+}
+```
+
+- observe 中会 new 一个 Observer, 这个里面的 walk 会调用 defineReactive 执行 Object.defineProperty 进行数据劫持; 若传入的是数组，调用 observeArray，遍历数组对数组的每一项进行观察
+
+```
+export class Observer {
+  value: any;
+  dep: Dep;
+  vmCount: number; // number of vms that have this object as root $data
+
+  constructor (value: any) {
+    if (Array.isArray(value)) {
+      // 传入是数组
+      if (hasProto) {
+        protoAugment(value, arrayMethods)
+      } else {
+        copyAugment(value, arrayMethods, arrayKeys)
+      }
+      this.observeArray(value)
+    } else {
+      this.walk(value)
+    }
+  }
+
+  walk (obj: Object) {
+    const keys = Object.keys(obj)
+    for (let i = 0; i < keys.length; i++) {
+      defineReactive(obj, keys[i])
+    }
+  }
+
+  observeArray (items: Array<any>) {
+    for (let i = 0, l = items.length; i < l; i++) {
+      // 遍历对数组的每一个元素进行观察
+      observe(items[i])
+    }
+  }
+}
+```
+
+- defineReactive 做 Object.defineProperty, 当对象的某一个 key 的值也是一个对象，就会继续调用 observe， let childOb = !shallow && observe(val)
+
+```
+export function defineReactive (
+  obj: Object,
+  key: string,
+  val: any,
+  customSetter?: ?Function,
+  shallow?: boolean
+) {
+  const dep = new Dep()
+
+  const property = Object.getOwnPropertyDescriptor(obj, key)
+  if (property && property.configurable === false) {
+    return
+  }
+
+  // cater for pre-defined getter/setters
+  const getter = property && property.get
+  const setter = property && property.set
+  if ((!getter || setter) && arguments.length === 2) {
+    val = obj[key]
+  }
+
+  // 当对象的某一个 key 的值也是一个对象，就会继续调用 observe
+  let childOb = !shallow && observe(val)
+  Object.defineProperty(obj, key, {
+    enumerable: true,
+    configurable: true,
+    get: function reactiveGetter () {
+      const value = getter ? getter.call(obj) : val
+      if (Dep.target) {
+        dep.depend()
+        if (childOb) {
+          childOb.dep.depend()
+          if (Array.isArray(value)) {
+            dependArray(value)
+          }
+        }
+      }
+      return value
+    },
+    set: function reactiveSetter (newVal) {
+      const value = getter ? getter.call(obj) : val
+      /* eslint-disable no-self-compare */
+      if (newVal === value || (newVal !== newVal && value !== value)) {
+        return
+      }
+      /* eslint-enable no-self-compare */
+      if (process.env.NODE_ENV !== 'production' && customSetter) {
+        customSetter()
+      }
+      // #7981: for accessor properties without setter
+      if (getter && !setter) return
+      if (setter) {
+        setter.call(obj, newVal)
+      } else {
+        val = newVal
+      }
+      childOb = !shallow && observe(newVal)
+      dep.notify()
+    }
+  })
+}
 ```

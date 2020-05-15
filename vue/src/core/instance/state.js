@@ -47,10 +47,11 @@ export function proxy (target: Object, sourceKey: string, key: string) {
   // 所以 sharedPropertyDefinition.get 中的 this[sourceKey][key] 实际上就是 vm['_data'].key
   // 即是访问 this.key 的时候是会访问 vm['_data'].key
   // target 就是 vm
-  // 这实际就是把 data 里面的 key 全部挂载到 vm 上
+  // 这实际就是把 data 或者 props 里面的 key 全部挂载到 vm 上
   Object.defineProperty(target, key, sharedPropertyDefinition)
 }
 
+// 主要
 export function initState (vm: Component) {
   vm._watchers = []
   const opts = vm.$options
@@ -91,6 +92,7 @@ function initProps (vm: Component, propsOptions: Object) {
           vm
         )
       }
+      // 主要就是把 props 变成响应式的
       defineReactive(props, key, value, () => {
         if (!isRoot && !isUpdatingChildComponent) {
           warn(
@@ -109,6 +111,7 @@ function initProps (vm: Component, propsOptions: Object) {
     // during Vue.extend(). We only need to proxy props defined at
     // instantiation here.
     if (!(key in vm)) {
+      // 对 props 做了 proxy 处理，这样一来，访问 this.xxx 时实际上就相当于访问了this._props.xxx
       proxy(vm, `_props`, key)
     }
   }
