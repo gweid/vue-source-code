@@ -325,7 +325,7 @@ new Watcher(vm, updateComponent, noop, {
 - 全局注册：全局注册组件就是 Vue 实例化前创建一个基于 Vue 的子类构造器，并将组件的信息加载到实例 options.components 对象中
 
 ```
-在 assets.js
+在全局 api 的 assets.js
 
 // 组件的注册
 export function initAssetRegisters (Vue: GlobalAPI) {
@@ -383,6 +383,27 @@ if (typeof tag === 'string') {
       )
     }
   } else {
-    
+
   }
+```
+
+### 2-5、异步组件
+
+#### 2-5-1、工厂函数方式
+
+```
+// 全局注册：
+Vue.component('asyncComponent', function(resolve, reject) {
+  require(['./test.vue'], resolve)
+})
+// 局部注册：
+var vm = new Vue({
+  el: '#app',
+  template: '<div id="app"><asyncComponent></asyncComponent></div>',
+  components: {
+    asyncComponent: (resolve, reject) => require(['./test.vue'], resolve),
+    // 另外写法
+    asyncComponent: () => import('./test.vue'),
+  }
+})
 ```
