@@ -165,6 +165,7 @@ export function defineReactive(
     // 主要做依赖收集
     get: function reactiveGetter() {
       const value = getter ? getter.call(obj) : val;
+      // Dep.target 就是一个 watcher
       if (Dep.target) {
         dep.depend();
         if (childOb) {

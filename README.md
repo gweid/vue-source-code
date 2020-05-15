@@ -896,3 +896,90 @@ export function defineReactive (
   })
 }
 ```
+
+### 3-2、依赖收集
+
+#### 3-2-1、首先，get 会 new Dep()
+
+#### 3-2-2、判断是否存在 Dep.target, Dep.target 其实就是一个 watcher
+
+- 在 Vue 进行 \$mount 的时候会调用 mountComponent，在 mountComponent 中会 new Watcher, watcher 会调用它自己的 get 方法去 pushTargrt，这样就把 watcher 添加到 Dep.target 上了
+
+```
+// dep.js
+export function pushTarget (target: ?Watcher) {
+  targetStack.push(target)
+  Dep.target = target
+}
+
+// watcher.js
+export default class Watcher {
+  vm: Component;
+  expression: string;
+  cb: Function;
+  id: number;
+  deep: boolean;
+  user: boolean;
+  lazy: boolean;
+  sync: boolean;
+  dirty: boolean;
+  active: boolean;
+  deps: Array<Dep>;
+  newDeps: Array<Dep>;
+  depIds: SimpleSet;
+  newDepIds: SimpleSet;
+  before: ?Function;
+  getter: Function;
+  value: any;
+
+  constructor (
+    vm: Component,
+    expOrFn: string | Function,
+    cb: Function,
+    options?: ?Object,
+    isRenderWatcher?: boolean
+  ) {
+
+    this.value = this.lazy
+      ? undefined
+      : this.get()
+  }
+
+  get () {
+    pushTarget(this)
+  }
+}
+
+```
+
+```
+export function defineReactive(
+  obj: Object,
+  key: string,
+  val: any,
+  customSetter?: ?Function,
+  shallow?: boolean
+) {
+  const dep = new Dep();
+
+  Object.defineProperty(obj, key, {
+    enumerable: true,
+    configurable: true,
+    // 主要做依赖收集
+    get: function reactiveGetter() {
+      const value = getter ? getter.call(obj) : val;
+      // Dep.target 就是一个 watcher
+      if (Dep.target) {
+        dep.depend();
+        if (childOb) {
+          childOb.dep.depend();
+          if (Array.isArray(value)) {
+            dependArray(value);
+          }
+        }
+      }
+      return value;
+    }
+  });
+}
+```
