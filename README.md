@@ -510,7 +510,8 @@ if (Ctor === undefined) {
 -   执行 forceRender 触发组件的重新渲染过程时，又会再次调用 resolveAsyncComponent,这时返回值 Ctor 不再为 undefined 了，因此会正常走组件的 render,patch 过程。这时，旧的注释节点也会被取代。
 
 #### 2-5-2、Promise
-- 主要是在 res.then(resolve, reject) 这里
+
+-   主要是在 res.then(resolve, reject) 这里
 
 ```
 Vue.component( 'async-webpack-example', () => import('./my-async-component') )
@@ -689,3 +690,32 @@ export function resolveAsyncComponent(
 ```
 
 ## 3、响应式原理
+
+### 3-1、响应式
+
+#### 3-1-1、利用 Object.defineProperty 进行数据劫持
+
+#### 3-1-2、利用 initState
+
+-   Vue 初始化阶段，会调用 \_init, 这个会执行定义在 state.js 中的 initState
+-   initState 主要是对 props 、 methods 、 data 、 computed 和 wathcer 等属性做了初始化操作。
+
+```
+export function initState(vm: Component) {
+  vm._watchers = []
+  const opts = vm.$options
+  if (opts.props) initProps(vm, opts.props)
+  if (opts.methods) initMethods(vm, opts.methods)
+  if (opts.data) {
+    initData(vm)
+  } else {
+    observe(vm._data = {}, true /* asRootData */ )
+  }
+  if (opts.computed) initComputed(vm, opts.computed)
+  if (opts.watch && opts.watch !== nativeWatch) {
+    initWatch(vm, opts.watch)
+  }
+}
+```
+
+-   initState 中的 initProps
