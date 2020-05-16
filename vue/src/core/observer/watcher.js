@@ -10,11 +10,20 @@ import {
   noop
 } from '../util/index'
 
-import { traverse } from './traverse'
-import { queueWatcher } from './scheduler'
-import Dep, { pushTarget, popTarget } from './dep'
+import {
+  traverse
+} from './traverse'
+import {
+  queueWatcher
+} from './scheduler'
+import Dep, {
+  pushTarget,
+  popTarget
+} from './dep'
 
-import type { SimpleSet } from '../util/index'
+import type {
+  SimpleSet
+} from '../util/index'
 
 let uid = 0
 
@@ -34,20 +43,20 @@ export default class Watcher {
   sync: boolean;
   dirty: boolean;
   active: boolean;
-  deps: Array<Dep>;
-  newDeps: Array<Dep>;
+  deps: Array < Dep > ;
+  newDeps: Array < Dep > ;
   depIds: SimpleSet;
   newDepIds: SimpleSet;
-  before: ?Function;
+  before: ? Function;
   getter: Function;
   value: any;
 
-  constructor (
+  constructor(
     vm: Component,
     expOrFn: string | Function,
     cb: Function,
-    options?: ?Object,
-    isRenderWatcher?: boolean
+    options ? : ? Object,
+    isRenderWatcher ? : boolean
   ) {
     this.vm = vm
     if (isRenderWatcher) {
@@ -72,9 +81,9 @@ export default class Watcher {
     this.newDeps = []
     this.depIds = new Set()
     this.newDepIds = new Set()
-    this.expression = process.env.NODE_ENV !== 'production'
-      ? expOrFn.toString()
-      : ''
+    this.expression = process.env.NODE_ENV !== 'production' ?
+      expOrFn.toString() :
+      ''
     // parse expression for getter
     if (typeof expOrFn === 'function') {
       this.getter = expOrFn
@@ -90,15 +99,16 @@ export default class Watcher {
         )
       }
     }
-    this.value = this.lazy
-      ? undefined
-      : this.get()
+    this.value = this.lazy ?
+      undefined :
+      this.get()
   }
 
   /**
    * Evaluate the getter, and re-collect dependencies.
    */
-  get () {
+  get() {
+    // 将 watcher 添加到 Dep.target
     pushTarget(this)
     let value
     const vm = this.vm
@@ -116,6 +126,7 @@ export default class Watcher {
       if (this.deep) {
         traverse(value)
       }
+      // 将 Dep.target 置空
       popTarget()
       this.cleanupDeps()
     }
@@ -125,9 +136,10 @@ export default class Watcher {
   /**
    * Add a dependency to this directive.
    */
-  addDep (dep: Dep) {
+  addDep(dep: Dep) {
     const id = dep.id
     if (!this.newDepIds.has(id)) {
+      // newDepIds是具有唯一成员是Set数据结构，newDeps是数组，他们用来记录当前watcher所拥有的数据，这一过程会进行逻辑判断，避免同一数据添加多次。
       this.newDepIds.add(id)
       this.newDeps.push(dep)
       if (!this.depIds.has(id)) {
@@ -139,7 +151,7 @@ export default class Watcher {
   /**
    * Clean up for dependency collection.
    */
-  cleanupDeps () {
+  cleanupDeps() {
     let i = this.deps.length
     while (i--) {
       const dep = this.deps[i]
@@ -161,7 +173,7 @@ export default class Watcher {
    * Subscriber interface.
    * Will be called when a dependency changes.
    */
-  update () {
+  update() {
     /* istanbul ignore else */
     if (this.lazy) {
       this.dirty = true
@@ -176,7 +188,7 @@ export default class Watcher {
    * Scheduler job interface.
    * Will be called by the scheduler.
    */
-  run () {
+  run() {
     if (this.active) {
       const value = this.get()
       if (
@@ -192,6 +204,7 @@ export default class Watcher {
         this.value = value
         if (this.user) {
           try {
+            // 执行回调，进行数据更新
             this.cb.call(this.vm, value, oldValue)
           } catch (e) {
             handleError(e, this.vm, `callback for watcher "${this.expression}"`)
@@ -207,7 +220,7 @@ export default class Watcher {
    * Evaluate the value of the watcher.
    * This only gets called for lazy watchers.
    */
-  evaluate () {
+  evaluate() {
     this.value = this.get()
     this.dirty = false
   }
@@ -215,7 +228,7 @@ export default class Watcher {
   /**
    * Depend on all deps collected by this watcher.
    */
-  depend () {
+  depend() {
     let i = this.deps.length
     while (i--) {
       this.deps[i].depend()
@@ -225,7 +238,7 @@ export default class Watcher {
   /**
    * Remove self from all dependencies' subscriber list.
    */
-  teardown () {
+  teardown() {
     if (this.active) {
       // remove self from vm's watcher list
       // this is a somewhat expensive operation so we skip it

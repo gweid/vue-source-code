@@ -10,16 +10,20 @@ let uid = 0
  * A dep is an observable that can have multiple
  * directives subscribing to it.
  */
+// 依赖收集
 export default class Dep {
+  // Dep.targte 就是一个 watcher
   static target: ?Watcher;
   id: number;
   subs: Array<Watcher>;
 
   constructor () {
     this.id = uid++
+    // subs 存储 watcher 的
     this.subs = []
   }
 
+  // 添加 watcher
   addSub (sub: Watcher) {
     this.subs.push(sub)
   }
@@ -28,12 +32,14 @@ export default class Dep {
     remove(this.subs, sub)
   }
 
+  // 依赖收集
   depend () {
     if (Dep.target) {
       Dep.target.addDep(this)
     }
   }
 
+  // 派发更新
   notify () {
     // stabilize the subscriber list first
     const subs = this.subs.slice()
