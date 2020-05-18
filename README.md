@@ -1006,6 +1006,110 @@ export default class Watcher {
 - 新值为对象时，会对该值的属性进行依赖收集过程。
 - 通知该数据收集的 watcher 依赖,遍历每个 watcher 进行数据更新,这个阶段是调用该数据依赖收集器的 dep.notify 方法进行更新的派发。
 
-派发更新过程： 通过 set 调用 dep.notify(), 在 notify 中会把 subs 中的依赖 watcher 逐个执行 update ( subs[i].update() ), watcher 的 update 把需要执行的 watcher 通过 queueWatcher 放到队列 queue 中，调用 flushSchedulerQueue 执行 queue 队列的每一个 watcher 的 run，执行 watcher 相关的回调函数去处理数据的更新。。在执行 run 之前会根据 watcher 的 id 对 watcher进行排列，因为组件的更新是从父到子的，所以要保证父的watcher在前面，而且当父组件被销毁，那么子组件的更新也不需要执行了。
+派发更新过程： 通过 set 调用 dep.notify(), 在 notify 中会把 subs 中的依赖 watcher 逐个执行 update ( subs[i].update() ), watcher 的 update 把需要执行的 watcher 通过 queueWatcher 放到队列 queue 中，调用 flushSchedulerQueue 执行 queue 队列的每一个 watcher 的 run，执行 watcher 相关的回调函数去处理数据的更新。。在执行 run 之前会根据 watcher 的 id 对 watcher 进行排列，因为组件的更新是从父到子的，所以要保证父的 watcher 在前面，而且当父组件被销毁，那么子组件的更新也不需要执行了。
 
 总结：派发更新就是当数据发生变化，通知所有订阅了这个数据变化的 watcher 执行 update
+
+### 3-4、nextTick
+
+- nextTick：就是将任务放到异步队列里面，等到主线程执行完再执行
+- 在 Vue 中，进行数据操作的时候，Vue 并没有马上去更新 DOM 数据，而是将这个操作放进一个队列中，如果重复执行的话，队列还会进行去重操作；等待同一事件循环中的所有数据变化完成之后，会将队列中的事件拿出来处理。这样做主要是为了提升性能，因为如果在主线程中更新 DOM，循环 100 次就要更新 100 次 DOM；但是如果等事件循环完成之后更新 DOM，只需要更新 1 次。
+
+```
+// scheduler.js 中的 queueWatcher
+
+export function queueWatcher(watcher: Watcher) {
+    ...
+
+    if (!waiting) {
+      waiting = true;
+      ...
+
+      nextTick(flushSchedulerQueue); // 将更新 DOM 的操作放到异步队列里面
+    }
+  }
+}
+```
+
+#### 3-4-1、nextTick 的实现原理
+
+- 将回调函数放到 callbacks 中等待执行
+
+```
+const callbacks = []
+let pending = false
+let timerFunc
+
+export function nextTick (cb?: Function, ctx?: Object) {
+  let _resolve
+  callbacks.push(() => {
+    if (cb) {
+      try {
+        cb.call(ctx)
+      } catch (e) {
+        handleError(e, ctx, 'nextTick')
+      }
+    } else if (_resolve) {
+      _resolve(ctx)
+    }
+  })
+  if (!pending) {
+    pending = true
+    timerFunc()
+  }
+}
+
+```
+
+- 将执行函数放到微任务或者宏任务中: 这里 Vue 做了兼容性的处理，尝试使用原生的 Promise.then、MutationObserver 和 setImmediate，上述三个都不支持最后使用 setTimeout； 其中 Promise.then、MutationObserver 是微任务，setImmediate 和 setTimeout 是宏任务。
+
+```
+if (typeof Promise !== 'undefined' && isNative(Promise)) {
+  //判断1：是否原生支持Promise
+  const p = Promise.resolve()
+  timerFunc = () => {
+    p.then(flushCallbacks)
+    if (isIOS) setTimeout(noop)
+  }
+  isUsingMicroTask = true
+} else if (!isIE && typeof MutationObserver !== 'undefined' && (
+  isNative(MutationObserver) ||
+  MutationObserver.toString() === '[object MutationObserverConstructor]'
+)) {
+  //判断2：是否原生支持MutationObserver
+  let counter = 1
+  const observer = new MutationObserver(flushCallbacks)
+  const textNode = document.createTextNode(String(counter))
+  observer.observe(textNode, {
+    characterData: true
+  })
+  timerFunc = () => {
+    counter = (counter + 1) % 2
+    textNode.data = String(counter)
+  }
+  isUsingMicroTask = true
+} else if (typeof setImmediate !== 'undefined' && isNative(setImmediate)) {
+  //判断3：是否原生支持 setImmediate
+  timerFunc = () => {
+    setImmediate(flushCallbacks)
+  }
+} else {
+  //判断4：上面都不行，直接用setTimeout
+  timerFunc = () => {
+    setTimeout(flushCallbacks, 0)
+  }
+}
+```
+
+- 最后依次执行 callbacks 中的回调
+
+```
+function flushCallbacks () {
+  pending = false
+  const copies = callbacks.slice(0)
+  callbacks.length = 0
+  for (let i = 0; i < copies.length; i++) {
+    copies[i]()
+  }
+}
+```
