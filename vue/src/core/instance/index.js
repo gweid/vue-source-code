@@ -26,7 +26,7 @@ function Vue (options) {
 // 这些函数以 Vue 为参数传入，主要就是给 Vue 的原型 prototype 上扩展方法 
 // 思想：把 Vue 原型挂载不同方法拆分成不同文件去实现，使代码层次分明
 initMixin(Vue)        // 添加了 Vue.prototype._init, 初始化 Vue
-stateMixin(Vue)       // Vue.prototype.$set 等
+stateMixin(Vue)       // Vue.prototype.$set Vue.prototype.$watch 等
 eventsMixin(Vue)      // 添加了 eventBus 相关的
 lifecycleMixin(Vue)   // 添加了与生命周期相关的
 renderMixin(Vue)      // render、nextTick... 

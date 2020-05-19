@@ -327,6 +327,7 @@ function initMethods(vm: Component, methods: Object) {
 function initWatch(vm: Component, watch: Object) {
   for (const key in watch) {
     const handler = watch[key]
+    // handler可以是数组的形式，执行多个回调
     if (Array.isArray(handler)) {
       for (let i = 0; i < handler.length; i++) {
         createWatcher(vm, key, handler[i])
@@ -393,8 +394,11 @@ export function stateMixin(Vue: Class < Component > ) {
       return createWatcher(vm, expOrFn, cb, options)
     }
     options = options || {}
+    // options.user 这个是用户定义 watcher 的标志
     options.user = true
+    // 创建一个user watcher，在实例化 user watcher 的时候会执行一次 getter 求值，这时，user watcher 会作为依赖被数据所收集
     const watcher = new Watcher(vm, expOrFn, cb, options)
+    // 如果有 immediate，立即执行回调函数
     if (options.immediate) {
       try {
         cb.call(vm, watcher.value)
