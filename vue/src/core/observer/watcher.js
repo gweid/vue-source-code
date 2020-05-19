@@ -222,12 +222,14 @@ export default class Watcher {
   // 主要是 computed 的
   evaluate() {
     this.value = this.get();
+    // computed 标记为已经执行过更新
     this.dirty = false;
   }
 
   /**
    * Depend on all deps collected by this watcher.
    */
+  // computed 中调用这个进行依赖收集
   depend() {
     let i = this.deps.length;
     while (i--) {

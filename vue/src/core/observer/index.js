@@ -58,7 +58,7 @@ export class Observer {
       } else {
         copyAugment(value, arrayMethods, arrayKeys);
       }
-      // 通过上面两步，接下来在实例内部调用push, unshift等数组的方法时，会执行 arrayMethods 类的方法。这也是数组进行依赖收集和派发更新的前提。
+      // 通过上面两步，接下来在实例内部调用 push, unshift 等数组的方法时，会执行 arrayMethods 类的方法。这也是数组进行依赖收集和派发更新的前提。
       this.observeArray(value);
     } else {
       // 对象

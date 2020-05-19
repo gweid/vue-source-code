@@ -148,7 +148,7 @@ export function createElement (
 
 ### 2-1、组件的 VNode (create-element.js、create-component.js、vnode.js、extend.js)
 
-![VNode](/vue/imgs/img1.png)
+![VNode](/imgs/img1.png)
 
 -   在 create-element.js 中的 \_createElement 时，如果 tag 不是一个标签字符串，而是一个组件对象，此时通过 createComponent 创建一个组件 VNode
 
@@ -197,7 +197,7 @@ const vnode = new VNode(
 
 #### 组件 patch 的整体流程(组件 VNode 渲染成真实 Dom)
 
-![VNode](/vue/imgs/img2.png)
+![VNode](/imgs/img2.png)
 
 -   组件的 patch 也会调用 patch.js 中的 createElm, 其中与普通元素 patch 不一样的就是 createElm 中的 createComponent 处理
 -   在 patch.js 的 createComponent 中, vnode.componentInstance, 这个主要在 create-component.js 中创建组件 VNode 的时候挂载钩子时的，vnode.componentInstance 这个主要就是调用了 createComponentInstanceForVnode 这个去执行 Ctor 组件构造器，这个构造器又会去 init.js 中 initInternalComponent(vm, options) 合并; 继续在 init.js 中 调用 initLifecycle
@@ -697,6 +697,8 @@ export function resolveAsyncComponent(
 
 **总结：处理的核心是在访问数据时对数据所在场景的依赖进行收集，在数据发生更改时，通知收集过的依赖进行更新**
 
+![响应式原理](/imgs/img3.png)
+
 ### 3-1、响应式对象
 
 #### 3-1-1、通过 Object.defineProperty 进行数据劫持
@@ -1169,7 +1171,8 @@ methodsToPatch.forEach(function (method) {
 })
 ```
 
-**总结：总的来说。数组的改变不会触发 setter 进行依赖更新，所以 Vue 创建了一个新的数组类，重写了数组的方法，将数组方法指向了新的数组类。同时在访问到数组时依旧触发 getter 进行依赖收集，在更改数组时，触发数组新方法运算，并进行依赖的派发。**
+**总结：总的来说。数组的改变不会触发 setter 进行依赖更新，所以 Vue 创建了一个新的数组类，重写了数组的方法，将数组方法指向了新的数组类。**
+**同时在访问到数组时依旧触发 getter 进行依赖收集，在更改数组时，触发数组新方法运算，并进行依赖的派发。**
 
 ### 3-5、nextTick
 
@@ -1226,7 +1229,7 @@ export function nextTick (cb?: Function, ctx?: Object) {
 
 ```
 if (typeof Promise !== 'undefined' && isNative(Promise)) {
-  //判断1：是否原生支持Promise
+  //判断1：是否原生支持 Promise
   const p = Promise.resolve()
   timerFunc = () => {
     p.then(flushCallbacks)
@@ -1237,7 +1240,7 @@ if (typeof Promise !== 'undefined' && isNative(Promise)) {
   isNative(MutationObserver) ||
   MutationObserver.toString() === '[object MutationObserverConstructor]'
 )) {
-  //判断2：是否原生支持MutationObserver
+  //判断2：是否原生支持 MutationObserver
   let counter = 1
   const observer = new MutationObserver(flushCallbacks)
   const textNode = document.createTextNode(String(counter))
@@ -1255,7 +1258,7 @@ if (typeof Promise !== 'undefined' && isNative(Promise)) {
     setImmediate(flushCallbacks)
   }
 } else {
-  //判断4：上面都不行，直接用setTimeout
+  //判断4：上面都不行，直接用 setTimeout
   timerFunc = () => {
     setTimeout(flushCallbacks, 0)
   }
@@ -1274,3 +1277,196 @@ function flushCallbacks () {
   }
 }
 ```
+
+### 3-6、computed
+
+#### 3-6-1、computed 的依赖收集
+
+在初始化 computed 的过程，会遍历 computed 的每一个属性值，并为每一个属性值添加一个计算 watcher，{lazy: true} 代表计算 watcher，最后调用 defineComputed 将数据设置为响应式
+
+```
+// state.js
+
+// computed watcher 的标志，lazy 属性为 true
+const computedWatcherOptions = {
+  lazy: true
+}
+
+function initComputed(vm: Component, computed: Object) {
+  ...
+
+  // 遍历 computed 中的每一个属性值，为每一个属性值实例化一个计算 watcher
+  for (const key in computed) {
+    ...
+
+    if (!isSSR) {
+      // create internal watcher for the computed property.
+      // lazy 为 true 的 watcher 代表计算 watcher
+      watchers[key] = new Watcher(
+        vm,
+        getter || noop,
+        noop,
+        computedWatcherOptions  // const computedWatcherOptions = { lazy: true }
+      )
+    }
+
+    if (!(key in vm)) {
+      // 调用 defineComputed 将数据设置为响应式数据，对应源码如下
+      defineComputed(vm, key, userDef)
+    } else if (process.env.NODE_ENV !== 'production') {
+      ...
+    }
+  }
+}
+```
+
+defineComputed: 计算属性的计算结果会被缓存，缓存的意义在于，只有在相关响应式数据发生变化时，computed 才会重新求值，其余情况多次访问计算属性的值都会返回之前计算的结果，这就是缓存的优化, 缓存的主要根据是 dirty 字段；最终调用 Object.defineProperty 进行数据拦截
+
+```
+// state.js
+
+export function defineComputed(
+  target: any,
+  key: string,
+  userDef: Object | Function
+) {
+  const shouldCache = !isServerRendering()
+  if (typeof userDef === 'function') {
+    sharedPropertyDefinition.get = shouldCache ?
+      createComputedGetter(key) :
+      createGetterInvoker(userDef)
+    sharedPropertyDefinition.set = noop
+  } else {
+    sharedPropertyDefinition.get = userDef.get ?
+      shouldCache && userDef.cache !== false ?
+      createComputedGetter(key) :
+      createGetterInvoker(userDef.get) :
+      noop
+    sharedPropertyDefinition.set = userDef.set || noop
+  }
+  if (process.env.NODE_ENV !== 'production' &&
+    sharedPropertyDefinition.set === noop) {
+    sharedPropertyDefinition.set = function () {
+      warn(
+        `Computed property "${key}" was assigned to but it has no setter.`,
+        this
+      )
+    }
+  }
+  Object.defineProperty(target, key, sharedPropertyDefinition)
+}
+```
+
+当访问到 computed 时，会触发 getter 进行依赖收集, 在 createComputedGetter
+
+dirty 是标志是否已经执行过计算结果，如果执行过则不会执行 watcher.evaluate 重复计算，这也是缓存的原理
+
+在 watcher.evaluate() 会执行 watcher.get(), 这个会通过 pushTarget(this) 将 watcher 挂到 Dep.target
+
+```
+// state.js
+function createComputedGetter(key) {
+  return function computedGetter() {
+    const watcher = this._computedWatchers && this._computedWatchers[key]
+    if (watcher) {
+      // dirty 是标志是否已经执行过计算结果，如果执行过则不会执行 watcher.evaluate 重复计算，这也是缓存的原理
+      if (watcher.dirty) {
+        watcher.evaluate()
+      }
+      if (Dep.target) {
+        watcher.depend()
+      }
+      return watcher.value
+    }
+  }
+}
+
+// watcher.js
+// 执行 watcher.get(), 将 dirty 设置为 false
+watcher.prototype.evaluate = function() {
+  this.value = this.get();
+  // computed 标记为已经执行过更新
+  this.dirty = false;
+}
+
+// watcher.js
+// 添加 Dep.target
+watcher.prototype.get = function() {
+  // 将 watcher 添加到 Dep.target
+  pushTarget(this);
+  let value;
+  const vm = this.vm;
+  try {
+    value = this.getter.call(vm, vm);
+  } catch (e) {
+    if (this.user) {
+      handleError(e, vm, `getter for watcher "${this.expression}"`);
+    } else {
+      throw e;
+    }
+  } finally {
+    // "touch" every property so they are all tracked as
+    // dependencies for deep watching
+    if (this.deep) {
+      traverse(value);
+    }
+    // 将 Dep.target 置空
+    popTarget();
+    this.cleanupDeps();
+  }
+  return value;
+}
+
+```
+
+watcher.depend() 中调用 Dep.depend 进行依赖收集
+
+```
+// watcher.js
+watcher.depend = function () {
+  let i = this.deps.length;
+  while (i--) {
+    this.deps[i].depend();
+  }
+}
+
+// dep.js
+dep.depend = function() {
+  if (Dep.target) {
+    Dep.target.addDep(this)
+  }
+}
+```
+
+#### 3-6-2、computed 的派发更新
+
+派发更新的前提是 data 中数据发生改变
+
+-   当计算属性依赖的数据发生更新时，由于数据的 Dep 收集过 computed watch 这个依赖，所以会调用 dep 的 notify 方法，对依赖进行状态更新。
+-   此时 computed watcher 和之前介绍的 watcher 不同，它不会立刻执行依赖的更新操作，而是通过一个 dirty 进行标记。
+
+```
+Dep.prototype.notify = function() {
+  ···
+   for (var i = 0, l = subs.length; i < l; i++) {
+      subs[i].update();
+    }
+}
+
+Watcher.prototype.update = function update () {
+  // 如果是计算属性
+  if (this.lazy) {
+    this.dirty = true;
+  } else if (this.sync) {
+    this.run();
+  } else {
+    queueWatcher(this);
+  }
+};
+```
+
+所以，当为计算属性，会进入 lazy，这里面不会进行更新操作，而是把 dirty 标记为 true
+
+-   由于 data 数据拥有渲染 watcher 这个依赖，所以同时会执行 updateComponent 进行视图重新渲染,而 render 过程中会访问到计算属性,此时由于 this.dirty 值为 true,又会对计算属性重新求值。
+
+### 3-7、watch

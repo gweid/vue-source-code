@@ -202,6 +202,7 @@ function initComputed(vm: Component, computed: Object) {
   // computed properties are just getters during SSR
   const isSSR = isServerRendering()
 
+  // 遍历 computed 中的每一个属性值，为每一个属性值实例化一个计算 watcher
   for (const key in computed) {
     const userDef = computed[key]
     const getter = typeof userDef === 'function' ? userDef : userDef.get
@@ -214,11 +215,12 @@ function initComputed(vm: Component, computed: Object) {
 
     if (!isSSR) {
       // create internal watcher for the computed property.
+      // lazy 为 true 的 watcher 代表计算 watcher
       watchers[key] = new Watcher(
         vm,
         getter || noop,
         noop,
-        computedWatcherOptions
+        computedWatcherOptions  // const computedWatcherOptions = { lazy: true }
       )
     }
 
@@ -226,6 +228,7 @@ function initComputed(vm: Component, computed: Object) {
     // component prototype. We only need to define computed properties defined
     // at instantiation here.
     if (!(key in vm)) {
+      // 调用 defineComputed 将数据设置为响应式数据，对应源码如下
       defineComputed(vm, key, userDef)
     } else if (process.env.NODE_ENV !== 'production') {
       if (key in vm.$data) {
@@ -277,6 +280,7 @@ function createComputedGetter(key) {
         watcher.evaluate()
       }
       if (Dep.target) {
+        // 进行依赖收集
         watcher.depend()
       }
       return watcher.value
