@@ -1467,6 +1467,6 @@ Watcher.prototype.update = function update () {
 
 所以，当为计算属性，会进入 lazy，这里面不会进行更新操作，而是把 dirty 标记为 true
 
--   由于 data 数据拥有渲染 watcher 这个依赖，所以同时会执行 updateComponent 进行视图重新渲染,而 render 过程中会访问到计算属性,此时由于 this.dirty 值为 true,又会对计算属性重新求值。
+**由于 data 数据拥有渲染 watcher 这个依赖，所以同时会执行 updateComponent 进行视图重新渲染,而 render 过程中会访问到计算属性,此时由于 this.dirty 值为 true,又会对计算属性重新求值**
 
 ### 3-7、watch
