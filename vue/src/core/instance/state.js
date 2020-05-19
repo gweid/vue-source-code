@@ -245,6 +245,7 @@ export function defineComputed(
   key: string,
   userDef: Object | Function
 ) {
+  // 不是服务端渲染，就应该缓存
   const shouldCache = !isServerRendering()
   if (typeof userDef === 'function') {
     sharedPropertyDefinition.get = shouldCache ?
@@ -252,6 +253,7 @@ export function defineComputed(
       createGetterInvoker(userDef)
     sharedPropertyDefinition.set = noop
   } else {
+    // 如果 computed 是一个对象，那么必须要有 get 方法
     sharedPropertyDefinition.get = userDef.get ?
       shouldCache && userDef.cache !== false ?
       createComputedGetter(key) :
