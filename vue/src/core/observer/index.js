@@ -2,7 +2,9 @@
 
 import Dep from "./dep";
 import VNode from "../vdom/vnode";
-import { arrayMethods } from "./array";
+import {
+  arrayMethods
+} from "./array";
 import {
   def,
   warn,
@@ -43,16 +45,23 @@ export class Observer {
     this.value = value;
     this.dep = new Dep();
     this.vmCount = 0;
+    // 将__ob__属性设置成不可枚举属性。外部无法通过遍历获取。
     def(value, "__ob__", this);
     if (Array.isArray(value)) {
       // 传入是数组
-      if (hasProto) {
+      // hasProto 用来判断当前环境下是否支持__proto__属性
+      // protoAugment 是通过原型指向的方式，将数组指定的七个方法指向 arrayMethods
+      // copyAugment 通过数据代理的方式, 将数组指定的七个方法指向 arrayMethods
+      // 当支持__proto__时，执行protoAugment会将当前数组的原型指向新的数组类arrayMethods,如果不支持__proto__，则通过代理设置，在访问数组方法时代理访问新数组类中的数组方法。
+      if (hasProto) { // export const hasProto = '__proto__' in {}
         protoAugment(value, arrayMethods);
       } else {
         copyAugment(value, arrayMethods, arrayKeys);
       }
+      // 通过上面两步，接下来在实例内部调用push, unshift等数组的方法时，会执行 arrayMethods 类的方法。这也是数组进行依赖收集和派发更新的前提。
       this.observeArray(value);
     } else {
+      // 对象
       this.walk(value);
     }
   }
@@ -72,7 +81,7 @@ export class Observer {
   /**
    * Observe a list of Array items.
    */
-  observeArray(items: Array<any>) {
+  observeArray(items: Array < any > ) {
     for (let i = 0, l = items.length; i < l; i++) {
       // 遍历对数组的每一个元素进行观察
       observe(items[i]);
@@ -86,6 +95,7 @@ export class Observer {
  * Augment a target Object or Array by intercepting
  * the prototype chain using __proto__
  */
+// 直接通过原型指向的方式
 function protoAugment(target, src: Object) {
   /* eslint-disable no-proto */
   target.__proto__ = src;
@@ -97,7 +107,8 @@ function protoAugment(target, src: Object) {
  * hidden properties.
  */
 /* istanbul ignore next */
-function copyAugment(target: Object, src: Object, keys: Array<string>) {
+// 通过数据代理的方式
+function copyAugment(target: Object, src: Object, keys: Array < string > ) {
   for (let i = 0, l = keys.length; i < l; i++) {
     const key = keys[i];
     def(target, key, src[key]);
@@ -109,7 +120,7 @@ function copyAugment(target: Object, src: Object, keys: Array<string>) {
  * returns the new observer if successfully observed,
  * or the existing observer if the value already has one.
  */
-export function observe(value: any, asRootData: ?boolean): Observer | void {
+export function observe(value: any, asRootData: ? boolean): Observer | void {
   // 必须是 object 类型，还有不能是 VNode
   if (!isObject(value) || value instanceof VNode) {
     return;
@@ -140,8 +151,8 @@ export function defineReactive(
   obj: Object,
   key: string,
   val: any,
-  customSetter?: ?Function,
-  shallow?: boolean
+  customSetter ? : ? Function,
+  shallow ? : boolean
 ) {
   const dep = new Dep();
 
@@ -168,9 +179,10 @@ export function defineReactive(
       // Dep.target 就是一个 watcher
       if (Dep.target) {
         dep.depend();
-        if (childOb) {
+        if (childOb) { // 是否为基础类型
           childOb.dep.depend();
           if (Array.isArray(value)) {
+            // 如果数组元素是数组或者对象，递归去为内部的元素收集相关的依赖。
             dependArray(value);
           }
         }
@@ -206,7 +218,7 @@ export function defineReactive(
  * triggers change notification if the property doesn't
  * already exist.
  */
-export function set(target: Array<any> | Object, key: any, val: any): any {
+export function set(target: Array < any > | Object, key: any, val: any): any {
   if (
     process.env.NODE_ENV !== "production" &&
     (isUndef(target) || isPrimitive(target))
@@ -229,7 +241,7 @@ export function set(target: Array<any> | Object, key: any, val: any): any {
     process.env.NODE_ENV !== "production" &&
       warn(
         "Avoid adding reactive properties to a Vue instance or its root $data " +
-          "at runtime - declare it upfront in the data option."
+        "at runtime - declare it upfront in the data option."
       );
     return val;
   }
@@ -245,7 +257,7 @@ export function set(target: Array<any> | Object, key: any, val: any): any {
 /**
  * Delete a property and trigger change if necessary.
  */
-export function del(target: Array<any> | Object, key: any) {
+export function del(target: Array < any > | Object, key: any) {
   if (
     process.env.NODE_ENV !== "production" &&
     (isUndef(target) || isPrimitive(target))
@@ -263,7 +275,7 @@ export function del(target: Array<any> | Object, key: any) {
     process.env.NODE_ENV !== "production" &&
       warn(
         "Avoid deleting properties on a Vue instance or its root $data " +
-          "- just set it to null."
+        "- just set it to null."
       );
     return;
   }
@@ -281,7 +293,7 @@ export function del(target: Array<any> | Object, key: any) {
  * Collect dependencies on array elements when the array is touched, since
  * we cannot intercept array element access like property getters.
  */
-function dependArray(value: Array<any>) {
+function dependArray(value: Array < any > ) {
   for (let e, i = 0, l = value.length; i < l; i++) {
     e = value[i];
     e && e.__ob__ && e.__ob__.dep.depend();

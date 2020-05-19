@@ -694,7 +694,8 @@ export function resolveAsyncComponent(
 -   Observer 类，实例化一个 Observer 类会通过 Object.defineProperty 对数据的 getter,setter 方法进行改写，在 getter 阶段进行依赖的收集,在数据发生更新阶段，触发 setter 方法进行依赖的更新
 -   watcher 类，实例化 watcher 类相当于创建一个依赖，简单的理解是数据在哪里被使用就需要产生了一个依赖。当数据发生改变时，会通知到每个依赖进行更新，前面提到的渲染 wathcer 便是渲染 dom 时使用数据产生的依赖。
 -   Dep 类，既然 watcher 理解为每个数据需要监听的依赖，那么对这些依赖的收集和通知则需要另一个类来管理，这个类便是 Dep,Dep 需要做的只有两件事，收集依赖和派发更新依赖
--   总结：处理的核心是在访问数据时对数据所在场景的依赖进行收集，在数据发生更改时，通知收集过的依赖进行更新
+
+**总结：处理的核心是在访问数据时对数据所在场景的依赖进行收集，在数据发生更改时，通知收集过的依赖进行更新**
 
 ### 3-1、响应式对象
 
@@ -999,7 +1000,7 @@ export default class Watcher {
 }
 ```
 
-#### 3-2-4、总结依赖收集: 每个数据就是一个依赖管理器，而每个使用数据的地方就是一个依赖。当访问到数据时，会将当前访问的场景作为一个依赖收集到依赖管理器中，同时也会为这个场景的依赖收集拥有的数据。
+#### 3-2-4、总结依赖收集: 每个数据就是一个依赖管理器，而每个使用数据的地方就是一个依赖。当访问到数据时，会将当前访问的场景作为一个依赖收集到依赖管理器中，同时也会为这个场景的依赖收集拥有的数据。依赖收集就是订阅数据的 watcher 的收集，目的是为了当这些响应式数据变化，能知道应该通知哪些订阅者去做相应逻辑的处理。
 
 ### 3-3、派发更新
 
@@ -1007,4 +1008,269 @@ export default class Watcher {
 -   新值为对象时，会对该值的属性进行依赖收集过程。
 -   通知该数据收集的 watcher 依赖,遍历每个 watcher 进行数据更新,这个阶段是调用该数据依赖收集器的 dep.notify 方法进行更新的派发。
 
-#### 3-3-1、通过 set 调用 dep.notify(), 在 notify 中会把 subs 中的依赖 watcher 逐个执行 update ( subs[i].update() ), watcher 的 update 主要就是执行更新回调 updateComponent, 让视图更新。
+派发更新过程： 通过 set 调用 dep.notify(), 在 notify 中会把 subs 中的依赖 watcher 逐个执行 update ( subs[i].update() ), watcher 的 update 把需要执行的 watcher 通过 queueWatcher 放到队列 queue 中，调用 flushSchedulerQueue 执行 queue 队列的每一个 watcher 的 run，执行 watcher 相关的回调函数去处理数据的更新。。在执行 run 之前会根据 watcher 的 id 对 watcher 进行排列，因为组件的更新是从父到子的，所以要保证父的 watcher 在前面，而且当父组件被销毁，那么子组件的更新也不需要执行了。
+
+**总结：派发更新就是当数据发生变化，通知所有订阅了这个数据变化的 watcher 执行 update**
+
+### 3-4、数组检测
+
+1、Object.defineProperty 只能检测到对象的属性变化, 对于数组的变化无法监听到，所以，在 vue2.x 中对七个数组的方法重写了，在保留原数组功能的前提下，对数组进行额外的操作处理。
+
+2、七个方法分别是：push、pop、shift、unshift、unshift、sort、reverse
+
+#### 3-4-1、数组的重写
+
+```
+// 新建一个继承于 Array 的对象
+const arrayProto = Array.prototype
+export const arrayMethods = Object.create(arrayProto)
+
+const methodsToPatch = [
+  'push',
+  'pop',
+  'shift',
+  'unshift',
+  'splice',
+  'sort',
+  'reverse'
+]
+```
+
+对数组的重写
+
+```
+// 对数组方法设置了代理，执行数组那七种方法的时候会执行 mutator 函数
+methodsToPatch.forEach(function (method) {
+  // cache original method
+  // 缓冲原始数组的方法
+  const original = arrayProto[method]
+  // 利用 Object.defineProperty 对方法的执行进行改写
+  def(arrayMethods, method, function mutator(...args) {})
+})
+
+function def (obj, key, val, enumerable) {
+  Object.defineProperty(obj, key, {
+    value: val,
+    enumerable: !!enumerable,
+    writable: true,
+    configurable: true
+  });
+}
+```
+
+当执行 arrayMethods 时， 会代理执行 mutator 函数
+
+当在访问数组时，如何不调用原生的数组方法，而是将过程指向这个新的类
+
+当支持 \_\_proto\_\_ 时，执行 protoAugment 会将当前数组的原型指向新的数组类 arrayMethods,如果不支持 \_\_proto\_\_，则通过代理设置，在访问数组方法时代理访问新数组类中的数组方法。
+
+-   protoAugment 是通过原型指向的方式，将数组指定的七个方法指向 arrayMethods
+-   copyAugment 通过数据代理的方式, 将数组指定的七个方法指向 arrayMethods
+
+有了这两步的处理，接下来我们在实例内部调用 push, unshift 等数组的方法时，会执行 arrayMethods 类的方法。这也是数组进行依赖收集和派发更新的前提。
+
+```
+export class Observer {
+  value: any;
+  dep: Dep;
+  vmCount: number; // number of vms that have this object as root $data
+
+  constructor(value: any) {
+    this.value = value;
+    this.dep = new Dep();
+    this.vmCount = 0;
+    // 将__ob__属性设置成不可枚举属性。外部无法通过遍历获取。
+    def(value, "__ob__", this);
+    if (Array.isArray(value)) {
+      // 传入是数组
+      // hasProto 用来判断当前环境下是否支持__proto__属性
+      // protoAugment 是通过原型指向的方式，将数组指定的七个方法指向 arrayMethods
+      // copyAugment 通过数据代理的方式, 将数组指定的七个方法指向 arrayMethods
+      // 当支持__proto__时，执行protoAugment会将当前数组的原型指向新的数组类arrayMethods,如果不支持__proto__，则通过代理设置，在访问数组方法时代理访问新数组类中的数组方法。
+      if (hasProto) { // export const hasProto = '__proto__' in {}
+        protoAugment(value, arrayMethods);
+      } else {
+        copyAugment(value, arrayMethods, arrayKeys);
+      }
+      // 通过上面两步，接下来在实例内部调用push, unshift等数组的方法时，会执行 arrayMethods 类的方法。这也是数组进行依赖收集和派发更新的前提。
+      this.observeArray(value);
+    } else {
+      // 对象
+      this.walk(value);
+    }
+  }
+}
+```
+
+#### 3-4-2、数组的依赖收集
+
+当为数组，会递归数组的每一项，子项添加依赖
+
+```
+export class Observer {
+  ...
+
+  constructor(value: any) {
+    if (Array.isArray(value)) {
+      ...
+
+      this.observeArray(value);
+    } else {
+      // 对象
+      this.walk(value);
+    }
+  }
+
+  observeArray(items: Array < any > ) {
+    for (let i = 0, l = items.length; i < l; i++) {
+      // 遍历对数组的每一个元素进行观察
+      observe(items[i]);
+    }
+  }
+}
+```
+
+#### 3-4-3、数组的派发更新
+
+当调用数组的方法去添加或者删除数据时，数据的 setter 方法是无法拦截的，所以唯一可以拦截的过程就是调用数组方法的时候，数组方法的调用会代理到新类 arrayMethods 的方法中,而 arrayMethods 的数组方法是进行重写过的
+
+-   首先调用原始的数组方法进行运算，这保证了与原始数组类型的方法一致性
+-   inserted 变量用来标志数组是否是增加了元素，如果增加的元素不是原始类型，而是数组对象类型，则需要触发 observeArray 方法，对每个元素进行依赖收集。
+-   调用 ob.dep.notify(), 进行依赖的派发更新
+
+```
+// 对数组方法设置了代理，执行数组那七种方法的时候会执行 mutator 函数
+methodsToPatch.forEach(function (method) {
+  // cache original method
+  // 缓冲原始数组的方法
+  const original = arrayProto[method]
+  // 利用 Object.defineProperty 对方法的执行进行改写
+  def(arrayMethods, method, function mutator(...args) {
+    // 执行原数组方法，保证了与原始数组类型的方法一致性
+    const result = original.apply(this, args)
+    const ob = this.__ob__
+    // inserted变量用来标志数组是否是增加了元素，如果增加的元素不是原始类型，而是数组对象类型，则需要触发 observeArray 方法，对每个元素进行依赖收集。
+    let inserted
+    switch (method) {
+      case 'push':
+      case 'unshift':
+        inserted = args
+        break
+      case 'splice':
+        inserted = args.slice(2)
+        break
+    }
+    if (inserted) ob.observeArray(inserted)
+    // notify change
+    // 进行依赖的派发更新
+    ob.dep.notify()
+    return result
+  })
+})
+```
+
+**总结：总的来说。数组的改变不会触发 setter 进行依赖更新，所以 Vue 创建了一个新的数组类，重写了数组的方法，将数组方法指向了新的数组类。同时在访问到数组时依旧触发 getter 进行依赖收集，在更改数组时，触发数组新方法运算，并进行依赖的派发。**
+
+### 3-5、nextTick
+
+-   nextTick：就是将任务放到异步队列里面，等到主线程执行完再执行
+-   在 Vue 中，进行数据操作的时候，Vue 并没有马上去更新 DOM 数据，而是将这个操作放进一个队列中，如果重复执行的话，队列还会进行去重操作；等待同一事件循环中的所有数据变化完成之后，会将队列中的事件拿出来处理。这样做主要是为了提升性能，因为如果在主线程中更新 DOM，循环 100 次就要更新 100 次 DOM；但是如果等事件循环完成之后更新 DOM，只需要更新 1 次。也就是说数据改变后触发的渲染 watcher 的 update 是在 nextTick 中的。
+
+```
+// scheduler.js 中的 queueWatcher
+
+export function queueWatcher(watcher: Watcher) {
+    ...
+
+    if (!waiting) {
+      waiting = true;
+      ...
+
+      nextTick(flushSchedulerQueue); // 将更新 DOM 的操作放到异步队列里面
+    }
+  }
+}
+```
+
+#### 3-5-1、nextTick 的实现原理
+
+-   将回调函数放到 callbacks 中等待执行
+
+```
+const callbacks = []
+let pending = false
+let timerFunc
+
+export function nextTick (cb?: Function, ctx?: Object) {
+  let _resolve
+  callbacks.push(() => {
+    if (cb) {
+      try {
+        cb.call(ctx)
+      } catch (e) {
+        handleError(e, ctx, 'nextTick')
+      }
+    } else if (_resolve) {
+      _resolve(ctx)
+    }
+  })
+  if (!pending) {
+    pending = true
+    timerFunc()
+  }
+}
+
+```
+
+-   将执行函数放到微任务或者宏任务中: 这里 Vue 做了兼容性的处理，尝试使用原生的 Promise.then、MutationObserver 和 setImmediate，上述三个都不支持最后使用 setTimeout； 其中 Promise.then、MutationObserver 是微任务，setImmediate 和 setTimeout 是宏任务。
+
+```
+if (typeof Promise !== 'undefined' && isNative(Promise)) {
+  //判断1：是否原生支持Promise
+  const p = Promise.resolve()
+  timerFunc = () => {
+    p.then(flushCallbacks)
+    if (isIOS) setTimeout(noop)
+  }
+  isUsingMicroTask = true
+} else if (!isIE && typeof MutationObserver !== 'undefined' && (
+  isNative(MutationObserver) ||
+  MutationObserver.toString() === '[object MutationObserverConstructor]'
+)) {
+  //判断2：是否原生支持MutationObserver
+  let counter = 1
+  const observer = new MutationObserver(flushCallbacks)
+  const textNode = document.createTextNode(String(counter))
+  observer.observe(textNode, {
+    characterData: true
+  })
+  timerFunc = () => {
+    counter = (counter + 1) % 2
+    textNode.data = String(counter)
+  }
+  isUsingMicroTask = true
+} else if (typeof setImmediate !== 'undefined' && isNative(setImmediate)) {
+  //判断3：是否原生支持 setImmediate
+  timerFunc = () => {
+    setImmediate(flushCallbacks)
+  }
+} else {
+  //判断4：上面都不行，直接用setTimeout
+  timerFunc = () => {
+    setTimeout(flushCallbacks, 0)
+  }
+}
+```
+
+-   最后依次执行 callbacks 中的回调
+
+```
+function flushCallbacks () {
+  pending = false
+  const copies = callbacks.slice(0)
+  callbacks.length = 0
+  for (let i = 0; i < copies.length; i++) {
+    copies[i]()
+  }
+}
+```
