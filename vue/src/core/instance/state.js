@@ -191,6 +191,7 @@ export function getData(data: Function, vm: Component): any {
   }
 }
 
+// // computed watcher 的标志，lazy 属性为 true
 const computedWatcherOptions = {
   lazy: true
 }
@@ -271,6 +272,7 @@ function createComputedGetter(key) {
   return function computedGetter() {
     const watcher = this._computedWatchers && this._computedWatchers[key]
     if (watcher) {
+      // dirty 是标志是否已经执行过计算结果，如果执行过则不会执行 watcher.evaluate 重复计算，这也是缓存的原理
       if (watcher.dirty) {
         watcher.evaluate()
       }

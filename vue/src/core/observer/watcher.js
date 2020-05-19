@@ -175,6 +175,7 @@ export default class Watcher {
    */
   update() {
     /* istanbul ignore else */
+    // lazy 为 true 代表是 computed
     if (this.lazy) {
       this.dirty = true
     } else if (this.sync) {
@@ -220,6 +221,7 @@ export default class Watcher {
    * Evaluate the value of the watcher.
    * This only gets called for lazy watchers.
    */
+  // 主要是 computed 的
   evaluate() {
     this.value = this.get()
     this.dirty = false
