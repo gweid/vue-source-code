@@ -1476,6 +1476,8 @@ Watcher.prototype.update = function update () {
 
 ### 3-7、watch
 
+![watch](/imgs/img5.png)
+
 最基本的用法
 
 ```
@@ -1494,8 +1496,6 @@ watch: {
 ```
 
 ### 3-7-1、watch 的依赖收集
-
-![watch](/imgs/img5.png)
 
 首先初始化调用 initWatch 初始化 watch， initWatch 的核心是 createWatcher
 
