@@ -60,7 +60,7 @@ observe(data, true /* asRootData */)
 
 ![$mount](/imgs/img6.png)
 
-最先的 Vue.prototype.\$mount
+#### 1-2-1、最先的 Vue.prototype.\$mount
 
 ```
 Vue.prototype.$mount = function (
@@ -72,7 +72,7 @@ Vue.prototype.$mount = function (
 }
 ```
 
-重新定义 Vue.prototype.\$mount,会做一些处理：
+#### 1-2-2、重新定义 Vue.prototype.\$mount,会做一些处理：
 
 -   先是缓存了原型上的 \$mount 方法，再重新定义该方法
 -   获取挂载元素，并且挂载元素不能为根节点 html、body 之类的，因为会覆盖
@@ -105,7 +105,7 @@ Vue.prototype.$mount = function (el, hydrating) {
 }
 ```
 
-**\$mount 主要是执行了 mountComponent, 其核心就是先调用 vm.\_render 方法先生成虚拟 Node，再实例化一个渲染 Watcher ，在它的回调函数中会调用 updateComponent 方法，最终调用 vm.\_update 更新 DOM。 vm.\_rendre() 主要生成 vnode**
+**\$mount 主要是执行了 mountComponent, 其核心就是先调用 vm.\_render 方法先生成 VNode，再实例化一个渲染 Watcher ，在它的回调函数中会调用 updateComponent 方法，最终调用 vm.\_update 转化为真实的 DOM**
 
 **Watcher 在这里起到两个作用，一个是初始化的时候会执行回调函数，另一个是当 vm 实例中的监测的数据发生变化的时候执行回调函数**
 
@@ -115,27 +115,215 @@ Vue.prototype.$mount = function (el, hydrating) {
 function mountComponent(vm, el, hydrating) {
   // 定义 updateComponent 方法，在 watcher 回调时调用。
   updateComponent = function () {
-    // render函数渲染成虚拟DOM， 虚拟 DOM 渲染成真实的DOM
+    // render 函数渲染成虚拟 DOM， 虚拟 DOM 渲染成真实的 DOM
     vm._update(vm._render(), hydrating);
   };
-  // 实例化渲染watcher
+  // 实例化渲染 watcher
   new Watcher(vm, updateComponent, noop, {})
 }
 ```
 
--   函数最后判断为根节点的时候设置 vm.\_isMounted 为 true ， 表士这个实例已经挂载了，同时执行 mounted 钩子函数。 vm.\$vnode 表士 Vue 实例的父虚拟 Node，所以它为 Null 则表士当前是根 Vue 的实例。
+### 1-2、模板编译 compiler
+
+### 1-3、updateComponent 渲染 DOM 流程
+
+在渲染 DOM 的过程，Vue 使用了虚拟 DOM 的概念，这使得 Vue 中对 DOM 的操作大多都在虚拟 DOM 中，通过对比将要改动的部分，通知更新到真实的 DOM。虚拟 DOM 其实是一个 js 对象，操作 js 的性能开销比直接操作浏览器 DOM 的低很多，并且虚拟 DOM 会把多个 DOM 的操作合并，减少真实 DOM 的回流重绘次数，这很好的解决了频繁操作 DOM 所带来的性能问题。
+
+#### 1-3-1、首先是 VNode 构造器
+
+构造器定义了 tag：标签、data：数据、children：子节点、elm：node 节点等
 
 ```
-if (vm.$vnode == null) {
-  vm._isMounted = true
-  callHook(vm, 'mounted')
+// vdom/vnode.js
+
+export default class VNode {
+  ...
+
+  constructor (
+    tag?: string,
+    data?: VNodeData,
+    children?: ?Array<VNode>,
+    text?: string,
+    elm?: Node,
+    context?: Component,
+    componentOptions?: VNodeComponentOptions,
+    asyncFactory?: Function
+  ) {}
 }
 ```
 
-### 1-3、\$mount 挂载的 Vue.prototype.\_render
+#### 1-3-2、vm.\_render 生成虚拟 DOM
 
--   主要用处：把实例渲染成一个虚拟 Node
--   执行流程 （\_createElement -> createElement -> \$createElement -> render -> \_render）
+在 \$mount 挂载的时候会执行 mountComponent, 这个的核心之一是 vm.\_render 生成虚拟 DOM
+
+```
+Vue.prototype.$mount = function(el, hydrating) {
+    ···
+    return mountComponent(this, el)
+}
+
+function mountComponent() {
+    ···
+    updateComponent = function () {
+        vm._update(vm._render(), hydrating);
+    };
+}
+```
+
+**执行流程：（\_createElement -> createElement -> \$createElement -> render -> \_render）**
+
+1、\_render: 在最开始为 Vue 拓展方法的时候有一个 renderMixin, renderMixin 为 Vue 的原型拓展了 \_render, \_render 函数的核心是 render.call(vm.\_renderProxy, vm.\$createElement)
+
+```
+// Vue 本质： 实际就是一个 Function 实现的类
+function Vue (options) {
+  ...
+
+  this._init(options)
+}
+
+renderMixin(Vue)
+
+// render.js
+export function renderMixin (Vue: Class<Component>) {
+
+  // 把实例渲染成一个虚拟 Node
+  Vue.prototype._render = function (): VNode {
+    const { render, _parentVnode } = vm.$options
+
+    try {
+      // vm.$createElement 在 initRender 中赋值
+      // vm._renderProxy 在 init 中处理 vm._renderProxy = vm
+      vnode = render.call(vm._renderProxy, vm.$createElement)
+    } catch (e) {
+      ...
+    } finally {
+      ...
+    }
+    ...
+    return vnode
+  }
+}
+```
+
+2、render：这里的 render 是来自 vm.\$options
+
+```
+// render.js
+export function renderMixin (Vue: Class<Component>) {
+
+  // 把实例渲染成一个虚拟 Node
+  Vue.prototype._render = function (): VNode {
+    const { render, _parentVnode } = vm.$options
+
+    try {
+      // vm.$createElement 在 initRender 中赋值
+      // vm._renderProxy 在 init 中处理 vm._renderProxy = vm
+      vnode = render.call(vm._renderProxy, vm.$createElement)
+    } catch (e) {
+      ...
+    } finally {
+      ...
+    }
+    ...
+    return vnode
+  }
+}
+
+// 实际使用
+new Vue({
+    el: '#app',
+    render: function() {}
+})
+```
+
+3、vm.\$createElement：Vue 初始化 \_init 的时候，会调用 initRender(vm), vm.\$createElement 在这里定义
+
+```
+// init.js
+export function initMixin (Vue: Class<Component>) {
+  Vue.prototype._init = function (options?: Object) {
+    ...
+    initRender(vm) // 初始化渲染
+    ...
+  }
+}
+
+// render.js
+export function initRender (vm: Component) {
+  ...
+
+  // vm._c 是template内部编译成render函数时调用的方法
+  vm._c = (a, b, c, d) => createElement(vm, a, b, c, d, false)
+  // vm.$createElement是手写render函数时调用的方法
+  vm.$createElement = (a, b, c, d) => createElement(vm, a, b, c, d, true)
+
+  ...
+}
+```
+
+4、createElement：在 initRender 中的 vm.\$createElement 由 createElement 创建 vm.\$createElement = (a, b, c, d) => createElement(vm, a, b, c, d, true)
+
+-   createElement 是对 \_createElement 的封装，在 createElement 中先对参数做处理
+
+```
+// create-element.js
+export function createElement (
+  context: Component, // vm 实例
+  tag: any, // 标签
+  data: any, // 节点相关数据，属性
+  children: any, // 子节点
+  normalizationType: any,
+  alwaysNormalize: boolean // 区分内部编译生成的render还是手写render
+): VNode | Array<VNode> {
+  // 主要是判断 data 是否存在，不存在把后面的参数往前移
+  if (Array.isArray(data) || isPrimitive(data)) {
+    normalizationType = children
+    children = data
+    data = undefined
+  }
+  // 根据是alwaysNormalize 区分是内部编译使用的，还是用户手写render使用的
+  if (isTrue(alwaysNormalize)) {
+    normalizationType = ALWAYS_NORMALIZE
+  }
+  return _createElement(context, tag, data, children, normalizationType)
+}
+```
+
+5、\_createElement: 这里是真正创建 VNode 的地方
+
+```
+export function _createElement (
+  context: Component, // VNode 的上下文环境
+  tag?: string | Class<Component> | Function | Object, // 标签
+  data?: VNodeData, // VNode 数据
+  children?: any, // VNode 的子节点
+  normalizationType?: number // 子节点规范的类型
+): VNode | Array<VNode> {
+  ...
+
+  if (typeof tag === 'string') {
+    // 如果是标签
+    if (config.isReservedTag(tag)) {
+      // new 一个 VNode 构造器创建 VNode
+      vnode = new VNode(
+        config.parsePlatformTagName(tag), data, children,
+        undefined, undefined, context
+      )
+    }
+    ...
+  }
+
+  ...
+
+  return vnode
+}
+```
+
+#### 1-3-3、vm.\_update 渲染真实 DOM
+
+-   主要作用：把生成的 VNode 渲染, 在 core/instance/lifecyle.js 中定义
+-   核心方法 patch
 
 ### 1-4、createElement
 
