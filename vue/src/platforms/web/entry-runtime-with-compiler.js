@@ -36,7 +36,7 @@ Vue.prototype.$mount = function (
   const options = this.$options
   // resolve template/el and convert to render function
 
-  // 如果有 rander 函数，直接执行 mount.call(this, el, hydrating)， 没有，就编译 template，转化为 render，再调用 mount
+  // 如果有 rander 函数，直接执行 mount.call(this, el, hydrating)， 没有，就编译 template，转化为 render 函数，再调用 mount
   if (!options.render) {
     let template = options.template
     // 判断有没有 template

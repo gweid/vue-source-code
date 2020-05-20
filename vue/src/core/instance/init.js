@@ -59,7 +59,7 @@ export function initMixin (Vue: Class<Component>) {
     initRender(vm) // 初始化渲染
     callHook(vm, 'beforeCreate')
     initInjections(vm) // resolve injections before data/props  在 data/props 之前解决注入
-    initState(vm)  // 初始化 data
+    initState(vm)  // 构建响应式系统
     initProvide(vm) // resolve provide after data/props
     callHook(vm, 'created')
 

@@ -58,41 +58,68 @@ observe(data, true /* asRootData */)
 
 ### 1-2、\$mount 的挂载
 
+![$mount](/imgs/img6.png)
+
+最先的 Vue.prototype.\$mount
+
+```
+Vue.prototype.$mount = function (
+  el?: string | Element,
+  hydrating?: boolean
+): Component {
+  el = el && inBrowser ? query(el) : undefined
+  return mountComponent(this, el, hydrating)
+}
+```
+
+重新定义 Vue.prototype.\$mount,会做一些处理：
+
 -   先是缓存了原型上的 \$mount 方法，再重新定义该方法
+-   获取挂载元素，并且挂载元素不能为根节点 html、body 之类的，因为会覆盖
+-   判断需不需要编译，因为渲染有的是通过 template 的，有的是通过手写 render 函数，template 的需要编译
+-   最后调用缓存的 mount，缓存的 mount 中会执行 mountComponent
 
 ```
 const mount = Vue.prototype.$mount
-Vue.prototype.$mount = function ()
-```
 
--   对 el 做了限制，Vue 不能挂载在 body 、 html 这样的根节点上, 因为其会覆盖
-
-```
-if (el === document.body || el === document.documentElement) {
-    process.env.NODE_ENV !== 'production' && warn(
-      `Do not mount Vue to <html> or <body> - mount to normal elements instead.`
-    )
+// 重新定义 $mount,为包含编译器和不包含编译器的版本提供不同封装，最终调用的是缓存原型上的 $mount 方法
+Vue.prototype.$mount = function (el, hydrating) {
+  // 获取挂载元素
+  el = el && query(el);
+  // 挂载元素不能为根节点 html、body 之类的，因为会覆盖
+  if (el === document.body || el === document.documentElement) {
+    warn(
+      "Do not mount Vue to <html> or <body> - mount to normal elements instead."
+    );
     return this
   }
-```
-
--   调用原先原型上的 \$mount 方法挂载, 此时实际也是调用重新定义的 mount， 这样做主要是为了复用
-
-```
-return mount.call(this, el, hydrating)
-```
-
--   \$mount 主要是执行了 mountComponent, 其核心就是先调用 vm.\_render 方法先生成虚拟 Node，再实例化一个渲染 Watcher ，在它的回调函数中会调用 updateComponent 方法，最终调用 vm.\_update 更新 DOM。 vm.\_rendre() 主要生成 vnode
--   Watcher 在这里起到两个作用，一个是初始化的时候会执行回调函数，另一个是当 vm 实例中的监测 的数据发生变化的时候执行回调函数
-
-```
-new Watcher(vm, updateComponent, noop, {
-  before () {
-    if (vm._isMounted && !vm._isDestroyed) {
-      callHook(vm, 'beforeUpdate')
-    }
+  var options = this.$options;
+  // 需要编译 or 不需要编译
+  // render 选项不存在，代表是 template 模板的形式，此时需要进行模板的编译过程
+  if (!options.render) {
+    ···
+    // 使用内部编译器编译模板
   }
-}, true /* isRenderWatcher */)
+  // 无论是 template 模板还是手写 render 函数最终调用缓存的 $mount 方法
+  return mount.call(this, el, hydrating)
+}
+```
+
+**\$mount 主要是执行了 mountComponent, 其核心就是先调用 vm.\_render 方法先生成虚拟 Node，再实例化一个渲染 Watcher ，在它的回调函数中会调用 updateComponent 方法，最终调用 vm.\_update 更新 DOM。 vm.\_rendre() 主要生成 vnode**
+**Watcher 在这里起到两个作用，一个是初始化的时候会执行回调函数，另一个是当 vm 实例中的监测的数据发生变化的时候执行回调函数**
+
+```
+// lifecycle.js
+
+function mountComponent(vm, el, hydrating) {
+  // 定义 updateComponent 方法，在 watcher 回调时调用。
+  updateComponent = function () {
+    // render函数渲染成虚拟DOM， 虚拟 DOM 渲染成真实的DOM
+    vm._update(vm._render(), hydrating);
+  };
+  // 实例化渲染watcher
+  new Watcher(vm, updateComponent, noop, {})
+}
 ```
 
 -   函数最后判断为根节点的时候设置 vm.\_isMounted 为 true ， 表士这个实例已经挂载了，同时执行 mounted 钩子函数。 vm.\$vnode 表士 Vue 实例的父虚拟 Node，所以它为 Null 则表士当前是根 Vue 的实例。
@@ -698,6 +725,8 @@ export function resolveAsyncComponent(
 **总结：处理的核心是在访问数据时对数据所在场景的依赖进行收集，在数据发生更改时，通知收集过的依赖进行更新**
 
 ![响应式原理](/imgs/img3.png)
+
+![响应式流程](/imgs/img7.png)
 
 ### 3-1、响应式对象
 
