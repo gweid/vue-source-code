@@ -106,6 +106,7 @@ Vue.prototype.$mount = function (el, hydrating) {
 ```
 
 **\$mount 主要是执行了 mountComponent, 其核心就是先调用 vm.\_render 方法先生成虚拟 Node，再实例化一个渲染 Watcher ，在它的回调函数中会调用 updateComponent 方法，最终调用 vm.\_update 更新 DOM。 vm.\_rendre() 主要生成 vnode**
+
 **Watcher 在这里起到两个作用，一个是初始化的时候会执行回调函数，另一个是当 vm 实例中的监测的数据发生变化的时候执行回调函数**
 
 ```
@@ -734,7 +735,7 @@ export function resolveAsyncComponent(
 
 #### 3-1-2、initState
 
--   定义在 state.js 中, 在 Vue 的初始化阶段， \_init ⽅法执⾏的时候, 会执行 initState
+-   定义在 state.js 中, 在 Vue 的初始化阶段， \_init 方法执行的时候, 会执行 initState
 -   initState 主要是对 props 、 methods 、 data 、 computed 和 wathcer 等属性做了初 始化操作
 -   initState 中的 initProps: 通过 defineReactive 把 props 的属性变成响应式的，并且使用 proxy 将 props 的每个 key 代理到 vm 实例上, 这样 this.xx 就相当于访问 this.\_props.xxx
 
