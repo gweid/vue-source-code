@@ -1,8 +1,10 @@
 # Vue 源码阅读
 
+![vue](/imgs/img0.png)
+
 ## initGlobalAPI
 
--   挂载 Vue 全局的 api 例如 nextTick set 等
+- 挂载 Vue 全局的 api 例如 nextTick set 等
 
 ```
 initGlobalAPI(Vue)
@@ -12,7 +14,7 @@ initGlobalAPI(Vue)
 
 ### 1-1、new Vue() 发生了什么
 
--   首先，Vue 是 Function 出来的
+- 首先，Vue 是 Function 出来的
 
 ```
 function Vue (options) {
@@ -33,8 +35,8 @@ this._init(options)
 }
 ```
 
--   new Vue 实际上就是执行了 Vue 自身的 \_init 方法, \_init 方法就是初始化 Vue 的，\_init 通过 initMixin(Vue) 往 Vue 原型上添加
--   \_init 方法主要做了一些 options 的合并，初始化命周期，初始化事件中心，初始化渲染，初始化 data、props、computed、watcher 等等。
+- new Vue 实际上就是执行了 Vue 自身的 \_init 方法, \_init 方法就是初始化 Vue 的，\_init 通过 initMixin(Vue) 往 Vue 原型上添加
+- \_init 方法主要做了一些 options 的合并，初始化命周期，初始化事件中心，初始化渲染，初始化 data、props、computed、watcher 等等。
 
 ```
 initLifecycle(vm) // 初始化生命周期
@@ -47,14 +49,14 @@ initProvide(vm) // resolve provide after data/props
 callHook(vm, 'created')
 ```
 
--   initState 初始化 data，对 data 做了 proxy 处理，这样一来，访问 this.xxx 时实际上就相当于访问了 this.\_data.xxx，还有 data 响应式
+- initState 初始化 data，对 data 做了 proxy 处理，这样一来，访问 this.xxx 时实际上就相当于访问了 this.\_data.xxx，还有 data 响应式
 
 ```
 proxy(vm, `_data`, key)
 observe(data, true /* asRootData */)
 ```
 
--   最后是 \$mount 的挂载
+- 最后是 \$mount 的挂载
 
 ### 1-2、\$mount 的挂载
 
@@ -74,10 +76,10 @@ Vue.prototype.$mount = function (
 
 #### 1-2-2、重新定义 Vue.prototype.\$mount,会做一些处理：
 
--   先是缓存了原型上的 \$mount 方法，再重新定义该方法
--   获取挂载元素，并且挂载元素不能为根节点 html、body 之类的，因为会覆盖
--   判断需不需要编译，因为渲染有的是通过 template 的，有的是通过手写 render 函数，template 的需要编译
--   最后调用缓存的 mount，缓存的 mount 中会执行 mountComponent
+- 先是缓存了原型上的 \$mount 方法，再重新定义该方法
+- 获取挂载元素，并且挂载元素不能为根节点 html、body 之类的，因为会覆盖
+- 判断需不需要编译，因为渲染有的是通过 template 的，有的是通过手写 render 函数，template 的需要编译
+- 最后调用缓存的 mount，缓存的 mount 中会执行 mountComponent
 
 ```
 const mount = Vue.prototype.$mount
@@ -266,7 +268,7 @@ export function initRender (vm: Component) {
 
 4、createElement：在 initRender 中的 vm.\$createElement 由 createElement 创建 vm.\$createElement = (a, b, c, d) => createElement(vm, a, b, c, d, true)
 
--   createElement 是对 \_createElement 的封装，在 createElement 中先对参数做处理
+- createElement 是对 \_createElement 的封装，在 createElement 中先对参数做处理
 
 ```
 // create-element.js
@@ -324,51 +326,81 @@ export function _createElement (
 
 #### 1-3-3、vm.\_update 渲染真实 DOM
 
--   主要作用：把生成的 VNode 渲染, 在 core/instance/lifecyle.js 中定义
--   核心方法 patch
+- 主要作用：把生成的 VNode 转化为真实的 DOM
+- 调用时机: 有两个，一个是发生在初次渲染阶段，另一个发生数据更新阶段
+- 核心方法 patch
 
-### 1-4、createElement
-
--   Vue.js 利用 createElement 创建 VNode，在 src/core/vdom/create-elemenet.js 中
--   createElement 是对 \_createElement 的封装，在 createElement 中对参数进行处理， 真正创建 VNode 的函数在 \_createElement
+1、定义：在 core/instance/lifecyle.js 中的 lifecycleMixin 定义，lifecycleMixin 在为 Vue 拓展方法的时候调用
 
 ```
-export function createElement (
-  context: Component,
-  tag: any,
-  data: any,
-  children: any,
-  normalizationType: any,
-  alwaysNormalize: boolean
-): VNode | Array<VNode> {
-  if (Array.isArray(data) || isPrimitive(data)) {
-    normalizationType = children
-    children = data
-    data = undefined
+// lifecyle.js
+
+updateComponent = function () {
+  // render生成虚拟DOM，update渲染真实DOM
+  vm._update(vm._render(), hydrating);
+}
+
+// 首次渲染和更新数据都会调用 _update 去做页面更新
+export function lifecycleMixin (Vue: Class<Component>) {
+  Vue.prototype._update = function (vnode: VNode, hydrating?: boolean) {
+    const vm: Component = this
+    const prevEl = vm.$el
+    const prevVnode = vm._vnode // // prevVnode为旧vnode节点
+    const restoreActiveInstance = setActiveInstance(vm) // 在 _update 中把 vm 赋值给 activeInstance
+    vm._vnode = vnode
+
+    // 通过判断是否有旧节点，来确认是初次渲染还是更新
+    if (!prevVnode) {
+      // 初次渲染
+      // initial render
+      // vm.$el: 真实的 dom   vnode: 虚拟 vnode
+      // 首次定义 vm.__patch__ 是在 runtime/index.js
+      vm.$el = vm.__patch__(vm.$el, vnode, hydrating, false /* removeOnly */)
+    } else {
+      // 更新
+      vm.$el = vm.__patch__(prevVnode, vnode)
+    }
+
+    ...
   }
-  if (isTrue(alwaysNormalize)) {
-    normalizationType = ALWAYS_NORMALIZE
+
+  // 强制通过调用 watcher 的 update 调用回调函数 upateComponent 进行重新渲染
+  Vue.prototype.$forceUpdate = function () {
+    const vm: Component = this
+    if (vm._watcher) {
+      vm._watcher.update()
+    }
   }
-  return _createElement(context, tag, data, children, normalizationType)
+
+  // 注销
+  Vue.prototype.$destroy = function () {}
 }
 ```
 
--   \_createElement 首先对 children 做处理，最终生成统一形式[vnode, vnode, ...]；然后是 VNode 的创建。整体流程就是 （\_createElement -> createElement -> \$createElement -> render -> \_render）；执行完这一系列就是到 vm.\_update
+2、vm.\_\_patch\_\_ 是一个 patch 函数，patch 函数是 createPatchFunction, createPatchFunction 定义在 vdom/patch.js,  在 createPatchFunction 里定义了一系列的函数进行真实 DOM 渲染，并返回一个 patch 函数
 
-### 1-5、\$mount 挂载的 Vue.prototype.\_update
+```
+// platfroms/web/runtime/index.js
+Vue.prototype.__patch__ = inBrowser ? patch : noop
 
--   主要作用：把生成的 VNode 渲染, 在 core/instance/lifecyle.js 中定义
--   核心方法 patch
+// platfroms/web/runtime/patch.js
+export const patch: Function = createPatchFunction({ nodeOps, modules })
+
+// vdom/patch.js
+export function createPatchFunction (backend) {
+  return function patch (oldVnode, vnode, hydrating, removeOnly) {}
+}
+```
 
 ## 2、Vue 的组件化
 
--   首先在 this.\_init 中调用 initRender 初始化，然后 initRender 中 createElement, 在 createElement 中发现是组件, 那么 createComponent
+- 首先在 this.\_init 中调用 initRender 初始化，然后 initRender 中 createElement, 在 createElement 中发现是组件, 那么 createComponent
 
 ### 2-1、组件的 VNode (create-element.js、create-component.js、vnode.js、extend.js)
 
 ![VNode](/imgs/img1.png)
 
--   在 create-element.js 中的 \_createElement 时，如果 tag 不是一个标签字符串，而是一个组件对象，此时通过 createComponent 创建一个组件 VNode
+- 在 create-element.js 中的 \_createElement 时，如果 tag 不是一个标签字符串，而是一个组件对象，此时通过 createComponent 创建一个组件 VNode
 
 ```
 export function _createElement (
@@ -388,7 +420,7 @@ export function _createElement (
 }
 ```
 
--   在 create-component.js 的 createComponent 中，会调用 Vue.extend(组件)(即: Ctor = baseCtor.extend(Ctor)), 这里的 extend 主要就是把 Vue 的功能赋给组件，并且合并配置, 在 extend 中会对组件做缓存
+- 在 create-component.js 的 createComponent 中，会调用 Vue.extend(组件)(即: Ctor = baseCtor.extend(Ctor)), 这里的 extend 主要就是把 Vue 的功能赋给组件，并且合并配置, 在 extend 中会对组件做缓存
 
 ```
 extend.js
@@ -399,8 +431,8 @@ if (cachedCtors[SuperId]) {
 }
 ```
 
--   通过在 create-component.js 的 createComponent 中安装一些组件的钩子 installComponentHooks(data)
--   在 create-component.js 中创建组件 VNode。组件 VNode 与 普通 VNode 区别: 没有 children, 多了 componentOptions
+- 通过在 create-component.js 的 createComponent 中安装一些组件的钩子 installComponentHooks(data)
+- 在 create-component.js 中创建组件 VNode。组件 VNode 与 普通 VNode 区别: 没有 children, 多了 componentOptions
 
 ```
 const vnode = new VNode(
@@ -417,9 +449,9 @@ const vnode = new VNode(
 
 ![VNode](/imgs/img2.png)
 
--   组件的 patch 也会调用 patch.js 中的 createElm, 其中与普通元素 patch 不一样的就是 createElm 中的 createComponent 处理
--   在 patch.js 的 createComponent 中, vnode.componentInstance, 这个主要在 create-component.js 中创建组件 VNode 的时候挂载钩子时的，vnode.componentInstance 这个主要就是调用了 createComponentInstanceForVnode 这个去执行 Ctor 组件构造器，这个构造器又会去 init.js 中 initInternalComponent(vm, options) 合并; 继续在 init.js 中 调用 initLifecycle
--   在 lifecycle.js 中 initLifecycle，拿到父组件 vm: let parent = options.parent, options.parent 就是父组件 vm 实例。 在 setActiveInstance 实现每次 \_update 把 vm 赋给 activeInstance
+- 组件的 patch 也会调用 patch.js 中的 createElm, 其中与普通元素 patch 不一样的就是 createElm 中的 createComponent 处理
+- 在 patch.js 的 createComponent 中, vnode.componentInstance, 这个主要在 create-component.js 中创建组件 VNode 的时候挂载钩子时的，vnode.componentInstance 这个主要就是调用了 createComponentInstanceForVnode 这个去执行 Ctor 组件构造器，这个构造器又会去 init.js 中 initInternalComponent(vm, options) 合并; 继续在 init.js 中 调用 initLifecycle
+- 在 lifecycle.js 中 initLifecycle，拿到父组件 vm: let parent = options.parent, options.parent 就是父组件 vm 实例。 在 setActiveInstance 实现每次 \_update 把 vm 赋给 activeInstance
 
 ```
 export function initLifecycle (vm: Component) {
@@ -442,12 +474,12 @@ export function initLifecycle (vm: Component) {
 }
 ```
 
--   继续在 create-component.js 中 child.$mount(hydrating ? vnode.elm : undefined, hydrating), 这个就会执行 entry-runtime-with-compiler.js 中的 Vue.prototype.$mount, 后执行 lifecycle.js 中的 mountComponent，执行 render 完成子组件的渲染，然后执行渲染 watcher(子组件的渲染 watcher)
+- 继续在 create-component.js 中 child.$mount(hydrating ? vnode.elm : undefined, hydrating), 这个就会执行 entry-runtime-with-compiler.js 中的 Vue.prototype.$mount, 后执行 lifecycle.js 中的 mountComponent，执行 render 完成子组件的渲染，然后执行渲染 watcher(子组件的渲染 watcher)
 
 ### 2-3、组件的生命周期
 
--   beforeCreate: data 数据没有初始化之前执行
--   created: data 数据初始化之后执行
+- beforeCreate: data 数据没有初始化之前执行
+- created: data 数据初始化之后执行
 
 ```
 // 在 init.js 中
@@ -468,8 +500,8 @@ export function initMixin (Vue: Class<Component>) {
 }
 ```
 
--   beforeMounted: 页面渲染之前执行
--   mounted: 页面渲染之后执行
+- beforeMounted: 页面渲染之前执行
+- mounted: 页面渲染之后执行
 
 ```
 // 在 lifecycle.js 中
@@ -522,8 +554,8 @@ export function mountComponent (
 }
 ```
 
--   beforeUpdate: 数据更新之前，并且首次渲染不会触发
--   updated: 数据更新之后，并且首次渲染不会触发
+- beforeUpdate: 数据更新之前，并且首次渲染不会触发
+- updated: 数据更新之后，并且首次渲染不会触发
 
 ```
 // 在 lifecycle.js 中  _isMounted 为 true 表示已挂载
@@ -537,8 +569,8 @@ new Watcher(vm, updateComponent, noop, {
 }, true /* isRenderWatcher */)
 ```
 
--   beforeDestroy: 页面卸载之前，此时 data、method 还存在
--   destroyed: 页面卸载之后，此时 data、method 不存在
+- beforeDestroy: 页面卸载之前，此时 data、method 还存在
+- destroyed: 页面卸载之后，此时 data、method 不存在
 
 ### 2-4、组件的注册
 
@@ -609,19 +641,19 @@ if (typeof tag === 'string') {
 
 ### Vue 异步组件
 
--   总的来说，异步组件的实现通常是 2 次渲染，先渲染成注释节点，组件加载成功后再通过 forceRender 重新渲染，这是异步组件的核心所在。
+- 总的来说，异步组件的实现通常是 2 次渲染，先渲染成注释节点，组件加载成功后再通过 forceRender 重新渲染，这是异步组件的核心所在。
 
--   当在 createComponent 中发现是异步组件, 调用 resolveAsyncComponent, 这个是异步组件的核心
+- 当在 createComponent 中发现是异步组件, 调用 resolveAsyncComponent, 这个是异步组件的核心
 
 #### 2-5-1、工厂函数
 
--   定义异步请求成功的函数处理，定义异步请求失败的函数处理；
--   执行组件定义的工厂函数；
--   同步返回请求成功的函数处理。
--   异步组件加载完毕，会调用 resolve 定义的方法，方法会通过 ensureCtor 将加载完成的组件转换为组件构造器，并存储在 resolved 属性中
--   组件构造器创建完毕，会进行一次视图的重新渲染。由于 Vue 是数据驱动视图渲染的，而组件在加载到完毕的过程中，并没有数据发生变化，因此需要手动强制更新视图
--   forceRender: 这个中执行 $forceUpdate，$forceUpdate 的逻辑非常简单，就是调用渲染 watcher 的 update 方法，让渲染 watcher 对应的回调函数执行，也就是触发了组件的重新渲染。
--   异步组件加载失败后，会调用 reject 定义的方法，方法会提示并标记错误，最后同样会强制更新视图。
+- 定义异步请求成功的函数处理，定义异步请求失败的函数处理；
+- 执行组件定义的工厂函数；
+- 同步返回请求成功的函数处理。
+- 异步组件加载完毕，会调用 resolve 定义的方法，方法会通过 ensureCtor 将加载完成的组件转换为组件构造器，并存储在 resolved 属性中
+- 组件构造器创建完毕，会进行一次视图的重新渲染。由于 Vue 是数据驱动视图渲染的，而组件在加载到完毕的过程中，并没有数据发生变化，因此需要手动强制更新视图
+- forceRender: 这个中执行 $forceUpdate，$forceUpdate 的逻辑非常简单，就是调用渲染 watcher 的 update 方法，让渲染 watcher 对应的回调函数执行，也就是触发了组件的重新渲染。
+- 异步组件加载失败后，会调用 reject 定义的方法，方法会提示并标记错误，最后同样会强制更新视图。
 
 ```
 Vue.component('async-example', function (resolve, reject) {
@@ -714,7 +746,7 @@ export function resolveAsyncComponent(
 }
 ```
 
--   执行异步过程会同步为加载中的异步组件创建一个注释节点 Vnode
+- 执行异步过程会同步为加载中的异步组件创建一个注释节点 Vnode
 
 ```
 createComponent.js
@@ -725,11 +757,11 @@ if (Ctor === undefined) {
 }
 ```
 
--   执行 forceRender 触发组件的重新渲染过程时，又会再次调用 resolveAsyncComponent,这时返回值 Ctor 不再为 undefined 了，因此会正常走组件的 render,patch 过程。这时，旧的注释节点也会被取代。
+- 执行 forceRender 触发组件的重新渲染过程时，又会再次调用 resolveAsyncComponent,这时返回值 Ctor 不再为 undefined 了，因此会正常走组件的 render,patch 过程。这时，旧的注释节点也会被取代。
 
 #### 2-5-2、Promise
 
--   主要是在 res.then(resolve, reject) 这里
+- 主要是在 res.then(resolve, reject) 这里
 
 ```
 Vue.component( 'async-webpack-example', () => import('./my-async-component') )
@@ -909,9 +941,9 @@ export function resolveAsyncComponent(
 
 ## 3、响应式原理
 
--   Observer 类，实例化一个 Observer 类会通过 Object.defineProperty 对数据的 getter,setter 方法进行改写，在 getter 阶段进行依赖的收集,在数据发生更新阶段，触发 setter 方法进行依赖的更新
--   watcher 类，实例化 watcher 类相当于创建一个依赖，简单的理解是数据在哪里被使用就需要产生了一个依赖。当数据发生改变时，会通知到每个依赖进行更新，前面提到的渲染 wathcer 便是渲染 dom 时使用数据产生的依赖。
--   Dep 类，既然 watcher 理解为每个数据需要监听的依赖，那么对这些依赖的收集和通知则需要另一个类来管理，这个类便是 Dep,Dep 需要做的只有两件事，收集依赖和派发更新依赖
+- Observer 类，实例化一个 Observer 类会通过 Object.defineProperty 对数据的 getter,setter 方法进行改写，在 getter 阶段进行依赖的收集,在数据发生更新阶段，触发 setter 方法进行依赖的更新
+- watcher 类，实例化 watcher 类相当于创建一个依赖，简单的理解是数据在哪里被使用就需要产生了一个依赖。当数据发生改变时，会通知到每个依赖进行更新，前面提到的渲染 wathcer 便是渲染 dom 时使用数据产生的依赖。
+- Dep 类，既然 watcher 理解为每个数据需要监听的依赖，那么对这些依赖的收集和通知则需要另一个类来管理，这个类便是 Dep,Dep 需要做的只有两件事，收集依赖和派发更新依赖
 
 **总结：处理的核心是在访问数据时对数据所在场景的依赖进行收集，在数据发生更改时，通知收集过的依赖进行更新**
 
@@ -925,9 +957,9 @@ export function resolveAsyncComponent(
 
 #### 3-1-2、initState
 
--   定义在 state.js 中, 在 Vue 的初始化阶段， \_init 方法执行的时候, 会执行 initState
--   initState 主要是对 props 、 methods 、 data 、 computed 和 wathcer 等属性做了初 始化操作
--   initState 中的 initProps: 通过 defineReactive 把 props 的属性变成响应式的，并且使用 proxy 将 props 的每个 key 代理到 vm 实例上, 这样 this.xx 就相当于访问 this.\_props.xxx
+- 定义在 state.js 中, 在 Vue 的初始化阶段， \_init 方法执行的时候, 会执行 initState
+- initState 主要是对 props 、 methods 、 data 、 computed 和 wathcer 等属性做了初 始化操作
+- initState 中的 initProps: 通过 defineReactive 把 props 的属性变成响应式的，并且使用 proxy 将 props 的每个 key 代理到 vm 实例上, 这样 this.xx 就相当于访问 this.\_props.xxx
 
 ```
 function initProps (vm: Component, propsOptions: Object) {
@@ -968,8 +1000,8 @@ function initProps (vm: Component, propsOptions: Object) {
 }
 ```
 
--   initState 中的 initData: 跟 initProps 相似, proxy 逐个代理 data 的 key 到 vm 实例, observe 响应式处理,
-    并且在这之前会先判断 key 是否有跟 props 重复的
+- initState 中的 initData: 跟 initProps 相似, proxy 逐个代理 data 的 key 到 vm 实例, observe 响应式处理,
+  并且在这之前会先判断 key 是否有跟 props 重复的
 
 ```
 function initData (vm: Component) {
@@ -1021,7 +1053,7 @@ function initData (vm: Component) {
 }
 ```
 
--   observe 中会 new 一个 Observer, 这个里面的 walk 会调用 defineReactive 执行 Object.defineProperty 进行数据劫持; 若传入的是数组，调用 observeArray，遍历数组对数组的每一项进行观察
+- observe 中会 new 一个 Observer, 这个里面的 walk 会调用 defineReactive 执行 Object.defineProperty 进行数据劫持; 若传入的是数组，调用 observeArray，遍历数组对数组的每一项进行观察
 
 ```
 export class Observer {
@@ -1059,7 +1091,7 @@ export class Observer {
 }
 ```
 
--   defineReactive 做 Object.defineProperty, 当对象的某一个 key 的值也是一个对象，就会继续调用 observe， let childOb = !shallow && observe(val)
+- defineReactive 做 Object.defineProperty, 当对象的某一个 key 的值也是一个对象，就会继续调用 observe， let childOb = !shallow && observe(val)
 
 ```
 export function defineReactive () {
@@ -1091,7 +1123,7 @@ export function defineReactive () {
 
 #### 3-2-2、判断是否存在 Dep.target, Dep.target 其实就是一个 watcher
 
--   在 Vue 进行 \$mount 的时候会调用 mountComponent，在 mountComponent 中会 new Watcher, watcher 会调用它自己的 get 方法去调用 pushTargrt，这样就把 watcher 添加到 Dep.target 上了
+- 在 Vue 进行 \$mount 的时候会调用 mountComponent，在 mountComponent 中会 new Watcher, watcher 会调用它自己的 get 方法去调用 pushTargrt，这样就把 watcher 添加到 Dep.target 上了
 
 ```
 // dep.js
@@ -1226,9 +1258,9 @@ export default class Watcher {
 
 ### 3-3、派发更新
 
--   判断数据更改前后是否一致，如果数据相等则不进行任何派发更新操作。
--   新值为对象时，会对该值的属性进行依赖收集过程。
--   通知该数据收集的 watcher 依赖,遍历每个 watcher 进行数据更新,这个阶段是调用该数据依赖收集器的 dep.notify 方法进行更新的派发。
+- 判断数据更改前后是否一致，如果数据相等则不进行任何派发更新操作。
+- 新值为对象时，会对该值的属性进行依赖收集过程。
+- 通知该数据收集的 watcher 依赖,遍历每个 watcher 进行数据更新,这个阶段是调用该数据依赖收集器的 dep.notify 方法进行更新的派发。
 
 派发更新过程： 通过 set 调用 dep.notify(), 在 notify 中会把 subs 中的依赖 watcher 逐个执行 update ( subs[i].update() ), watcher 的 update 把需要执行的 watcher 通过 queueWatcher 放到队列 queue 中，调用 flushSchedulerQueue 执行 queue 队列的每一个 watcher 的 run，执行 watcher 相关的回调函数去处理数据的更新。。在执行 run 之前会根据 watcher 的 id 对 watcher 进行排列，因为组件的更新是从父到子的，所以要保证父的 watcher 在前面，而且当父组件被销毁，那么子组件的更新也不需要执行了。
 
@@ -1286,8 +1318,8 @@ function def (obj, key, val, enumerable) {
 
 当支持 \_\_proto\_\_ 时，执行 protoAugment 会将当前数组的原型指向新的数组类 arrayMethods,如果不支持 \_\_proto\_\_，则通过代理设置，在访问数组方法时代理访问新数组类中的数组方法。
 
--   protoAugment 是通过原型指向的方式，将数组指定的七个方法指向 arrayMethods
--   copyAugment 通过数据代理的方式, 将数组指定的七个方法指向 arrayMethods
+- protoAugment 是通过原型指向的方式，将数组指定的七个方法指向 arrayMethods
+- copyAugment 通过数据代理的方式, 将数组指定的七个方法指向 arrayMethods
 
 有了这两步的处理，接下来我们在实例内部调用 push, unshift 等数组的方法时，会执行 arrayMethods 类的方法。这也是数组进行依赖收集和派发更新的前提。
 
@@ -1356,9 +1388,9 @@ export class Observer {
 
 当调用数组的方法去添加或者删除数据时，数据的 setter 方法是无法拦截的，所以唯一可以拦截的过程就是调用数组方法的时候，数组方法的调用会代理到新类 arrayMethods 的方法中,而 arrayMethods 的数组方法是进行重写过的
 
--   首先调用原始的数组方法进行运算，这保证了与原始数组类型的方法一致性
--   inserted 变量用来标志数组是否是增加了元素，如果增加的元素不是原始类型，而是数组对象类型，则需要触发 observeArray 方法，对每个元素进行依赖收集。
--   调用 ob.dep.notify(), 进行依赖的派发更新
+- 首先调用原始的数组方法进行运算，这保证了与原始数组类型的方法一致性
+- inserted 变量用来标志数组是否是增加了元素，如果增加的元素不是原始类型，而是数组对象类型，则需要触发 observeArray 方法，对每个元素进行依赖收集。
+- 调用 ob.dep.notify(), 进行依赖的派发更新
 
 ```
 // 对数组方法设置了代理，执行数组那七种方法的时候会执行 mutator 函数
@@ -1398,8 +1430,8 @@ methodsToPatch.forEach(function (method) {
 
 ### 3-5、nextTick
 
--   nextTick：就是将任务放到异步队列里面，等到主线程执行完再执行
--   在 Vue 中，进行数据操作的时候，Vue 并没有马上去更新 DOM 数据，而是将这个操作放进一个队列中，如果重复执行的话，队列还会进行去重操作；等待同一事件循环中的所有数据变化完成之后，会将队列中的事件拿出来处理。这样做主要是为了提升性能，因为如果在主线程中更新 DOM，循环 100 次就要更新 100 次 DOM；但是如果等事件循环完成之后更新 DOM，只需要更新 1 次。也就是说数据改变后触发的渲染 watcher 的 update 是在 nextTick 中的。
+- nextTick：就是将任务放到异步队列里面，等到主线程执行完再执行
+- 在 Vue 中，进行数据操作的时候，Vue 并没有马上去更新 DOM 数据，而是将这个操作放进一个队列中，如果重复执行的话，队列还会进行去重操作；等待同一事件循环中的所有数据变化完成之后，会将队列中的事件拿出来处理。这样做主要是为了提升性能，因为如果在主线程中更新 DOM，循环 100 次就要更新 100 次 DOM；但是如果等事件循环完成之后更新 DOM，只需要更新 1 次。也就是说数据改变后触发的渲染 watcher 的 update 是在 nextTick 中的。
 
 ```
 // scheduler.js 中的 queueWatcher
@@ -1419,7 +1451,7 @@ export function queueWatcher(watcher: Watcher) {
 
 #### 3-5-1、nextTick 的实现原理
 
--   将回调函数放到 callbacks 中等待执行
+- 将回调函数放到 callbacks 中等待执行
 
 ```
 const callbacks = []
@@ -1447,7 +1479,7 @@ export function nextTick (cb?: Function, ctx?: Object) {
 
 ```
 
--   将执行函数放到微任务或者宏任务中: 这里 Vue 做了兼容性的处理，尝试使用原生的 Promise.then、MutationObserver 和 setImmediate，上述三个都不支持最后使用 setTimeout； 其中 Promise.then、MutationObserver 是微任务，setImmediate 和 setTimeout 是宏任务。
+- 将执行函数放到微任务或者宏任务中: 这里 Vue 做了兼容性的处理，尝试使用原生的 Promise.then、MutationObserver 和 setImmediate，上述三个都不支持最后使用 setTimeout； 其中 Promise.then、MutationObserver 是微任务，setImmediate 和 setTimeout 是宏任务。
 
 ```
 if (typeof Promise !== 'undefined' && isNative(Promise)) {
@@ -1487,7 +1519,7 @@ if (typeof Promise !== 'undefined' && isNative(Promise)) {
 }
 ```
 
--   最后依次执行 callbacks 中的回调
+- 最后依次执行 callbacks 中的回调
 
 ```
 function flushCallbacks () {
@@ -1667,8 +1699,8 @@ dep.depend = function() {
 
 派发更新的前提是 data 中数据发生改变
 
--   当计算属性依赖的数据发生更新时，由于数据的 Dep 收集过 computed watch 这个依赖，所以会调用 dep 的 notify 方法，对依赖进行状态更新。
--   此时 computed watcher 和之前介绍的 watcher 不同，它不会立刻执行依赖的更新操作，而是通过一个 dirty 进行标记。
+- 当计算属性依赖的数据发生更新时，由于数据的 Dep 收集过 computed watch 这个依赖，所以会调用 dep 的 notify 方法，对依赖进行状态更新。
+- 此时 computed watcher 和之前介绍的 watcher 不同，它不会立刻执行依赖的更新操作，而是通过一个 dirty 进行标记。
 
 ```
 Dep.prototype.notify = function() {
@@ -1801,8 +1833,8 @@ export function stateMixin(Vue: Class < Component > ) {
 }
 ```
 
--   options.user = true：表示为用户定义的 watch 的 watcher
--   new Watcher(vm, expOrFn, cb, options)：创建一个 user watcher，在实例化 watcher 的时候，会执行 watcher.getter 对 vm.xxx 进行取值，并让 vm.xxx 的 dep 收集当前的用户 watcher
+- options.user = true：表示为用户定义的 watch 的 watcher
+- new Watcher(vm, expOrFn, cb, options)：创建一个 user watcher，在实例化 watcher 的时候，会执行 watcher.getter 对 vm.xxx 进行取值，并让 vm.xxx 的 dep 收集当前的用户 watcher
 
 ```
 export default class Watcher {
