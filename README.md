@@ -1282,6 +1282,8 @@ function flushCallbacks () {
 
 ### 3-6、computed
 
+![computed](/imgs/img4.png)
+
 #### 3-6-1、computed 的依赖收集
 
 在初始化 computed 的过程，会遍历 computed 的每一个属性值，并为每一个属性值添加一个计算 watcher，{lazy: true} 代表计算 watcher，get 最后调用 defineComputed 将数据设置为响应式
@@ -1332,6 +1334,7 @@ export function defineComputed(
   key: string,
   userDef: Object | Function
 ) {
+  // 不是服务端渲染，代表需要缓存， shouldCache = true
   const shouldCache = !isServerRendering()
   if (typeof userDef === 'function') {
     sharedPropertyDefinition.get = shouldCache ?
@@ -1363,7 +1366,7 @@ export function defineComputed(
 
 dirty 是标志是否已经执行过计算结果，如果执行过则不会执行 watcher.evaluate 重复计算，这也是缓存的原理
 
-在 watcher.evaluate() 会执行 watcher.get(), 这个会通过 pushTarget(this) 将 watcher 挂到 Dep.target
+在 watcher.evaluate() 会执行 watcher.get()进行求值，后把 dirty 置为 false, watcher.get()会通过 pushTarget(this) 将 watcher 挂到 Dep.target
 
 ```
 // state.js
