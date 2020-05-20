@@ -154,6 +154,8 @@ export default class VNode {
 
 #### 1-3-2、vm.\_render 生成虚拟 DOM
 
+![vm._render](/imgs/img8.png)
+
 在 \$mount 挂载的时候会执行 mountComponent, 这个的核心之一是 vm.\_render 生成虚拟 DOM
 
 ```
