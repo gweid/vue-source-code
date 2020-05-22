@@ -351,6 +351,8 @@ function createWatcher(
   if (typeof handler === 'string') {
     handler = vm[handler]
   }
+
+  // stateMixin 中定义了 vm.$watch
   return vm.$watch(expOrFn, handler, options)
 }
 
