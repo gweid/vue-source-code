@@ -127,9 +127,16 @@ function mountComponent(vm, el, hydrating) {
 }
 ```
 
-### 1-2、模板编译 compiler
+### 1-3、模板编译 compiler
 
-#### 1-2-1、编译的入口
+- 1、parse
+  - 使用正则解释 template 中的 Vue 指令(v-xxx)变量等，形成 AST 语法树
+- 2、optimize
+  - 标记一些静态节点，用于优化，在 diff 比较的时候略过。
+- 3、generate
+  - 把 parse 生成的 AST 语法树转换为渲染函数 render function
+
+#### 1-3-1、编译的入口
 
 在 entry-runtime-with-compiler.js 中的 \$mount 过程，如果发现没有 render 函数，那么会启动编译流程把模板编译成 render 函数, 而 compileToFunctions 就是编译的入口
 
@@ -140,11 +147,6 @@ Vue.prototype.$mount = function (){
   ...
 
   if (template) {
-    /* istanbul ignore if */
-    if (process.env.NODE_ENV !== 'production' && config.performance && mark) {
-      mark('compile')
-    }
-
     const { render, staticRenderFns } = compileToFunctions(template, {
       outputSourceRange: process.env.NODE_ENV !== 'production',
       shouldDecodeNewlines,
@@ -152,14 +154,6 @@ Vue.prototype.$mount = function (){
       delimiters: options.delimiters,
       comments: options.comments
     }, this)
-    options.render = render
-    options.staticRenderFns = staticRenderFns
-
-    /* istanbul ignore if */
-    if (process.env.NODE_ENV !== 'production' && config.performance && mark) {
-      mark('compile end')
-      measure(`vue ${this._name} compile`, 'compile', 'compile end')
-    }
   }
   // 调用原先原型上的 $mount 方法挂载, 此时实际也是调用重新定义的 mount，这样做主要是为了复用
   return mount.call(this, el, hydrating)
@@ -179,21 +173,7 @@ export { compile, compileToFunctions }
 createCompiler 又是由 create-compiler.js 的 createCompilerCreator 得到
 
 ```
-export const createCompiler = createCompilerCreator(function baseCompile (
-  template: string,
-  options: CompilerOptions
-): CompiledResult {
-  const ast = parse(template.trim(), options)
-  if (options.optimize !== false) {
-    optimize(ast, options)
-  }
-  const code = generate(ast, options)
-  return {
-    ast,
-    render: code.render,
-    staticRenderFns: code.staticRenderFns
-  }
-})
+export const createCompiler = createCompilerCreator(function baseCompile (){})
 ```
 
 createCompilerCreator: const { compile, compileToFunctions } = createCompiler(baseOptions) 可以看出，compile 是 createCompilerCreator 中的 createCompiler 的 compile， 而 compileToFunctions 由 to-function.js 的 createCompileToFunctionFn 得到
@@ -203,6 +183,7 @@ export function createCompilerCreator (baseCompile: Function): Function {
   return function createCompiler (baseOptions: CompilerOptions) {
 
     function compile () {}
+
     ...
 
     return {
@@ -227,12 +208,6 @@ export function createCompilerCreator (baseCompile: Function): Function {
 
       // baseCompile 传进来的函数，真正执行编译三步 parse、optimize、generate
       const compiled = baseCompile(template.trim(), finalOptions)
-      if (process.env.NODE_ENV !== 'production') {
-        detectErrors(compiled.ast, warn)
-      }
-      compiled.errors = errors
-      compiled.tips = tips
-      return compiled
     }
 
     return {
@@ -270,11 +245,17 @@ export const createCompiler = createCompilerCreator(function baseCompile (
 
 **总结：实际上进行的编译三部曲是通过 baseCompile 这个参数函数中的 parse、optimize、generate 执行**
 
-### 1-3、updateComponent 渲染 DOM 流程
+#### 1-3-2、parse：使用正则解释 template 编译成 AST 语法树
+
+#### 1-3-3、optimize：标记一些静态节点，用于优化，在 diff 比较的时候略过
+
+#### 1-3-4、generate：把 parse 生成的 AST 语法树转换为渲染函数 render function
+
+### 1-4、updateComponent 渲染 DOM 流程
 
 在渲染 DOM 的过程，Vue 使用了虚拟 DOM 的概念，这使得 Vue 中对 DOM 的操作大多都在虚拟 DOM 中，通过对比将要改动的部分，通知更新到真实的 DOM。虚拟 DOM 其实是一个 js 对象，操作 js 的性能开销比直接操作浏览器 DOM 的低很多，并且虚拟 DOM 会把多个 DOM 的操作合并，减少真实 DOM 的回流重绘次数，这很好的解决了频繁操作 DOM 所带来的性能问题。
 
-#### 1-3-1、首先是 VNode 构造器
+#### 1-4-1、首先是 VNode 构造器
 
 构造器定义了 tag：标签、data：数据、children：子节点、elm：node 节点等
 
@@ -297,7 +278,7 @@ export default class VNode {
 }
 ```
 
-#### 1-3-2、vm.\_render 生成虚拟 DOM
+#### 1-4-2、vm.\_render 生成虚拟 DOM
 
 ![vm._render](/imgs/img8.png)
 
@@ -467,7 +448,7 @@ export function _createElement (
 }
 ```
 
-#### 1-3-3、vm.\_update 渲染真实 DOM
+#### 1-4-3、vm.\_update 渲染真实 DOM
 
 - 主要作用：把生成的 VNode 转化为真实的 DOM
 - 调用时机: 有两个，一个是发生在初次渲染阶段，这个时候没有旧的虚拟 dom；另一个发生数据更新阶段，存在新的虚拟 dom 和旧的虚拟 dom
