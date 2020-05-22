@@ -10,7 +10,9 @@
 initGlobalAPI(Vue)
 ```
 
-## 1、Vue 的数据驱动（源码流程: init --> \$mount --> compile/render --> VNode --> patch --> Dom）
+## 1、Vue 的数据驱动（源码流程: init --> \$mount --> compile/render --> VNode(render) --> patch --> DOM）
+
+![Vue数据驱动](/imgs/img17.png)
 
 ### 1-1、new Vue() 发生了什么
 
