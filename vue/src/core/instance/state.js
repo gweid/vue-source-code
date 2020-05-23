@@ -325,8 +325,8 @@ function initMethods(vm: Component, methods: Object) {
 }
 
 function initWatch(vm: Component, watch: Object) {
-  for (const key in watch) {
-    const handler = watch[key]
+  const handler = watch[key]
+    for (const key in watch) {
     // handler可以是数组的形式，执行多个回调
     if (Array.isArray(handler)) {
       for (let i = 0; i < handler.length; i++) {
@@ -337,6 +337,7 @@ function initWatch(vm: Component, watch: Object) {
     }
   }
 }
+
 
 function createWatcher(
   vm: Component,

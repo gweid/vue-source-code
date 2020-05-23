@@ -52,6 +52,7 @@ export function generate (
   }
 }
 
+// getElement 函数会根据不同指令类型处理不同的分支，对于普通模板的编译会进入 genData 函数中处理
 export function genElement (el: ASTElement, state: CodegenState): string {
   if (el.parent) {
     el.pre = el.pre || el.parent.pre
@@ -72,9 +73,11 @@ export function genElement (el: ASTElement, state: CodegenState): string {
   } else {
     // component or element
     let code
+    // 组件
     if (el.component) {
       code = genComponent(el.component, el, state)
     } else {
+      // 
       let data
       if (!el.plain || (el.pre && state.maybeComponent(el))) {
         data = genData(el, state)

@@ -762,6 +762,7 @@ function processAttrs (el) {
     name = rawName = list[i].name
     value = list[i].value
     if (dirRE.test(name)) {
+      // 匹配 v- 或者 @ 开头的指令
       // mark element as dynamic
       el.hasBindings = true
       // modifiers
@@ -842,13 +843,15 @@ function processAttrs (el) {
           addAttr(el, name, value, list[i], isDynamic)
         }
       } else if (onRE.test(name)) { // v-on
-        name = name.replace(onRE, '')
-        isDynamic = dynamicArgRE.test(name)
+        name = name.replace(onRE, '') // 拿到真正的事件click
+        isDynamic = dynamicArgRE.test(name) // 动态事件绑定
         if (isDynamic) {
           name = name.slice(1, -1)
         }
+        // 通过addHandler方法，为AST树添加事件相关的属性
         addHandler(el, name, value, modifiers, false, warn, list[i], isDynamic)
       } else { // normal directives
+        // 其他指令
         name = name.replace(dirRE, '')
         // parse arg
         const argMatch = name.match(argRE)

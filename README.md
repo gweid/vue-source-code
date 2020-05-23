@@ -2240,7 +2240,7 @@ watch: {
 }
 ```
 
-### 3-7-1、watch 的依赖收集
+#### 3-7-1、watch 的依赖收集
 
 首先初始化调用 initWatch 初始化 watch， initWatch 的核心是 createWatcher
 
@@ -2347,6 +2347,20 @@ export default class Watcher {
 }
 ```
 
-### 3-7-2、watch 的派发更新
+#### 3-7-2、watch 的派发更新
 
 watch 派发更新的过程: 数据发生改变时，setter 拦截对依赖进行更新，而此前 user watcher 已经被当成依赖收集了。这个时候依赖的更新就是回调函数的执行。
+
+## 4、Vue 的一些扩展功能
+
+### 4-1、Vue 的事件机制 event
+
+### 4-2、Vue 的插槽
+
+### 4-3、Vue 的 v-model
+
+### 4-4、Vue 的 keep-alive
+
+## 5、vue-router
+
+## 6、vuex

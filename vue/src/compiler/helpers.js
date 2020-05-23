@@ -66,6 +66,7 @@ function prependModifierMarker (symbol: string, name: string, dynamic?: boolean)
     : symbol + name // mark the event as captured
 }
 
+// 为 ast 树添加事件相关属性，还有对事件修饰符做特殊处理
 export function addHandler (
   el: ASTElement,
   name: string,
@@ -79,6 +80,7 @@ export function addHandler (
   modifiers = modifiers || emptyObject
   // warn prevent and passive modifier
   /* istanbul ignore if */
+  // passive 和 prevent 不能同时使用
   if (
     process.env.NODE_ENV !== 'production' && warn &&
     modifiers.prevent && modifiers.passive
@@ -123,6 +125,7 @@ export function addHandler (
     name = prependModifierMarker('&', name, dynamic)
   }
 
+  // events 用来记录绑定的事件
   let events
   if (modifiers.native) {
     delete modifiers.native

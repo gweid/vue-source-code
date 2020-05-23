@@ -194,6 +194,7 @@ export function createPatchFunction(backend) {
         // with append="tree".
         const appendAsTree = isDef(data) && isTrue(data.appendAsTree)
         if (!appendAsTree) {
+          // 针对指令的处理
           if (isDef(data)) {
             invokeCreateHooks(vnode, insertedVnodeQueue)
           }

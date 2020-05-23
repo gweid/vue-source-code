@@ -49,8 +49,10 @@ export function updateComponentListeners (
   target = undefined
 }
 
+// 定义事件相关函数
 export function eventsMixin (Vue: Class<Component>) {
   const hookRE = /^hook:/
+  // $on 用来监听事件，执行回调
   Vue.prototype.$on = function (event: string | Array<string>, fn: Function): Component {
     const vm: Component = this
     if (Array.isArray(event)) {
@@ -68,8 +70,10 @@ export function eventsMixin (Vue: Class<Component>) {
     return vm
   }
 
+  // $once 用来监听一次事件，执行回调
   Vue.prototype.$once = function (event: string, fn: Function): Component {
     const vm: Component = this
+    // 对 fn 做一层包装，先解除绑定再执行 fn 回调
     function on () {
       vm.$off(event, on)
       fn.apply(vm, arguments)
@@ -79,9 +83,11 @@ export function eventsMixin (Vue: Class<Component>) {
     return vm
   }
 
+  // $off 用来解除事件监听
   Vue.prototype.$off = function (event?: string | Array<string>, fn?: Function): Component {
     const vm: Component = this
     // all
+    // 如果 $off 没有传递任何参数,将_events属性清空
     if (!arguments.length) {
       vm._events = Object.create(null)
       return vm
@@ -115,6 +121,7 @@ export function eventsMixin (Vue: Class<Component>) {
     return vm
   }
 
+  // $emit 方法用来触发事件，执行回调
   Vue.prototype.$emit = function (event: string): Component {
     const vm: Component = this
     if (process.env.NODE_ENV !== 'production') {
