@@ -18,6 +18,7 @@ function createFunction (code, errors) {
   }
 }
 
+// 编译的入口
 export function createCompileToFunctionFn (compile: Function): Function {
   const cache = Object.create(null)
 
@@ -49,6 +50,7 @@ export function createCompileToFunctionFn (compile: Function): Function {
     }
 
     // check cache
+    // 编译是耗时的，通过 key 做一些缓存
     const key = options.delimiters
       ? String(options.delimiters) + template
       : template
@@ -57,6 +59,7 @@ export function createCompileToFunctionFn (compile: Function): Function {
     }
 
     // compile
+    // 执行编译过程
     const compiled = compile(template, options)
 
     // check compilation errors/tips
@@ -90,6 +93,7 @@ export function createCompileToFunctionFn (compile: Function): Function {
     // turn code into functions
     const res = {}
     const fnGenErrors = []
+    // 将编译的结果转化为 render 函数
     res.render = createFunction(compiled.render, fnGenErrors)
     res.staticRenderFns = compiled.staticRenderFns.map(code => {
       return createFunction(code, fnGenErrors)

@@ -105,6 +105,6 @@ function getOuterHTML (el: Element): string {
   }
 }
 
-Vue.compile = compileToFunctions
+Vue.compile = compileToFunctions  // 将 createCompilerCreator 挂到 Vue 实例方法
 
 export default Vue
