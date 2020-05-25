@@ -689,7 +689,7 @@ function createElm(
         insert(parentElm, vnode.elm, refElm)
       }
     } else {
-      // 递归调用createChildren去创建子节点
+      // 递归调用 createChildren 去创建子节点
       createChildren(vnode, children, insertedVnodeQueue)
       if (isDef(data)) {
         invokeCreateHooks(vnode, insertedVnodeQueue)
@@ -2488,7 +2488,7 @@ watch 派发更新的过程: 数据发生改变时，setter 拦截对依赖进�
 
 #### 4-2-2、具名插槽
 
-#### 4-2-3、作用域插槽
+#### 4-2-3、作用域插槽lh-1
 
 ### 4-3、Vue 的 v-model
 
