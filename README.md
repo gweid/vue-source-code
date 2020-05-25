@@ -2492,6 +2492,225 @@ watch 派发更新的过程: 数据发生改变时，setter 拦截对依赖进�
 
 ### 4-3、Vue 的 v-model
 
+#### 4-3-1、v-model 实现机制
+
+v-model 会把它关联的响应式数据（如 message），动态地绑定到表单元素的 value 属性上，然后监听表单元素的 input 事件：当 v-model 绑定的响应数据发生变化时，表单元素的 value 值也会同步变化；当表单元素接受用户的输入时，input 事件会触发，input 的回调逻辑会把表单元素 value 最新值同步赋值给 v-model 绑定的响应式数据
+
+```
+<input type="text" :value="message" @input="(e) => { this.message = e.target.value }" >
+```
+
+#### 4-3-2、v-model 实现原理
+
+首先，在模板解析阶段，v-model 跟其他指令一样，会被解析到 el.directives
+
+```
+// compiler/parse/index.js
+
+function processAttrs(el) {
+  var list = el.attrsList;
+  var i, l, name, rawName, value, modifiers, syncGen, isDynamic;
+  for (i = 0, l = list.length; i < l; i++) {
+    name = rawName = list[i].name; // v-on:click
+    value = list[i].value; // doThis
+    if (dirRE.test(name)) { // 1.针对指令的属性处理
+      ···
+      if (bindRE.test(name)) { // v-bind分支
+        ···
+      } else if(onRE.test(name)) { // v-on分支
+        ···
+      } else { // 除了v-bind，v-on之外的普通指令
+        ···
+        // 普通指令会在AST树上添加 directives 属性
+        addDirective(el, name, rawName, value, arg, isDynamic, modifiers, list[i]);
+        if (name === 'model') {
+          checkForAliasModel(el, value);
+        }
+      }
+    } else {
+      // 2. 普通html标签属性
+    }
+
+  }
+}
+```
+
+然后，在 render 函数生成阶段，genData 会对模板的诸多属性进行处理,最终返回拼接好的字符串模板，而对指令的处理会进入 genDirectives 流程
+
+```
+function genData(el, state) {
+  var data = '{';
+  // 指令的处理
+  var dirs = genDirectives(el, state);
+  ··· // 其他属性，指令的处理
+  // 针对组件的 v-model 处理
+  if (el.model) {
+    data += "model:{value:" + (el.model.value) + ",callback:" + (el.model.callback) + ",expression:" + (el.model.expression) + "},";
+  }
+  return data
+}
+
+function genDirectives (el, state) {
+    ...
+    for (i = 0, l = dirs.length; i < l; i++) {
+      ...
+      // 对指令ast树的重新处理
+      var gen = state.directives[dir.name];
+    }
+  }
+```
+
+state.directives 实际上就是 model 函数
+
+```
+function model (el,dir,_warn) {
+  warn$1 = _warn;
+  // 绑定的值
+  var value = dir.value;
+  var modifiers = dir.modifiers;
+  var tag = el.tag;
+  var type = el.attrsMap.type;
+  {
+    // 这里遇到 type 是 file 的 html，如果还使用双向绑定会报出警告。
+    // 因为File inputs 是只读的
+    if (tag === 'input' && type === 'file') {
+      warn$1(
+        "<" + (el.tag) + " v-model=\"" + value + "\" type=\"file\">:\n" +
+        "File inputs are read only. Use a v-on:change listener instead.",
+        el.rawAttrsMap['v-model']
+      );
+    }
+  }
+  //组件上 v-model 的处理
+  if (el.component) {
+    genComponentModel(el, value, modifiers);
+    // component v-model doesn't need extra runtime
+    return false
+  } else if (tag === 'select') {
+    // select 表单
+    genSelect(el, value, modifiers);
+  } else if (tag === 'input' && type === 'checkbox') {
+    // checkbox 表单
+    genCheckboxModel(el, value, modifiers);
+  } else if (tag === 'input' && type === 'radio') {
+    // radio 表单
+    genRadioModel(el, value, modifiers);
+  } else if (tag === 'input' || tag === 'textarea') {
+    // 普通 input，如 text, textarea
+    genDefaultModel(el, value, modifiers);
+  } else if (!config.isReservedTag(tag)) {
+    genComponentModel(el, value, modifiers);
+    // component v-model doesn't need extra runtime
+    return false
+  } else {
+    // 如果不是表单使用 v-model，同样会报出警告，双向绑定只针对表单控件。
+    warn$1(
+      "<" + (el.tag) + " v-model=\"" + value + "\">: " +
+      "v-model is not supported on this element type. " +
+      'If you are working with contenteditable, it\'s recommended to ' +
+      'wrap a library dedicated for that purpose inside a custom component.',
+      el.rawAttrsMap['v-model']
+    );
+  }
+
+  return true
+}
+```
+
+对普通表单的处理在 genDefaultModel 中
+
+```
+function genDefaultModel (el,value,modifiers) {
+    var type = el.attrsMap.type;
+
+    // v-model 和 v-bind 值相同值，有冲突会报错
+    {
+      var value$1 = el.attrsMap['v-bind:value'] || el.attrsMap[':value'];
+      var typeBinding = el.attrsMap['v-bind:type'] || el.attrsMap[':type'];
+      if (value$1 && !typeBinding) {
+        var binding = el.attrsMap['v-bind:value'] ? 'v-bind:value' : ':value';
+        warn$1(
+          binding + "=\"" + value$1 + "\" conflicts with v-model on the same element " +
+          'because the latter already expands to a value binding internally',
+          el.rawAttrsMap[binding]
+        );
+      }
+    }
+    // modifiers 存贮的是 v-model 的修饰符。
+    var ref = modifiers || {};
+    // lazy,trim,number 是可供 v-model 使用的修饰符
+    var lazy = ref.lazy;
+    var number = ref.number;
+    var trim = ref.trim;
+    var needCompositionGuard = !lazy && type !== 'range';
+    // lazy 修饰符将触发同步的事件从 input 改为 change
+    var event = lazy ? 'change' : type === 'range' ? RANGE_TOKEN : 'input';
+
+    var valueExpression = '$event.target.value';
+    // 过滤用户输入的首尾空白符
+    if (trim) {
+      valueExpression = "$event.target.value.trim()";
+    }
+    // 将用户输入转为数值类型
+    if (number) {
+      valueExpression = "_n(" + valueExpression + ")";
+    }
+    // genAssignmentCode 函数是为了处理 v-model 的格式，允许使用以下的形式： v-model="a.b" v-model="a[b]"
+    var code = genAssignmentCode(value, valueExpression);
+    if (needCompositionGuard) {
+      //  保证了不会在输入法组合文字过程中得到更新
+      code = "if($event.target.composing)return;" + code;
+    }
+    //  添加 value 属性
+    addProp(el, 'value', ("(" + value + ")"));
+    // 绑定事件
+    addHandler(el, event, code, null, true);
+    if (trim || number) {
+      addHandler(el, 'blur', '$forceUpdate()');
+    }
+  }
+
+function genAssignmentCode (value,assignment) {
+  // 处理 v-model 的格式，v-model="a.b" v-model="a[b]"
+  var res = parseModel(value);
+  if (res.key === null) {
+    // 普通情形
+    return (value + "=" + assignment)
+  } else {
+    // 对象形式
+    return ("$set(" + (res.exp) + ", " + (res.key) + ", " + assignment + ")")
+  }
+}
+```
+
+genDefaultModel 的逻辑分两部分
+
+-   1.针对修饰符产生不同的事件处理字符串
+-   2.为 v-model 产生的 AST 树添加属性和事件相关的属性，为下面两行
+
+```
+//  addProp 会为 AST 树添加 props 属性
+addProp(el, 'value', ("(" + value + ")"))
+// addHandler 会为 AST 树添加事件相关的属性, 在 v-model 相当于在 input 上绑定了 input 事件
+addHandler(el, event, code, null, true)
+```
+
+总结：
+
+-   1.在编译阶段，如果是 v-model 会被解析到 el.directives
+-   2.在 render 阶段，对指令的处理会进入 genDirectives 流程，此时 genDirectives 中的 state.directives[dir.name] 就是 modle 函数
+-   3.在 model 函数中，会区分不同表单 select、checkbox、普通表单等
+-   4.普通表单在 genDefaultModel 中处理，genDefaultModel 有两部分逻辑，第一个是针对修饰符产生不同的事件处理字符串，第二个是为 v-model 产生的 AST 树添加属性和事件相关的属性，如下：
+
+```
+//  addProp 会为 AST 树添加 props 属性
+addProp(el, 'value', ("(" + value + ")"))
+// addHandler 会为 AST 树添加事件相关的属性, 在 v-model 相当于在 input 上绑定了 input 事件
+addHandler(el, event, code, null, true)
+```
+
+-   5.然后在 patch 过程根据生成的 VNode 进行 value 绑定，事件 input 监听
+
 ### 4-4、Vue 的 keep-alive
 
 ## 5、vue-router
