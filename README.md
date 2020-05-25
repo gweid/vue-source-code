@@ -972,6 +972,11 @@ function updateChildren(parentElm, oldCh, newCh) {
 
 ## 2、Vue 的组件化
 
+- 1.加载渲染过程：父 beforeCreate -> 父 created -> 父 beforeMount -> 子 beforeCreate -> 子 created -> 子 beforeMount -> 子 mounted -> 父 mounted
+- 2.子组件更新过程：父 beforeUpdate -> 子 beforeUpdate -> 子 updated -> 父 updated
+- 3.父组件更新过程：父 beforeUpdate -> 父 updated
+- 4.销毁过程：父 beforeDestroy -> 子 beforeDestroy -> 子 destroyed -> 父 destroyed
+
 当父在创建真实节点的过程中，遇到组件会进行组件的初始化和实例化，实例化会执行挂载 \$mount 的过程，这又到了组件的 vm.\_render 和 vm.\_update 过程
 
 - 1.从根实例入手进行实例的挂载，如果有手写的 render 函数，则直接进入 \$mount 挂载流程
@@ -2940,7 +2945,7 @@ function patchVnode () {
 }
 ```
 
-执行 prepatch 钩子时会拿到新旧组件的实例并执行 updateChildComponent 函数。updateChildComponent 会对针对新的组件实例对旧实例进行状态的更新，最终调用 vm.$forceUpdate() 进行重新渲染
+执行 prepatch 钩子时会拿到新旧组件的实例并执行 updateChildComponent 函数。updateChildComponent 会对针对新的组件实例对旧实例进行状态的更新，最终调用 vm.\$forceUpdate() 进行重新渲染
 
 ```
 // create-component.js
@@ -2984,7 +2989,7 @@ export function lifecycleMixin (Vue: Class<Component>) {
 }
 ```
 
-vm.$forceUpdate() 强迫 keep-alive 进行重新渲染，此时 keep-alive 会再次调用自身的 render 函数，这一次由于第一次对 vnode 的缓存，keep-alive 在实例的 cache 对象中找到了缓存的组件
+vm.\$forceUpdate() 强迫 keep-alive 进行重新渲染，此时 keep-alive 会再次调用自身的 render 函数，这一次由于第一次对 vnode 的缓存，keep-alive 在实例的 cache 对象中找到了缓存的组件
 
 ```
 export default {
