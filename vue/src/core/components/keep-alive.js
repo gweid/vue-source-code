@@ -115,12 +115,14 @@ export default {
         : vnode.key
       // 再次命中缓存
       if (cache[key]) {
+        // 直接取出缓存组件
         vnode.componentInstance = cache[key].componentInstance
         // make current key freshest
+        // keys命中的组件名移到数组末端
         remove(keys, key)
         keys.push(key)
       } else {
-        // 初次渲染时，将vnode缓存
+        // 初次渲染时，将 vnode 缓存
         cache[key] = vnode
         keys.push(key)
         // prune oldest entry
