@@ -972,6 +972,8 @@ function updateChildren(parentElm, oldCh, newCh) {
 
 ## 2、Vue 的组件化
 
+当父在创建真实节点的过程中，遇到组件会进行组件的初始化和实例化，实例化会执行挂载 $mount 的过程，这又到了组件的 vm._render 和 vm._update 过程
+
 -   1.从根实例入手进行实例的挂载，如果有手写的 render 函数，则直接进入 \$mount 挂载流程
 -   2.只有 template 模板则需要对模板进行解析，这里分为两个阶段，一个是将模板解析为 AST 树，另一个是根据不同平台生成执行代码，例如 render 函数
 -   3.\$mount 流程也分为两步，第一步是将 render 函数生成 Vnode 树，子组件会以 vue-componet- 为 tag 标记，另一步是把 Vnode 渲染成真正的 DOM 节点
@@ -2488,7 +2490,7 @@ watch 派发更新的过程: 数据发生改变时，setter 拦截对依赖进�
 
 #### 4-2-2、具名插槽
 
-#### 4-2-3、作用域插槽lh-1
+#### 4-2-3、作用域插槽 lh-1
 
 ### 4-3、Vue 的 v-model
 
@@ -2712,6 +2714,216 @@ addHandler(el, event, code, null, true)
 -   5.然后在 patch 过程根据生成的 VNode 进行 value 绑定，事件 input 监听
 
 ### 4-4、Vue 的 keep-alive
+
+被 keep-alive 包裹的组件不会重新渲染
+
+#### 4-4-1、keep-alive 基本使用：
+
+```
+<keep-alive exclude="c" max="5">
+  <component />
+</keep-alive>
+
+// 配合 router 使用
+<keep-alive>
+    <router-view>
+        <!-- 所有路径匹配到的视图组件都会被缓存！ -->
+    </router-view>
+</keep-alive>
+```
+
+#### 4-4-2、keep-alive 首次渲染
+
+**初始渲染流程最关键的一步是对渲染的组件 Vnode 进行缓存，其中也包括了组件的真实节点存储**
+
+![keep-alive首次渲染](/imgs/img18.png)
+
+1.patch 执行阶段会调用 craeteElm 创建真实 Dom，在创建节点时，keep-alive 的 VNode 对象会被认为是一个组件，因此会执行 createComponent
+
+```
+function createComponent(vnode, insertedVnodeQueue, parentElm, refElm) {
+  let i = vnode.data // 这个是 组件的 VNodeData
+  if (isDef(i)) {
+    // isReactivated 用来判断组件是否缓存。
+    const isReactivated = isDef(vnode.componentInstance) && i.keepAlive
+    if (isDef(i = i.hook) && isDef(i = i.init)) {
+      // 执行组件初始化的内部钩子 init
+      i(vnode, false /* hydrating */ )
+    }
+
+    if (isDef(vnode.componentInstance)) {
+      initComponent(vnode, insertedVnodeQueue)
+      insert(parentElm, vnode.elm, refElm) // 插入顺序：先子后父
+      if (isTrue(isReactivated)) {
+        reactivateComponent(vnode, insertedVnodeQueue, parentElm, refElm)
+      }
+      return true
+    }
+  }
+}
+```
+
+2.createComponent 会调用组件内部钩子 init 进行初始化，在 init 过程会有判断是否有 keep-alive 缓存，没有就调用 createComponentInstanceForVnode 进行 keep-alive 组件实例化
+
+```
+// 首次渲染只会标记需要缓存
+var componentVNodeHooks = {
+  init: function init (vnode, hydrating) {
+    // 如果 keep-alive 缓存了
+    if (
+      vnode.componentInstance &&
+      !vnode.componentInstance._isDestroyed &&
+      vnode.data.keepAlive
+    ) {
+      // kept-alive components, treat as a patch
+      var mountedNode = vnode; // work around flow
+      componentVNodeHooks.prepatch(mountedNode, mountedNode);
+    } else {
+      // 没有，就 $mount 挂载子组件
+      const child = (vnode.componentInstance = createComponentInstanceForVnode(
+        vnode,
+        activeInstance
+      ));
+      child.$mount(hydrating ? vnode.elm : undefined, hydrating);
+    }
+  }
+}
+
+export function createComponentInstanceForVnode(){
+  ...
+
+  // 执行 vue 子组件实例化
+  return new vnode.componentOptions.Ctor(options);
+}
+```
+
+3.然后就是 keep-alive 组件实例化: 在 core/components/keep-alive.js
+
+-   keep-alive 本质上只是存缓存和拿缓存的过程
+
+```
+export function createComponentInstanceForVnode(){
+  ...
+
+  // 执行 vue 子组件实例化
+  return new vnode.componentOptions.Ctor(options);
+}
+```
+
+4.keep-alive 组件实例化之后就是挂载，这又是一个 vm.\_render 跟 vm.\_update 的过程；而在 keep-alive 有 render 函数，所以 render 过程是 keep-alive 内的 render
+
+```
+var componentVNodeHooks = {
+  init: function init (vnode, hydrating) {
+    // 如果 keep-alive 缓存了
+    if (
+      ...
+    } else {
+      // 没有，就 $mount 挂载子组件
+      const child = (vnode.componentInstance = createComponentInstanceForVnode(
+        vnode,
+        activeInstance
+      ));
+      child.$mount(hydrating ? vnode.elm : undefined, hydrating);
+    }
+  }
+}
+```
+
+-   保存 VNode 到 cache
+-   标记 vnode.data.keepAlive = true
+
+```
+export default {
+  name: 'keep-alive',
+  abstract: true,
+
+  props: {
+    include: patternTypes,  // 哪些需要缓存
+    exclude: patternTypes,  // 哪些不需要缓存
+    max: [String, Number]   // 缓存的数量上限
+  },
+
+  created () {
+    // 缓存组件 VNode
+    this.cache = Object.create(null)
+    // 缓存组件名
+    this.keys = []
+  },
+
+  destroyed () {
+    for (const key in this.cache) {
+      pruneCacheEntry(this.cache, key, this.keys)
+    }
+  },
+
+  mounted () {
+    // 监听 include exclue
+    this.$watch('include', val => {
+      pruneCache(this, name => matches(val, name))
+    })
+    this.$watch('exclude', val => {
+      pruneCache(this, name => !matches(val, name))
+    })
+  },
+
+  // keep-alive 的渲染函数
+  render () {
+    // keep-alive 插槽的值
+    const slot = this.$slots.default
+    // 第一个 VNode 节点
+    const vnode: VNode = getFirstComponentChild(slot)
+    // 拿到第一个子组件实例
+    const componentOptions: ?VNodeComponentOptions = vnode && vnode.componentOptions
+    // 第一个子组件实例
+    if (componentOptions) {
+      // check pattern
+      // 第一个 VNode 节点的 name
+      const name: ?string = getComponentName(componentOptions)
+      const { include, exclude } = this
+      // 判断子组件是否能够缓存
+      if (
+        // not included
+        (include && (!name || !matches(include, name))) ||
+        // excluded
+        (exclude && name && matches(exclude, name))
+      ) {
+        return vnode
+      }
+
+      const { cache, keys } = this
+      const key: ?string = vnode.key == null
+        // same constructor may get registered as different local components
+        // so cid alone is not enough (#3269)
+        ? componentOptions.Ctor.cid + (componentOptions.tag ? `::${componentOptions.tag}` : '')
+        : vnode.key
+      // 再次命中缓存
+      if (cache[key]) {
+        vnode.componentInstance = cache[key].componentInstance
+        // make current key freshest
+        remove(keys, key)
+        keys.push(key)
+      } else {
+        // 初次渲染时，将 vnode 缓存
+        cache[key] = vnode
+        keys.push(key)
+        // prune oldest entry
+        if (this.max && keys.length > parseInt(this.max)) {
+          pruneCacheEntry(cache, keys[0], keys, this._vnode)
+        }
+      }
+
+      // 为缓存组件打上标志
+      vnode.data.keepAlive = true
+    }
+
+    // 将渲染的 vnode 返回
+    return vnode || (slot && slot[0])
+  }
+}
+```
+
+#### 4-4-3、keep-alive 再次渲染
 
 ## 5、vue-router
 

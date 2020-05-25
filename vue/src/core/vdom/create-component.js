@@ -38,6 +38,7 @@ const componentVNodeHooks = {
       const mountedNode: any = vnode; // work around flow
       componentVNodeHooks.prepatch(mountedNode, mountedNode);
     } else {
+      // 将组件实例赋值给 vnode 的 componentInstance 属性
       const child = (vnode.componentInstance = createComponentInstanceForVnode(
         vnode,
         activeInstance
@@ -133,7 +134,7 @@ export function createComponent(
       // return a placeholder node for async component, which is rendered
       // as a comment node but preserves all the raw information for the node.
       // the information will be used for async server-rendering and hydration.
-      
+
       // 是创建一个注释节点vnode
       return createAsyncPlaceholder(asyncFactory, data, context, children, tag);
     }
@@ -222,6 +223,7 @@ export function createComponentInstanceForVnode(
     options.render = inlineTemplate.render;
     options.staticRenderFns = inlineTemplate.staticRenderFns;
   }
+  // 执行 vue 子组件实例化
   return new vnode.componentOptions.Ctor(options);
 }
 

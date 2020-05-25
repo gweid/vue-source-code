@@ -55,13 +55,15 @@ export default {
   abstract: true,
 
   props: {
-    include: patternTypes,
-    exclude: patternTypes,
-    max: [String, Number]
+    include: patternTypes,  // 哪些需要缓存
+    exclude: patternTypes,  // 哪些不需要缓存
+    max: [String, Number]   // 缓存的数量上限
   },
 
   created () {
+    // 缓存组件 VNode
     this.cache = Object.create(null)
+    // 缓存组件名
     this.keys = []
   },
 
@@ -72,6 +74,7 @@ export default {
   },
 
   mounted () {
+    // 监听 include exclue
     this.$watch('include', val => {
       pruneCache(this, name => matches(val, name))
     })
@@ -80,14 +83,21 @@ export default {
     })
   },
 
+  // keep-alive 的渲染函数
   render () {
+    // keep-alive 插槽的值
     const slot = this.$slots.default
+    // 第一个 VNode 节点
     const vnode: VNode = getFirstComponentChild(slot)
+    // 拿到第一个子组件实例
     const componentOptions: ?VNodeComponentOptions = vnode && vnode.componentOptions
+    // 第一个子组件实例
     if (componentOptions) {
       // check pattern
+      // 第一个 VNode 节点的 name
       const name: ?string = getComponentName(componentOptions)
       const { include, exclude } = this
+      // 判断子组件是否能够缓存
       if (
         // not included
         (include && (!name || !matches(include, name))) ||
@@ -103,12 +113,14 @@ export default {
         // so cid alone is not enough (#3269)
         ? componentOptions.Ctor.cid + (componentOptions.tag ? `::${componentOptions.tag}` : '')
         : vnode.key
+      // 再次命中缓存
       if (cache[key]) {
         vnode.componentInstance = cache[key].componentInstance
         // make current key freshest
         remove(keys, key)
         keys.push(key)
       } else {
+        // 初次渲染时，将vnode缓存
         cache[key] = vnode
         keys.push(key)
         // prune oldest entry
@@ -117,8 +129,11 @@ export default {
         }
       }
 
+      // 为缓存组件打上标志
       vnode.data.keepAlive = true
     }
+
+    // 将渲染的vnode返回
     return vnode || (slot && slot[0])
   }
 }

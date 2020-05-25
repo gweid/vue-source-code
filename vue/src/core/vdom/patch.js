@@ -231,8 +231,10 @@ export function createPatchFunction(backend) {
   function createComponent(vnode, insertedVnodeQueue, parentElm, refElm) {
     let i = vnode.data // 这个是 组件的 VNodeData
     if (isDef(i)) {
+       // isReactivated 用来判断组件是否缓存。
       const isReactivated = isDef(vnode.componentInstance) && i.keepAlive
       if (isDef(i = i.hook) && isDef(i = i.init)) {
+        // 执行组件初始化的内部钩子 init
         i(vnode, false /* hydrating */ )
       }
       // after calling the init hook, if the vnode is a child component
