@@ -216,6 +216,7 @@ function initComputed(vm: Component, computed: Object) {
     if (!isSSR) {
       // create internal watcher for the computed property.
       // lazy 为 true 的 watcher 代表计算 watcher
+      // 在 new watcher 里面会执行 this.dirty = this.lazy; 所以刚开始 dirty 就是 true
       watchers[key] = new Watcher(
         vm,
         getter || noop,

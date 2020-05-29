@@ -2203,6 +2203,18 @@ function initComputed(vm: Component, computed: Object) {
 }
 ```
 
+在 new watcher 中会把 dirty 声明为 true
+
+```
+export default class Watcher {
+  constructor(){
+    ...
+    
+    this.dirty = this.dirty = this.lazy; // for lazy watchers
+  }
+}
+```
+
 defineComputed: 计算属性的计算结果会被缓存，缓存的意义在于，只有在相关响应式数据发生变化时，computed 才会重新求值，其余情况多次访问计算属性的值都会返回之前计算的结果，这就是缓存的优化, 缓存的主要根据是 dirty 字段；最终调用 Object.defineProperty 进行数据拦截
 
 ```
