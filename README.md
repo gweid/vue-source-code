@@ -2543,7 +2543,7 @@ export function set (target: Array<any> | Object, key: any, val: any): any {
 
 #### 4-2-2、具名插槽
 
-#### 4-2-3、作用域插槽 lh-1
+#### 4-2-3、作用域插槽
 
 ### 4-3、Vue 的 v-model
 
