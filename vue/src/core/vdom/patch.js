@@ -159,7 +159,7 @@ export function createPatchFunction(backend) {
     }
 
     vnode.isRootInsert = !nested // for transition enter check
-    // 组件的 patch
+    // 递归创建子组件真实节点,直到完成所有子组件的渲染才进行根节点的真实节点插入
     if (createComponent(vnode, insertedVnodeQueue, parentElm, refElm)) {
       return
     }

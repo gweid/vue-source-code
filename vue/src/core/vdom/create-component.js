@@ -109,6 +109,7 @@ export function createComponent(
   const baseCtor = context.$options._base;
 
   // plain options object: turn it into a constructor
+  // 组件局部注册
   if (isObject(Ctor)) {
     // 相当于调用 Vue.extend
     Ctor = baseCtor.extend(Ctor);
@@ -144,6 +145,7 @@ export function createComponent(
 
   // resolve constructor options in case global mixins are applied after
   // component constructor creation
+  // 构造器配置合并
   resolveConstructorOptions(Ctor);
 
   // transform component v-model data into props & events
@@ -227,9 +229,9 @@ export function createComponentInstanceForVnode(
   return new vnode.componentOptions.Ctor(options);
 }
 
-// 将componentVNodeHooks 钩子函数合并到组件data.hook中 
-function installComponentHooks (data: VNodeData) {
-  const hooks = data.hook || (data.hook = {})
+// 将componentVNodeHooks 钩子函数合并到组件data.hook中
+function installComponentHooks(data: VNodeData) {
+  const hooks = data.hook || (data.hook = {});
   for (let i = 0; i < hooksToMerge.length; i++) {
     const key = hooksToMerge[i];
     const existing = hooks[key];
