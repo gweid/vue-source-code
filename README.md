@@ -3197,19 +3197,11 @@ export function initUse(Vue: GlobalAPI) {
   };
 }
 ```
-
----
-
-## 6、vue-router
-
-=======
 **总结：**
 
 - 首次渲染的时候，除了再 <keep-alive> 中建立缓存，设置 vnode.data.keepAlive 为 true，其他的过程和普通组件一样。
 - 缓存渲染的时候，会根据 vnode.componentInstance（首次渲染 vnode.componentInstance 为 undefined） 和 vnode.data.keepAlive 进行判断不会执行组件的 created、mounted 等钩子函数，而是对缓存的组件执行 patch 过程，最后直接把缓存的 DOM 对象直接插入到目标元素中，完成了数据更新的情况下的渲染过程。
 
-## 5、vue-router
-
-> > > > > > > 5becc2356c9870f205ea5ceeb67184c8f7343d5c
+## 6、vue-router
 
 ## 7、vuex
