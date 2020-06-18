@@ -39,10 +39,12 @@ const componentVNodeHooks = {
       componentVNodeHooks.prepatch(mountedNode, mountedNode);
     } else {
       // 将组件实例赋值给 vnode 的 componentInstance 属性
+      // createComponentInstanceForVnode 主要的作用就是 new Ctor 进行实例化
       const child = (vnode.componentInstance = createComponentInstanceForVnode(
         vnode,
         activeInstance
       ));
+      // 挂载组件
       child.$mount(hydrating ? vnode.elm : undefined, hydrating);
     }
   },
