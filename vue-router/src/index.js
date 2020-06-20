@@ -15,6 +15,18 @@ import { AbstractHistory } from './history/abstract'
 
 import type { Matcher } from './create-matcher'
 
+
+// const router = new VueRouter({
+//   mode: 'hash',
+//   routes: [
+//     {
+//       path: '/',
+//       name: 'home',
+//       component: Home
+//     }
+//   ]
+// })
+
 export default class VueRouter {
   static install: () => void;
   static version: string;
@@ -43,9 +55,11 @@ export default class VueRouter {
 
     let mode = options.mode || 'hash'
     this.fallback = mode === 'history' && !supportsPushState && options.fallback !== false
+    // 如果当前环境不支持 history 模式，会被强制转换到 hash 模式
     if (this.fallback) {
       mode = 'hash'
     }
+    // 不是浏览器环境，会切换到 abstract 模式
     if (!inBrowser) {
       mode = 'abstract'
     }
@@ -87,6 +101,7 @@ export default class VueRouter {
       `before creating root instance.`
     )
 
+    // this._router.init(this) 可知，app 是当前 Vue 实例
     this.apps.push(app)
 
     // set up app destroyed handler
@@ -106,13 +121,19 @@ export default class VueRouter {
       return
     }
 
+    // // 在 VueRouter 上挂载app属性
     this.app = app
 
     const history = this.history
 
+    // // transitionTo 是进行路由导航的函数
     if (history instanceof HTML5History) {
+      // history 模式
       history.transitionTo(history.getCurrentLocation())
     } else if (history instanceof HashHistory) {
+      // hash 模式
+      // 在hash模式下会在 transitionTo 的回调中调用 setupListeners
+      // setupListeners 里会对 hashchange 事件进行监听
       const setupHashListener = () => {
         history.setupListeners()
       }
@@ -123,6 +144,7 @@ export default class VueRouter {
       )
     }
 
+    // 挂载了回调的 cb， 每次更新路由更新 _route
     history.listen(route => {
       this.apps.forEach((app) => {
         app._route = route
@@ -130,6 +152,7 @@ export default class VueRouter {
     })
   }
 
+  // 下面是路由的钩子函数 beforeEach、beforeResolve、afterEach、onReady、onError
   beforeEach (fn: Function): Function {
     return registerHook(this.beforeHooks, fn)
   }
@@ -150,6 +173,7 @@ export default class VueRouter {
     this.history.onError(errorCb)
   }
 
+  // 路由的方法 push、replace、go、back、forward
   push (location: RawLocation, onComplete?: Function, onAbort?: Function) {
     // $flow-disable-line
     if (!onComplete && !onAbort && typeof Promise !== 'undefined') {
@@ -254,6 +278,7 @@ function createHref (base: string, fullPath: string, mode) {
   return base ? cleanPath(base + '/' + path) : path
 }
 
+// 路由身上加 install 函数，因为 路由是插件形式被 Vue.use()
 VueRouter.install = install
 VueRouter.version = '__VERSION__'
 

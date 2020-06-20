@@ -31,7 +31,9 @@ export function install (Vue) {
       // new Vue({ el: 'app', router })
       if (isDef(this.$options.router)) {
         this._routerRoot = this  // 将 Vue 赋值给 this._routerRoot 
-        this._router = this.$options.router // 将传入的 router 赋值给 this._router
+        // 将传入的 router 赋值给 this._router
+        this._router = this.$options.router 
+        // 传入的 router 是通过 new VueRouter({mode: '', routes: [{}]}) 出来的，VueRouter 类身上有 init 方法
         this._router.init(this)
         // 将 _route 变成响应式的
         Vue.util.defineReactive(this, '_route', this._router.history.current)

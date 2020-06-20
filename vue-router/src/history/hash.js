@@ -7,13 +7,22 @@ import { getLocation } from './html5'
 import { setupScroll, handleScroll } from '../util/scroll'
 import { pushState, replaceState, supportsPushState } from '../util/push-state'
 
+// HashHistory 继承了 History 基类
 export class HashHistory extends History {
   constructor (router: Router, base: ?string, fallback: boolean) {
+    
+    // 调用基类构造器
     super(router, base)
+
     // check history fallback deeplinking
+    // 如果说是从 history 模式降级来的
+    // 需要做降级检查
     if (fallback && checkFallback(this.base)) {
+      // 如果降级且做了降级处理直接 return
       return
     }
+
+    // 保证 hash 是 / 开头
     ensureSlash()
   }
 
@@ -89,14 +98,20 @@ export class HashHistory extends History {
   }
 }
 
+// 降级检查
 function checkFallback (base) {
+  // 得到除去 base 的 真正的 location 的值
   const location = getLocation(base)
+
   if (!/^\/#/.test(location)) {
+    // 如果此时地址不是 /# 开头
+    // 需要做一次降级处理 降级为 hash 模式下应有的 /# 开头
     window.location.replace(cleanPath(base + '/#' + location))
     return true
   }
 }
 
+// 保证 hash 是 / 开头
 function ensureSlash (): boolean {
   const path = getHash()
   if (path.charAt(0) === '/') {
