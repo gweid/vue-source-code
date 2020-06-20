@@ -3740,7 +3740,7 @@ updateRoute (route: Route) {
 }
 ```
 
-完成了对当前 route 的更新动作。之前，在 install函数中设置了对 route 的数据劫持。此时会触发页面的重新渲染过程。还有一点需要注意，在完成路由的更新后，同时执行了onComplete && onComplete(route)。而这个便是在我们之前篇幅中介绍的 setupHashListener
+完成了对当前 route 的更新动作。之前，在 install 函数中设置了对 route 的数据劫持。此时会触发页面的重新渲染过程。还有一点需要注意，在完成路由的更新后，同时执行了 onComplete && onComplete(route)。而这个便是在我们之前篇幅中介绍的 setupHashListener
 
 ```
 const setupHashListener = () => {
@@ -3782,8 +3782,50 @@ setupListeners () {
 }
 ```
 
-得出：setupListeners这里主要做了 2 件事情，一个是对路由切换滚动位置的处理，具体的可以参考这里滚动行为。另一个是对路由变动做了一次监听 window.addEventListener(supportsPushState ? 'popstate' : 'hashchange', () => {})
+得出：setupListeners 这里主要做了 2 件事情，一个是对路由切换滚动位置的处理，具体的可以参考这里滚动行为。另一个是对路由变动做了一次监听 window.addEventListener(supportsPushState ? 'popstate' : 'hashchange', () => {})
 
 #### 7-2-4、HTML5History(即 history 模式)
+
+```
+// index.js
+
+this.history = new HTML5History(this, options.base)
+
+// history/html5.js
+export class HTML5History extends History {
+  constructor (router: Router, base: ?string) {
+    super(router, base)
+
+    const expectScroll = router.options.scrollBehavior
+    const supportsScroll = supportsPushState && expectScroll
+
+    if (supportsScroll) {
+      setupScroll()
+    }
+
+    const initLocation = getLocation(this.base)
+    window.addEventListener('popstate', e => {
+      const current = this.current
+
+      // Avoiding first `popstate` event dispatched in some browsers but first
+      // history route not updated since async guard at the same time.
+      // 避免在有的浏览器中第一次加载路由就会触发 `popstate` 事件
+      const location = getLocation(this.base)
+      if (this.current === START && location === initLocation) {
+        return
+      }
+
+      // 执行跳转动作
+      this.transitionTo(location, route => {
+        if (supportsScroll) {
+          handleScroll(router, route, current, true)
+        }
+      })
+    })
+  }
+}
+```
+
+在这种模式下，初始化作的工作相比 hash 模式少了很多，只是调用基类构造函数以及初始化监听事件
 
 ## 8、vuex

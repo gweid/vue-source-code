@@ -7,6 +7,7 @@ import { START } from '../util/route'
 import { setupScroll, handleScroll } from '../util/scroll'
 import { pushState, replaceState, supportsPushState } from '../util/push-state'
 
+// 这种模式下，初始化作的工作相比 hash 模式少了很多，只是调用基类构造函数以及初始化监听事件，不需要再做额外的工作
 export class HTML5History extends History {
   constructor (router: Router, base: ?string) {
     super(router, base)
@@ -24,11 +25,13 @@ export class HTML5History extends History {
 
       // Avoiding first `popstate` event dispatched in some browsers but first
       // history route not updated since async guard at the same time.
+      // 避免在有的浏览器中第一次加载路由就会触发 `popstate` 事件
       const location = getLocation(this.base)
       if (this.current === START && location === initLocation) {
         return
       }
 
+      // 执行跳转动作
       this.transitionTo(location, route => {
         if (supportsScroll) {
           handleScroll(router, route, current, true)
