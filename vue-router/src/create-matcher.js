@@ -24,18 +24,22 @@ export function createMatcher (
   }
 
   function match (
-    raw: RawLocation,
-    currentRoute?: Route,
-    redirectedFrom?: Location
+    raw: RawLocation, // 目标 url
+    currentRoute?: Route, // 当前 url 对应的 route 对象
+    redirectedFrom?: Location // 重定向
   ): Route {
+    // 解析当前 url，得到 hash、path、query 和 name 等信息
     const location = normalizeLocation(raw, currentRoute, false, router)
     const { name } = location
 
+    // 如果是命名路由
     if (name) {
+      // 获取路由记录
       const record = nameMap[name]
       if (process.env.NODE_ENV !== 'production') {
         warn(record, `Route with name '${name}' does not exist`)
       }
+      // 不存在记录，返回
       if (!record) return _createRoute(null, location)
       const paramNames = record.regex.keys
         .filter(key => !key.optional)
@@ -45,6 +49,7 @@ export function createMatcher (
         location.params = {}
       }
 
+      // 复制 currentRoute.params 到 location.params
       if (currentRoute && typeof currentRoute.params === 'object') {
         for (const key in currentRoute.params) {
           if (!(key in location.params) && paramNames.indexOf(key) > -1) {
@@ -56,7 +61,9 @@ export function createMatcher (
       location.path = fillParams(record.path, location.params, `named route "${name}"`)
       return _createRoute(record, location, redirectedFrom)
     } else if (location.path) {
+      // 不是命名路由
       location.params = {}
+      // 这里会遍历 pathList，找到合适的 record，因此命名路由的 record 查找效率更高
       for (let i = 0; i < pathList.length; i++) {
         const path = pathList[i]
         const record = pathMap[path]
@@ -66,6 +73,7 @@ export function createMatcher (
       }
     }
     // no match
+    // 没有匹配到的情况
     return _createRoute(null, location)
   }
 
@@ -150,6 +158,7 @@ export function createMatcher (
     return _createRoute(null, location)
   }
 
+  // _createRoute 根据 RouteRecord 执行相关的路由操作，最后返回Route对象
   function _createRoute (
     record: ?RouteRecord,
     location: Location,

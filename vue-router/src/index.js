@@ -87,6 +87,7 @@ export default class VueRouter {
     current?: Route,
     redirectedFrom?: Location
   ): Route {
+    // this.mather.match 最终返回的就是 Route 对象，这个在 create-matcher.js 中定义
     return this.matcher.match(raw, current, redirectedFrom)
   }
 
@@ -117,16 +118,17 @@ export default class VueRouter {
 
     // main app previously initialized
     // return as we don't need to set up new history listener
+    // 不会多次执行
     if (this.app) {
       return
     }
 
-    // // 在 VueRouter 上挂载app属性
+    // 在 VueRouter 上挂载app属性
     this.app = app
 
     const history = this.history
 
-    // // transitionTo 是进行路由导航的函数
+    // transitionTo 是进行路由导航的函数
     if (history instanceof HTML5History) {
       // history 模式
       history.transitionTo(history.getCurrentLocation())

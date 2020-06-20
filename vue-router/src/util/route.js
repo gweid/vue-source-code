@@ -18,6 +18,7 @@ export function createRoute (
     query = clone(query)
   } catch (e) {}
 
+  // 路由的信息
   const route: Route = {
     name: location.name || (record && record.name),
     meta: (record && record.meta) || {},
@@ -31,6 +32,7 @@ export function createRoute (
   if (redirectedFrom) {
     route.redirectedFrom = getFullPath(redirectedFrom, stringifyQuery)
   }
+  // 通过 Object.freeze 定义的只读对象 route
   return Object.freeze(route)
 }
 

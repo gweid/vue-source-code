@@ -35,6 +35,10 @@ export class History {
     this.router = router
     this.base = normalizeBase(base)
     // start with a route object that stands for "nowhere"
+    // START 是 通过 createRoute 创建出来的
+    // export const START = createRoute(null, {
+    //   path: '/'
+    // })
     this.current = START
     this.pending = null
     this.ready = false
@@ -62,16 +66,22 @@ export class History {
     this.errorCbs.push(errorCb)
   }
 
+  // 主要就是路径切换
   transitionTo (
     location: RawLocation,
     onComplete?: Function,
     onAbort?: Function
   ) {
+    // 先定义 route 变量
+    // location 代表当前 hash 路径
+    // this.current = START， START 由 createRoute 创建出来的路由信息对象 route
     const route = this.router.match(location, this.current)
+    // 调用 this.confirmTransition，执行路由转换动作
     this.confirmTransition(
       route,
       () => {
-        this.updateRoute(route)
+        // ...跳转完成
+        this.updateRoute(route) // 更新 route
         onComplete && onComplete(route)
         this.ensureURL()
 
@@ -98,7 +108,9 @@ export class History {
   }
 
   confirmTransition (route: Route, onComplete: Function, onAbort?: Function) {
+    // this.current 由 createRoute 创建出来的路由信息对象 route
     const current = this.current
+    // 定义中断处理
     const abort = err => {
       // after merging https://github.com/vuejs/vue-router/pull/2771 we
       // When the user navigates through history through back/forward buttons
@@ -116,6 +128,8 @@ export class History {
       }
       onAbort && onAbort(err)
     }
+    // 同路由且 matched.length 相同
+    // matched: 是匹配到的路由记录的合集
     if (
       isSameRoute(route, current) &&
       // in the case the route map has been dynamically appended to
@@ -130,16 +144,22 @@ export class History {
       route.matched
     )
 
+    // 路由切换周期钩子队列
     const queue: Array<?NavigationGuard> = [].concat(
       // in-component leave guards
+       // 得到即将被销毁组件的 beforeRouteLeave 钩子函数
       extractLeaveGuards(deactivated),
       // global before hooks
+      // 全局 router before hooks
       this.router.beforeHooks,
       // in-component update hooks
+      // 得到组件 updated 钩子
       extractUpdateHooks(updated),
       // in-config enter guards
+      // 将要更新的路由的 beforeEnter 钩子
       activated.map(m => m.beforeEnter),
       // async components
+      // 异步组件
       resolveAsyncComponents(activated)
     )
 
@@ -176,6 +196,7 @@ export class History {
       }
     }
 
+    // 执行队列里的钩子
     runQueue(queue, iterator, () => {
       const postEnterCbs = []
       const isValid = () => this.current === route

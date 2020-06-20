@@ -113,17 +113,20 @@ function checkFallback (base) {
 
 // 保证 hash 是 / 开头
 function ensureSlash (): boolean {
+  // 拿到 hash 值
   const path = getHash()
+  // 以 / 开头，返回 true
   if (path.charAt(0) === '/') {
     return true
   }
+  // 替换成以 / 开头
   replaceHash('/' + path)
   return false
 }
 
 export function getHash (): string {
-  // We can't use window.location.hash here because it's not
-  // consistent across browsers - Firefox will pre-decode it!
+  // 因为兼容性问题 这里没有直接使用 window.location.hash
+  // 因为 Firefox decode hash 值
   let href = window.location.href
   const index = href.indexOf('#')
   // empty path
