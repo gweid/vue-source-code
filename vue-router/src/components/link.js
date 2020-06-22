@@ -18,6 +18,7 @@ export default {
       type: toTypes,
       required: true
     },
+    // 默认标签名
     tag: {
       type: String,
       default: 'a'
@@ -31,11 +32,13 @@ export default {
       type: String,
       default: 'page'
     },
+    // 默认绑定的事件
     event: {
       type: eventTypes,
       default: 'click'
     }
   },
+  // 默认创建一个 a 标签，同时为 a 标签绑定 click 事件
   render (h: Function) {
     const router = this.$router
     const current = this.$route
@@ -73,6 +76,7 @@ export default {
 
     const ariaCurrentValue = classes[exactActiveClass] ? this.ariaCurrentValue : null
 
+    // 声明式导航其实真正还是调用 router.replace 或者 router.push 来完成
     const handler = e => {
       if (guardEvent(e)) {
         if (this.replace) {
@@ -162,19 +166,25 @@ export default {
   }
 }
 
+// 主要是对是否跳转做了判断
 function guardEvent (e) {
   // don't redirect with control keys
+  // 忽略带有功能键的点击
   if (e.metaKey || e.altKey || e.ctrlKey || e.shiftKey) return
   // don't redirect when preventDefault called
+  // 调用 preventDefault 时不重定向
   if (e.defaultPrevented) return
   // don't redirect on right click
+  // 忽略右击
   if (e.button !== undefined && e.button !== 0) return
   // don't redirect if `target="_blank"`
+  // 如果 `target="_blank"` 也不进行
   if (e.currentTarget && e.currentTarget.getAttribute) {
     const target = e.currentTarget.getAttribute('target')
     if (/\b_blank\b/i.test(target)) return
   }
   // this may be a Weex event which doesn't have this method
+  // 判断是否存在 `e.preventDefault`，在 weex 中没有这个方法
   if (e.preventDefault) {
     e.preventDefault()
   }

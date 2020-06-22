@@ -47,12 +47,12 @@ export function install (Vue) {
     }
   })
 
-  // 定义了原型上的 $router 实例
+  // 定义了原型上的 $router 实例，并进行响应式监听
   Object.defineProperty(Vue.prototype, '$router', {
     get () { return this._routerRoot._router }
   })
 
-  // // 定义了原型上的 $route 参数
+  // 定义了原型上的 $route 参数, 并进行响应式监听
   Object.defineProperty(Vue.prototype, '$route', {
     get () { return this._routerRoot._route }
   })

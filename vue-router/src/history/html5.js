@@ -47,6 +47,7 @@ export class HTML5History extends History {
   push (location: RawLocation, onComplete?: Function, onAbort?: Function) {
     const { current: fromRoute } = this
     this.transitionTo(location, route => {
+      // pushState 这里主要就是 history 的 replaceState 和 pushState
       pushState(cleanPath(this.base + route.fullPath))
       handleScroll(this.router, route, fromRoute, false)
       onComplete && onComplete(route)

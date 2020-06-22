@@ -61,6 +61,7 @@ export class HashHistory extends History {
     this.transitionTo(
       location,
       route => {
+        // pushHash 主要就是对 location.hash
         pushHash(route.fullPath)
         handleScroll(this.router, route, fromRoute, false)
         onComplete && onComplete(route)
@@ -156,6 +157,7 @@ function getUrl (path) {
   return `${base}#${path}`
 }
 
+// location.hash
 function pushHash (path) {
   if (supportsPushState) {
     pushState(getUrl(path))

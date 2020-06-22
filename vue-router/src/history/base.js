@@ -47,6 +47,7 @@ export class History {
     this.errorCbs = []
   }
 
+  // 绑定路由 route 参数 更新回调函数
   listen (cb: Function) {
     this.cb = cb
   }
@@ -224,6 +225,7 @@ export class History {
   updateRoute (route: Route) {
     const prev = this.current
     this.current = route
+    // 执行路由参数 route 更新
     this.cb && this.cb(route)
     this.router.afterHooks.forEach(hook => {
       hook && hook(route, prev)

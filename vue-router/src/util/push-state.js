@@ -32,8 +32,10 @@ export function pushState (url?: string, replace?: boolean) {
       // preserve existing history state as it could be overriden by the user
       const stateCopy = extend({}, history.state)
       stateCopy.key = getStateKey()
+      // replaceState
       history.replaceState(stateCopy, '', url)
     } else {
+      // pushState
       history.pushState({ key: setStateKey(genStateKey()) }, '', url)
     }
   } catch (e) {
