@@ -2,6 +2,7 @@ export default function (Vue) {
   const version = Number(Vue.version.split('.')[0])
 
   if (version >= 2) {
+    // 通过在每一个组件的 beforeCreate 生命周期混入 vuexInit， vuexInit 就是使每个 Vue 的实例对象，都有一个 $store 属性
     Vue.mixin({
       beforeCreate: vuexInit
     })
