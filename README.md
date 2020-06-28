@@ -2239,7 +2239,7 @@ export function defineComputed(
   key: string,
   userDef: Object | Function
 ) {
-  // 不是服务端渲染，代表需要缓存， shouldCache = true
+  // 不是服务端渲染，就应该缓存
   const shouldCache = !isServerRendering()
   if (typeof userDef === 'function') {
     sharedPropertyDefinition.get = shouldCache ?
@@ -2247,6 +2247,7 @@ export function defineComputed(
       createGetterInvoker(userDef)
     sharedPropertyDefinition.set = noop
   } else {
+    // 如果 computed 是一个对象，那么必须要有 get 方法
     sharedPropertyDefinition.get = userDef.get ?
       shouldCache && userDef.cache !== false ?
       createComputedGetter(key) :
@@ -2283,6 +2284,7 @@ function createComputedGetter(key) {
       if (watcher.dirty) {
         watcher.evaluate()
       }
+      // 进行依赖收集
       if (Dep.target) {
         watcher.depend()
       }
@@ -2469,7 +2471,7 @@ export function stateMixin(Vue: Class < Component > ) {
     options = options || {}
     // options.user 这个是用户定义 watcher 的标志
     options.user = true
-    // 创建一个user watcher，在实例化 user watcher 的时候会执行一次 getter 求值，这时，user watcher 会作为依赖被数据所收集
+    // 创建一个 user watcher，在实例化 user watcher 的时候会执行一次 getter 求值，这时，user watcher 会作为依赖被数据所收集
     const watcher = new Watcher(vm, expOrFn, cb, options)
     // 如果有 immediate，立即执行回调函数
     if (options.immediate) {
@@ -2487,7 +2489,7 @@ export function stateMixin(Vue: Class < Component > ) {
 ```
 
 -   options.user = true：表示为用户定义的 watch 的 watcher
--   new Watcher(vm, expOrFn, cb, options)：创建一个 user watcher，在实例化 watcher 的时候，会执行 watcher.getter 对 vm.xxx 进行取值，并让 vm.xxx 的 dep 收集当前的用户 watcher
+-   new Watcher(vm, expOrFn, cb, options)：创建一个用户 watcher，在实例化 watcher 的时候，会执行 watcher.getter 对 vm.xxx 进行取值，并让 vm.xxx 的 dep 收集当前的用户 watcher
 
 ```
 export default class Watcher {
