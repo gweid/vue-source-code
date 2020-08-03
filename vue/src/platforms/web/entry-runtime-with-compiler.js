@@ -70,7 +70,7 @@ Vue.prototype.$mount = function (
         mark('compile')
       }
     
-      // compileToFunctions 执行编译
+      // compileToFunctions 执行编译的函数
       const { render, staticRenderFns } = compileToFunctions(template, {
         outputSourceRange: process.env.NODE_ENV !== 'production',
         shouldDecodeNewlines,
