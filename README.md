@@ -1,5 +1,9 @@
 # Vue 源码阅读
 
+**先是整体流程：**
+
+![vue入口到构造函数整体流程](/imgs/img19.png)
+
 ![vue](/imgs/img0.png)
 
 ## initGlobalAPI
