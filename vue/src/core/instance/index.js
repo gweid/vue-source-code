@@ -6,6 +6,8 @@ import { lifecycleMixin } from './lifecycle'
 import { warn } from '../util/index'
 
 // Vue 本质： 实际就是一个 Function 实现的类
+// 通过 new Vue({ el: '#app', data: { msg: 'Hello Vue' } }]) // 初始化
+// options 就是 new Vue 时传进来的参数
 function Vue (options) {
   if (process.env.NODE_ENV !== 'production' &&
     !(this instanceof Vue)
@@ -25,7 +27,7 @@ function Vue (options) {
 
 // 这些函数以 Vue 为参数传入，主要就是给 Vue 的原型 prototype 上扩展方法 
 // 思想：把 Vue 原型挂载不同方法拆分成不同文件去实现，使代码层次分明
-initMixin(Vue)        // 添加了 Vue.prototype._init, 初始化 Vue
+initMixin(Vue)        // 定义了 Vue.prototype._init, 初始化 Vue
 stateMixin(Vue)       // Vue.prototype.$set Vue.prototype.$watch 等
 eventsMixin(Vue)      // 添加了 eventBus 相关的
 lifecycleMixin(Vue)   // 添加了与生命周期相关的
