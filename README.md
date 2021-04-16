@@ -1,6 +1,64 @@
 # Vue 源码阅读
 
-**先是整体流程：**
+当前阅读的 vue 版本 2.6.11
+
+
+
+**调试方式：**
+
+1. 把 vue 源码 clone 下来，cd 进 vue 源码目录，然后 npm i 装包
+
+2. 打开 package.json 文件，修改如下：
+   ```js
+   {
+     "scripts": {
+       "dev": "rollup -w -c scripts/config.js --sourcemap --environment TARGET:web-full-dev"
+     }
+   }
+   ```
+   就是在原来的基础上加 `--sourcemap`，这样可以在浏览器调试的时候找到对应的源码目录
+   
+3. 执行 `npm run dev`，会在 `dist` 目录下生成打包后的 `vue` 文件
+
+4. 在 example 目录下新建 test.html 文件如下：
+   ```js
+   <!DOCTYPE html>
+   <html lang="en">
+   <head>
+     <meta charset="UTF-8">
+     <meta http-equiv="X-UA-Compatible" content="IE=edge">
+     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+     <title>Vue源码试</title>
+   </head>
+   <body>
+     <div id="app">
+       <div>{{msg}}</div>
+     </div>
+
+     <script src="../dist/vue.js"></script>
+     <script>
+       new Vue({
+         el: '#app',
+         data: {
+           msg: 'Hello Vue'
+         }
+       })
+     </script>
+   </body>
+   </html>
+   ```
+   
+5. 浏览器打开 test.html，打上断点
+
+   ![](/imgs/img20.png)
+
+   或者直接在 test.html 中写 debugger，也行
+
+以上就是基本调试流程
+
+
+
+**先是整体流程图：**
 
 ![vue入口到构造函数整体流程](/imgs/img19.png)
 
