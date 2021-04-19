@@ -151,7 +151,7 @@ function initData(vm: Component) {
   let i = keys.length
   while (i--) {
     const key = keys[i]
-    // 循环做一个对比， 是 data 里面定义的属性名不能跟 props 中的一样
+    // 循环做一个对比， 是 data 里面定义的属性名不能跟 props 与 method 中的一样
     if (process.env.NODE_ENV !== 'production') {
       if (methods && hasOwn(methods, key)) {
         warn(
@@ -191,7 +191,7 @@ export function getData(data: Function, vm: Component): any {
   }
 }
 
-// // computed watcher 的标志，lazy 属性为 true
+// computed watcher 的标志，lazy 属性为 true
 const computedWatcherOptions = {
   lazy: true
 }

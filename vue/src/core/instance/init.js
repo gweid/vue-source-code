@@ -13,6 +13,19 @@ import { extend, mergeOptions, formatComponentName } from '../util/index'
 let uid = 0
 
 // Vue 初始化阶段，往 Vue 原型上添加 _init 方法，new Vue 实际上就是执行的这个 _init 方法
+/**
+ * 总结：vue 初始化（new Vue）阶段干了什么：
+ *   1、用户传入的配置和系统配置的合并
+ *   2、初始化相关属性：$parent、$children、$root、$refs、_watcher、_isMounted 等
+ *   3、初始化事件系统，就是 v-on 或者 @ 定义的事件
+ *   4、解析插槽
+ *   5、挂载 beforeCreate 生命周期
+ *   6、初始化组件的 inject 注入配置项
+ *   7、构建响应式系统（props、methods、data、computed、watch）
+ *   8、解析组件配置项上的 provide 对象
+ *   9、挂载 create 生命周期
+ *   10、最后调用 $mount 进行页面挂载
+ */
 export function initMixin (Vue: Class<Component>) {
   Vue.prototype._init = function (options?: Object) {
     // 将 this（实际上就是 Vue） 赋值给 vm
@@ -37,7 +50,7 @@ export function initMixin (Vue: Class<Component>) {
        */
       initInternalComponent(vm, options)
     } else {
-      // new Vue 时的配置合并
+      // new Vue 时的配置合并（new Vue 传入的是用户配置，需要和系统配置合并）
       // 进行 options 的合并,并挂载到 Vue.$options 上，那么 $options.data 可以访问到 data
       vm.$options = mergeOptions(
         resolveConstructorOptions(vm.constructor),
@@ -58,27 +71,40 @@ export function initMixin (Vue: Class<Component>) {
     // 初始化组件实例关系属性，比如 $parent、$children、$root、$refs、_watcher、_isMounted 等等
     initLifecycle(vm)
 
-    // 初始化自定义事件，例如：@click
+    // 初始化事件系统，例如 v-on 或者 @ 定义的事件
     initEvents(vm)
 
     // 解析插槽 slot，得到 vm.$slot
-    // 处理渲染函数，得到 vm.$createElement 方法，即 h 函数
+    // 定义了 vm._c 方法，用于处理 template 模式
+    // 定义了 vm.$createElement，用于处理手写 render 模式
+    // 无论是 vm._c 还是 vm.$createElement 最终都会调用 createElement 方法
     // 将 vm.$attrs、vm.$listeners 转换为响应式
     initRender(vm)
 
     // 调用 beforeCreate 生命周期钩子
+    // beforeCreate 之前三个处理都和数据无关
+    // 在 beforeCreate 生命周期中只能访问上面三个操作相关的内容
+    // 当前周期中是没有数据的，所以在此期间不要做数据操作
     callHook(vm, 'beforeCreate')
     
-    // 初始化组件的 inject 配置项
+    // 初始化组件的 inject 注入配置项（处理注入祖辈传递下来的数据）
+    // inject 是需要和 provide 配合使用的
+    // 父组件通过 provide 提供数据，其他组价可以使用 inject 注入数据
     initInjections(vm) // resolve injections before data/props  在 data/props 之前解决注入
 
-    // 构建响应式系统，处理 props、methods、data、computed、watch 的响应式问题
+    // 初始化 state, props, methods, computed, watch
+    // 其中初始化state, props, methods时，会遍历 data 中所有的 key，检测是否在 props，methods 重复定义
+    // props变量有多种写法，vue会进行统一转化，转化成{ a: {type: "xx", default: 'xx'} } 形式
+    // 将 data, props 都挂载到vm._data, vm._props上。设置访问数据代理，访问this.xx，实际上访问的是 vm._data[xx], vm._props[xx]
+    // 给 _data, _props 添加响应式监听
     initState(vm)
 
     // 解析组件配置项上的 provide 对象，再挂载一份到 vm._provided 属性上（原本在 vm.$options.provide 上）
     initProvide(vm) // resolve provide after data/props
 
     // 调用 create 生命周期钩子
+    // 在 beforeCreate 和 create 之间做了一系列的数据处理
+    // 所以在 create 生命周期可以访问到数据
     callHook(vm, 'created')
 
     /* istanbul ignore if */

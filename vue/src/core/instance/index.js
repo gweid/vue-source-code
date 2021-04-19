@@ -27,10 +27,22 @@ function Vue (options) {
 
 // 这些函数以 Vue 为参数传入，主要就是给 Vue 的原型 prototype 上扩展方法 
 // 思想：把 Vue 原型挂载不同方法拆分成不同文件去实现，使代码层次分明
-initMixin(Vue)        // 定义了 Vue.prototype._init, 初始化 Vue
-stateMixin(Vue)       // Vue.prototype.$set Vue.prototype.$watch 等
-eventsMixin(Vue)      // 添加了 eventBus 相关的
+
+// 定义了 Vue.prototype._init, 初始化 Vue，实际上 new Vue 就是执行的这个方法
+initMixin(Vue)
+
+// Vue.prototype.$set Vue.prototype.$watch 等
+stateMixin(Vue)
+
+// 在 Vue 原型上，定义 $on, $once, $off, $emit 事件方法，并返回 vm
+eventsMixin(Vue)
+
+// 在 Vue.prototype 上定义 _update, $forceUpdate, $destroy 方法
 lifecycleMixin(Vue)   // 添加了与生命周期相关的
-renderMixin(Vue)      // render、nextTick... 
+
+// 在 Vue 原型上，定义 $nextTick 方法
+// Vue原型上，定义 _render 方法，
+// _render方法会调用 vm.$createElement 创建虚拟 DOM，如果返回值 vnode 不是虚拟 DOM 类型，将创建一个空的虚拟 DOM
+renderMixin(Vue)
 
 export default Vue
