@@ -74,15 +74,9 @@
 initGlobalAPI(Vue)
 ```
 
-## 1、Vue 首次渲染流程
-
-首次渲染流程：_init --> \$mount --> compile/render --> VNode(render) --> patch --> DOM
 
 
-
-![Vue数据驱动](/imgs/img17.png)
-
-### 1-1、new Vue() 发生了什么
+## new Vue() 发生了什么
 
 new Vue 就是执行了 Vue 的初始化
 
@@ -241,13 +235,30 @@ new Vue 就是执行了 Vue 的初始化
   - 挂载 create 生命周期
   - 最后调用 $mount 进行页面挂载
 
-  
 
-### 1-2、\$mount 的挂载
+
+## 1、Vue 渲染流程
+
+首次渲染流程： \$mount --> compile/render --> VNode(render) --> patch --> DOM
+
+
+
+![Vue数据驱动](/imgs/img17.png)
+
+总结就是：
+
+1. 确认挂载节点
+2. 判断是使用的 template 还是手动 render，如果是 template，需要将 template 转换为 render 函数
+3. 根据 render 函数创建虚拟 DOM
+4. 对比新旧虚拟 DOM
+5. 根据虚拟 DOM 生成真实 DOM
+6. 渲染到页面
+
+
 
 ![$mount](/imgs/img6.png)
 
-
+### 1-1、\$mount 的定义
 
 目前分在 web 平台，所以定义 $mount 的地方有两个
 
@@ -257,11 +268,11 @@ new Vue 就是执行了 Vue 的初始化
 
 
 
-#### 1-2-1、最先的 Vue.prototype.\$mount
-
-> src/platform/web/runtime/index.js
+#### 1-1-1、最先的 Vue.prototype.\$mount
 
 ```
+// src/platform/web/runtime/index.js
+
 Vue.prototype.$mount = function (
   el?: string | Element,
   hydrating?: boolean
@@ -278,21 +289,24 @@ Vue.prototype.$mount = function (
 
 
 
-#### 1-2-2、重新定义 Vue.prototype.\$mount,会做一些处理：
-
-> src/platform/web/entry-runtime-with-compiler.js
+#### 1-1-2、重新定义 Vue.prototype.\$mount
 
 -   先是缓存了原型上的 \$mount 方法（原型的 $mount 就是 `src/platform/web/runtime/index.js` 这里定义的），再重新定义该方法
 -   获取挂载元素，并且挂载元素不能为根节点 html、body 之类的，因为会覆盖
--   判断需不需要编译，因为渲染有的是通过 template 的，有的是通过手写 render 函数，template 的需要编译
+-   判断需不需要编译，因为渲染有的是通过 template 的，有的是通过手写 render 函数，template 的需要编译，调用compileToFunctions方法，返回 render 函数
 -   最后调用缓存的 mount，缓存的 mount 中会执行 mountComponent
 
 ```
+// src/platform/web/entry-runtime-with-compiler.js
+
 const mount = Vue.prototype.$mount
 
 // 重新定义 $mount,为包含编译器和不包含编译器的版本提供不同封装，最终调用的是缓存原型上的 $mount 方法
 Vue.prototype.$mount = function (el, hydrating) {
   // 获取挂载元素
+  // 通过 query 将 el 转化为 dom 对象
+  // 这里的 el 可能是 string 类型，也可能是 element 类型
+  // 如果是 string，那么通过 document.query(el) 转换为 element
   el = el && query(el);
 
   // 挂载元素不能为根节点 html、body 之类的，因为会覆盖
@@ -309,6 +323,16 @@ Vue.prototype.$mount = function (el, hydrating) {
   // 没有 render，代表的是 template 模式，就编译 template，转化为 render 函数，再调用 mount
   if (!options.render) {
     if (template) {
+       if (typeof template === 'string') {
+         // 如果 template 是 '#xxx'，那么根据 id 选择器获取 template 内容
+         ...
+       } else if () {
+         // 如果 tempalte 是一个 nodeType，那么通过 template.innerHTML 得到 template
+         ...
+       }
+    }
+    
+    if(template) {
       // compileToFunctions 执行编译的函数（将 template 转化为 render）
       // compileToFunctions 方法会返回render函数方法，render 方法会保存到 vm.$options 下面
       const { render, staticRenderFns } = compileToFunctions(template, {...})
@@ -322,25 +346,90 @@ Vue.prototype.$mount = function (el, hydrating) {
 }
 ```
 
-**\$mount 主要是执行了 mountComponent, 其核心就是先调用 vm.\_render 方法先生成 VNode，再实例化一个渲染 Watcher ，在它的回调函数中会调用 updateComponent 方法，最终调用 vm.\_update 转化为真实的 DOM**
+> 对于调用 compileToFunctions 转换 template 为 render 函数的编译过程，这里暂时先不展开，后面再详细说明编译流程
+
+
+
+### 1-2、执行 \$mount
+
+\$mount 主要是执行了 mountComponent，主要的作用：
+
+- 定义 updateComponent 方法，在 watcher 回调时调用
+- updateComponent 中：实例化一个渲染 Watcher，在实例化Watcher 的过程会调用 updateComponent 函数：
+  - updateComponent  中先调用 vm.\_render 方法先生成 VNode
+  - 然后 vm.\_update 转化为真实的 DOM
 
 **Watcher 在这里起到两个作用，一个是初始化的时候会执行回调函数，另一个是当 vm 实例中的监测的数据发生变化的时候执行回调函数**
 
 ```
-// lifecycle.js
+// vue\src\core\instance\lifecycle.js
 
 function mountComponent(vm, el, hydrating) {
+  // 首先将 el 做缓存 
+  vm.$el = el
+  
+  // 挂载 beforeMount 生命周期钩子
+  callHook(vm, 'beforeMount')
+
   // 定义 updateComponent 方法，在 watcher 回调时调用。
   updateComponent = function () {
-    // render 函数渲染成虚拟 DOM， 虚拟 DOM 渲染成真实的 DOM
+    // vm._render 函数渲染成虚拟 DOM， vm._update 将虚拟 DOM 渲染成真实的 DOM
     vm._update(vm._render(), hydrating);
   };
-  // 实例化渲染 watcher
-  new Watcher(vm, updateComponent, noop, {})
+	
+  /**
+   * vm 当前实例
+   * updateComponent 函数
+   * noop 这里指空函数    在 util/index 中
+   * {} 配置
+   * 魔法注释：isRenderWatcher 标记是否渲染 watcher
+   */
+  // new Watcher 会执行 Watch 的构造函数 Constructor
+  // Constructor 中会调用 Watcher.get 去执行 updateComponent
+  // Watcher 在这个有2个作用： 
+  //   1、初始化的时候会执行回调函数updateComponent(首次渲染) 
+  //   2、当 vm 实例中的监测的数据发生变化的时候执行回调函数updateComponent(响应式)
+  new Watcher(vm, updateComponent, noop, {...}, true /* isRenderWatcher */)
 }
 ```
 
-#### 
+看看与首次渲染相关的 Watcher 
+
+```js
+export default class Watcher {
+     constructor(vm, expOrFn, cb, options, isRenderWatcher) {
+         // ...
+         if (typeof expOrFn === "function") {
+            // expOrFn 实际就是 new Watcher 传进来的 updateComponent
+            // 将 expOrFn（updateComponent）赋值给 this.getter
+            this.getter = expOrFn;
+         } else { ... }
+
+         // 如果是 lazy 代表的是 computed
+         // 不是 computed，执行 this.get()
+         this.value = this.lazy ? undefined : this.get();
+     }
+
+     get() {
+         value = this.getter.call(vm, vm);
+
+         return value;
+     }
+}
+```
+
+总结：
+
+- 首先将 el 做缓存 
+- 挂载 beforeMount 生命周期钩子
+- 定义 updateComponent 方法，在 watcher 回调时调用
+  - vm._render() 生成虚拟 DOM
+  - vm._update 将虚拟 DOM 转换为真实 DOM
+- new Watcher 创建渲染 watcher，这个 watcher 在这个有2个作用：
+  - 初始化的时候会执行回调函数updateComponent(首次渲染) 
+  - 当 vm 实例中的监测的数据发生变化的时候执行回调函数updateComponent(响应式)
+
+
 
 ### 1-3、updateComponent 渲染 DOM 流程
 
@@ -1076,7 +1165,7 @@ function updateChildren(parentElm, oldCh, newCh) {
 -   3、generate
     -   把 parse 生成的 AST 语法树转换为渲染函数 render function
 
-#### 1-3-1、编译的入口
+#### 2-3-1、编译的入口
 
 在 entry-runtime-with-compiler.js 中的 \$mount 过程，如果发现没有 render 函数，那么会启动编译流程把模板编译成 render 函数, 而 compileToFunctions 就是编译的入口
 
@@ -1185,11 +1274,11 @@ export const createCompiler = createCompilerCreator(function baseCompile (
 
 **总结：实际上进行的编译三部曲是通过 baseCompile 这个参数函数中的 parse、optimize、generate 执行**
 
-#### 1-3-2、parse：使用正则解释 template 编译成 AST 语法树
+#### 2-3-2、parse：使用正则解释 template 编译成 AST 语法树
 
-#### 1-3-3、optimize：标记一些静态节点，用于优化，在 diff 比较的时候略过
+#### 2-3-3、optimize：标记一些静态节点，用于优化，在 diff 比较的时候略过
 
-#### 1-3-4、generate：把 parse 生成的 AST 语法树转换为渲染函数 render function
+#### 2-3-4、generate：把 parse 生成的 AST 语法树转换为渲染函数 render function
 
 
 

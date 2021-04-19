@@ -22,9 +22,10 @@ Vue.prototype.$mount = function (
   el?: string | Element,
   hydrating?: boolean
 ): Component {
+  // 获取挂载元素
   // 通过 query 将 el 转化为 dom 对象
   // 这里的 el 可能是 string 类型，也可能是 element 类型
-  // query 对 el 进行转换，如果是 string，那么通过 document.query(el) 转换为 element
+  // 如果是 string，那么通过 document.query(el) 转换为 element
   el = el && query(el)
 
   /* istanbul ignore if */
@@ -44,8 +45,9 @@ Vue.prototype.$mount = function (
   if (!options.render) {
     // 没有 render 函数
     let template = options.template
-    // 判断有没有 template
+
     if (template) {
+      // 如果 template 是 '#xxx'，那么根据 id 选择器获取 template 内容
       if (typeof template === 'string') {
         if (template.charAt(0) === '#') {
           template = idToTemplate(template)
@@ -58,7 +60,7 @@ Vue.prototype.$mount = function (
           }
         }
       } else if (template.nodeType) {
-        // tempalte 是一个 Dom
+        // 如果 tempalte 是一个 nodeType，那么通过 template.innerHTML 得到 template
         template = template.innerHTML
       } else {
         if (process.env.NODE_ENV !== 'production') {
@@ -85,6 +87,7 @@ Vue.prototype.$mount = function (
         comments: options.comments
       }, this)
 
+      // render 方法保存到 options 中
       options.render = render
       options.staticRenderFns = staticRenderFns
 

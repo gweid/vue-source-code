@@ -76,7 +76,8 @@ export default class Watcher {
       process.env.NODE_ENV !== "production" ? expOrFn.toString() : "";
     // parse expression for getter
     if (typeof expOrFn === "function") {
-      // expOrFn 实际就是 updateComponent
+      // expOrFn 实际就是 new Watcher 传进来的 updateComponent
+      // 将 expOrFn（updateComponent）赋值给 this.getter
       this.getter = expOrFn;
     } else {
       this.getter = parsePath(expOrFn);
@@ -92,6 +93,7 @@ export default class Watcher {
       }
     }
     // 如果是 lazy 代表的是 computed
+    // 不是 computed，执行 this.get()
     this.value = this.lazy ? undefined : this.get();
   }
 
@@ -104,6 +106,7 @@ export default class Watcher {
     let value;
     const vm = this.vm;
     try {
+      // 执行 this.getter（this.getter 就是 new Watcher 传进来 updateComponent 函数）
       value = this.getter.call(vm, vm);
     } catch (e) {
       if (this.user) {

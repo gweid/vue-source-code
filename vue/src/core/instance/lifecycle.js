@@ -177,6 +177,8 @@ export function mountComponent (
       }
     }
   }
+
+  // 挂载 beforeMount 生命周期钩子
   callHook(vm, 'beforeMount')
 
   let updateComponent
@@ -199,7 +201,9 @@ export function mountComponent (
       measure(`vue ${name} patch`, startTag, endTag)
     }
   } else {
+    // 定义 updateComponent 函数作为 Watcher 的回调函数
     updateComponent = () => {
+      // vm._render 函数渲染成虚拟 DOM， vm._update 将虚拟 DOM 渲染成真实的 DOM
       vm._update(vm._render(), hydrating)
     }
   }
@@ -210,10 +214,15 @@ export function mountComponent (
   /**
    * vm 当前实例
    * updateComponent 函数
-   * noop 这里指空函数    在 util/index 中
+   * noop 这里指空函数    在 util/index 中定义
    * {} 配置
-   * isRenderWatcher  是否渲染 watcher
+   * 魔法注释：isRenderWatcher 标记是否渲染 watcher
    */
+  // new Watcher 会执行 Watcher 的构造函数 Constructor
+  // Constructor 中会调用 Watcher.get 去执行 updateComponent
+  // Watcher 在这个有2个作用： 
+  //   1、初始化的时候会执行回调函数(首次渲染) 
+  //   2、当 vm 实例中的监测的数据发生变化的时候执行回调函数(响应式)
   new Watcher(vm, updateComponent, noop, {
     before () {
       if (vm._isMounted && !vm._isDestroyed) {
@@ -223,11 +232,9 @@ export function mountComponent (
   }, true /* isRenderWatcher */)
   hydrating = false
 
-  // manually mounted instance, call mounted on self
-  // mounted is called for render-created child components in its inserted hook
   // vm.$vnode 表示 Vue 实例的父虚拟 node，为 null 则表示 当前是根 Vue 实例
   // 设置 vm._isMounted 为 true，表示该实例已经挂载
-  // 最后调用 mounted 钩子函数
+  // 最后调用 mounted 生命周期钩子函数
   if (vm.$vnode == null) {
     vm._isMounted = true
     callHook(vm, 'mounted')
