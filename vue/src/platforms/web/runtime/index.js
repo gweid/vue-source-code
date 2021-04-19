@@ -39,7 +39,9 @@ Vue.prototype.$mount = function (
   el?: string | Element,
   hydrating?: boolean
 ): Component {
+  // 判断 el 有没有存在以及是不是浏览器环境，两个条件都符合，那么就会通过 query 查找到元素
   el = el && inBrowser ? query(el) : undefined
+  // 调用 mountComponent 并将结果返回
   return mountComponent(this, el, hydrating)
 }
 

@@ -60,11 +60,15 @@ export function proxy(target: Object, sourceKey: string, key: string) {
 export function initState (vm: Component) {
   vm._watchers = []
   const opts = vm.$options
-  // 初始化 props
+  // 初始化 props，将 props 对象上的每个属性在哪换为响应式，并代理到 vm
   if (opts.props) initProps(vm, opts.props)
-  // 初始化 methods
+
+  // 初始化 methods，校验每个属性的值是否为函数，最后得到 vm[key] = methods[key]
   if (opts.methods) initMethods(vm, opts.methods)
-  // 初始化 data
+
+  // 判断 data 对象上的属性不能和 props、methods 对象上的属性相同
+  // 将 data 代理到 vm 上
+  // 将 data 的每个属性转换为响应式
   if (opts.data) {
     initData(vm)
   } else {

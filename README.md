@@ -66,7 +66,7 @@
 
 ![vue](/imgs/img0.png)
 
-## initGlobalAPI
+## initGlobalAPI 全局 api 
 
 -   挂载 Vue 全局的 api 例如 nextTick set 等
 
@@ -74,9 +74,11 @@
 initGlobalAPI(Vue)
 ```
 
-## 1、Vue 的数据驱动（源码流程: init --> \$mount --> compile/render --> VNode(render) --> patch --> DOM）
+## 1、Vue 首次渲染流程
 
-参考：[Vue 核心流程](https://juejin.im/post/6881597846307635214#heading-8)
+首次渲染流程：_init --> \$mount --> compile/render --> VNode(render) --> patch --> DOM
+
+
 
 ![Vue数据驱动](/imgs/img17.png)
 
@@ -245,7 +247,19 @@ new Vue 就是执行了 Vue 的初始化
 
 ![$mount](/imgs/img6.png)
 
+
+
+目前分在 web 平台，所以定义 $mount 的地方有两个
+
+- src/platform/web/runtime/index.js
+
+- src/platform/web/entry-runtime-with-compiler.js
+
+
+
 #### 1-2-1、最先的 Vue.prototype.\$mount
+
+> src/platform/web/runtime/index.js
 
 ```
 Vue.prototype.$mount = function (
@@ -257,9 +271,18 @@ Vue.prototype.$mount = function (
 }
 ```
 
+这是 $mount 函数最开始定义的地方，里面会做两件事：
+
+- 判断 el 有没有存在以及是不是浏览器环境，两个条件都符合，那么就会通过 query 查找到元素
+- 调用 mountComponent 并将结果返回
+
+
+
 #### 1-2-2、重新定义 Vue.prototype.\$mount,会做一些处理：
 
--   先是缓存了原型上的 \$mount 方法，再重新定义该方法
+> src/platform/web/entry-runtime-with-compiler.js
+
+-   先是缓存了原型上的 \$mount 方法（原型的 $mount 就是 `src/platform/web/runtime/index.js` 这里定义的），再重新定义该方法
 -   获取挂载元素，并且挂载元素不能为根节点 html、body 之类的，因为会覆盖
 -   判断需不需要编译，因为渲染有的是通过 template 的，有的是通过手写 render 函数，template 的需要编译
 -   最后调用缓存的 mount，缓存的 mount 中会执行 mountComponent
@@ -271,6 +294,7 @@ const mount = Vue.prototype.$mount
 Vue.prototype.$mount = function (el, hydrating) {
   // 获取挂载元素
   el = el && query(el);
+
   // 挂载元素不能为根节点 html、body 之类的，因为会覆盖
   if (el === document.body || el === document.documentElement) {
     warn(
@@ -278,12 +302,20 @@ Vue.prototype.$mount = function (el, hydrating) {
     );
     return this
   }
+
   var options = this.$options;
-  // 需要编译 or 不需要编译
-  // render 选项不存在，代表是 template 模板的形式，此时需要进行模板的编译过程
+
+  // 如果有 render 函数，直接执行 mount.call(this, el, hydrating)
+  // 没有 render，代表的是 template 模式，就编译 template，转化为 render 函数，再调用 mount
   if (!options.render) {
-    ···
-    // 使用内部编译器编译模板
+    if (template) {
+      // compileToFunctions 执行编译的函数（将 template 转化为 render）
+      // compileToFunctions 方法会返回render函数方法，render 方法会保存到 vm.$options 下面
+      const { render, staticRenderFns } = compileToFunctions(template, {...})
+
+      options.render = render
+      options.staticRenderFns = staticRenderFns
+    }
   }
   // 无论是 template 模板还是手写 render 函数最终调用缓存的 $mount 方法
   return mount.call(this, el, hydrating)
@@ -308,135 +340,13 @@ function mountComponent(vm, el, hydrating) {
 }
 ```
 
-### 1-3、模板编译 compiler
+#### 
 
--   1、parse
-    -   使用正则解释 template 中的 Vue 指令(v-xxx)变量等，形成 AST 语法树
--   2、optimize
-    -   标记一些静态节点，用于优化，在 diff 比较的时候略过。
--   3、generate
-    -   把 parse 生成的 AST 语法树转换为渲染函数 render function
-
-#### 1-3-1、编译的入口
-
-在 entry-runtime-with-compiler.js 中的 \$mount 过程，如果发现没有 render 函数，那么会启动编译流程把模板编译成 render 函数, 而 compileToFunctions 就是编译的入口
-
-```
-const mount = Vue.prototype.$mount
-// 再重新定义 $mount
-Vue.prototype.$mount = function (){
-  ...
-
-  if (template) {
-    const { render, staticRenderFns } = compileToFunctions(template, {
-      outputSourceRange: process.env.NODE_ENV !== 'production',
-      shouldDecodeNewlines,
-      shouldDecodeNewlinesForHref,
-      delimiters: options.delimiters,
-      comments: options.comments
-    }, this)
-  }
-  // 调用原先原型上的 $mount 方法挂载, 此时实际也是调用重新定义的 mount，这样做主要是为了复用
-  return mount.call(this, el, hydrating)
-}
-```
-
-compileToFunctions 在 platfroms/web/compiler/index 由 compiler/index 的 createCompiler 执行后得到
-
-```
-import { createCompiler } from 'compiler/index'
-
-const { compile, compileToFunctions } = createCompiler(baseOptions)
-
-export { compile, compileToFunctions }
-```
-
-createCompiler 又是由 create-compiler.js 的 createCompilerCreator 得到
-
-```
-export const createCompiler = createCompilerCreator(function baseCompile (){})
-```
-
-createCompilerCreator: const { compile, compileToFunctions } = createCompiler(baseOptions) 可以看出，compile 是 createCompilerCreator 中的 createCompiler 的 compile， 而 compileToFunctions 由 to-function.js 的 createCompileToFunctionFn 得到
-
-```
-export function createCompilerCreator (baseCompile: Function): Function {
-  return function createCompiler (baseOptions: CompilerOptions) {
-
-    function compile () {}
-
-    ...
-
-    return {
-      compile,
-      compileToFunctions: createCompileToFunctionFn(compile)
-    }
-  }
-}
-```
-
-**得到，编译的入口是 to-function.js 的 createCompileToFunctionFn**
-
-to-function.js 的 createCompileToFunctionFn 执行编译的是 compile，这个由参数传进来 compileToFunctions: createCompileToFunctionFn(compile)
-
-而 compile 函数执行的编译函数 baseCompile 也是由参数传进来
-
-```
-// create-compiler.js
-export function createCompilerCreator (baseCompile: Function): Function {
-  return function createCompiler (baseOptions: CompilerOptions) {
-    function compile () {
-
-      // baseCompile 传进来的函数，真正执行编译三步 parse、optimize、generate
-      const compiled = baseCompile(template.trim(), finalOptions)
-    }
-
-    return {
-      compile,
-      compileToFunctions: createCompileToFunctionFn(compile)
-    }
-  }
-}
-```
-
-baseCompile 中执行编译的三步 parse、optimize、generate
-
-```
-// compiler/index.js
-export const createCompiler = createCompilerCreator(function baseCompile (
-  template: string,
-  options: CompilerOptions
-): CompiledResult {
-  // parse 过程，转换为 ast 树
-  const ast = parse(template.trim(), options)
-  // optimize 标记静态节点等优化
-  if (options.optimize !== false) {
-    optimize(ast, options)
-  }
-  // generate:
-  const code = generate(ast, options)
-  return {
-    ast,
-    render: code.render,
-    staticRenderFns: code.staticRenderFns
-  }
-})
-
-```
-
-**总结：实际上进行的编译三部曲是通过 baseCompile 这个参数函数中的 parse、optimize、generate 执行**
-
-#### 1-3-2、parse：使用正则解释 template 编译成 AST 语法树
-
-#### 1-3-3、optimize：标记一些静态节点，用于优化，在 diff 比较的时候略过
-
-#### 1-3-4、generate：把 parse 生成的 AST 语法树转换为渲染函数 render function
-
-### 1-4、updateComponent 渲染 DOM 流程
+### 1-3、updateComponent 渲染 DOM 流程
 
 在渲染 DOM 的过程，Vue 使用了虚拟 DOM 的概念，这使得 Vue 中对 DOM 的操作大多都在虚拟 DOM 中，通过对比将要改动的部分，通知更新到真实的 DOM。虚拟 DOM 其实是一个 js 对象，操作 js 的性能开销比直接操作浏览器 DOM 的低很多，并且虚拟 DOM 会把多个 DOM 的操作合并，减少真实 DOM 的回流重绘次数，这很好的解决了频繁操作 DOM 所带来的性能问题。
 
-#### 1-4-1、首先是 VNode 构造器
+#### 1-3-1、首先是 VNode 构造器
 
 构造器定义了 tag：标签、data：数据、children：子节点、elm：node 节点等
 
@@ -459,7 +369,7 @@ export default class VNode {
 }
 ```
 
-#### 1-4-2、vm.\_render 生成虚拟 DOM
+#### 1-3-2、vm.\_render 生成虚拟 DOM
 
 ![vm._render](/imgs/img8.png)
 
@@ -629,7 +539,7 @@ export function _createElement (
 }
 ```
 
-#### 1-4-3、vm.\_update 渲染真实 DOM
+#### 1-3-3、vm.\_update 渲染真实 DOM
 
 -   主要作用：把生成的 VNode 转化为真实的 DOM
 -   调用时机: 有两个，一个是发生在初次渲染阶段，这个时候没有旧的虚拟 dom；另一个发生数据更新阶段，存在新的虚拟 dom 和旧的虚拟 dom
@@ -1151,578 +1061,137 @@ function updateChildren(parentElm, oldCh, newCh) {
 
 ![diff7](/imgs/img16.png)
 
-## 2、Vue 的组件化
 
--   1.加载渲染过程：父 beforeCreate -> 父 created -> 父 beforeMount -> 子 beforeCreate -> 子 created -> 子 beforeMount -> 子 mounted -> 父 mounted
--   2.子组件更新过程：父 beforeUpdate -> 子 beforeUpdate -> 子 updated -> 父 updated
--   3.父组件更新过程：父 beforeUpdate -> 父 updated
--   4.销毁过程：父 beforeDestroy -> 子 beforeDestroy -> 子 destroyed -> 父 destroyed
 
-当父在创建真实节点的过程中，遇到组件会进行组件的初始化和实例化，实例化会执行挂载 \$mount 的过程，这又到了组件的 vm.\_render 和 vm.\_update 过程
+## 2、编译 compiler
 
--   1.从根实例入手进行实例的挂载，如果有手写的 render 函数，则直接进入 \$mount 挂载流程
--   2.只有 template 模板则需要对模板进行解析，这里分为两个阶段，一个是将模板解析为 AST 树，另一个是根据不同平台生成执行代码，例如 render 函数
--   3.\$mount 流程也分为两步，第一步是将 render 函数生成 Vnode 树，子组件会以 vue-componet- 为 tag 标记，另一步是把 Vnode 渲染成真正的 DOM 节点
--   4.创建真实节点过程中，如果遇到子的占位符组件会进行子组件的实例化过程，这个过程又将回到流程的第一步
 
-首先在 this.\_init 中调用 initRender 初始化，然后 initRender 中 createElement, 在 createElement 中发现是组件, 那么 createComponent
 
-### 2-1、组件的 VNode (create-element.js、create-component.js、vnode.js、extend.js)
+### 2-1、模板编译 compiler
 
-![VNode](/imgs/img1.png)
+-   1、parse
+    -   使用正则解释 template 中的 Vue 指令(v-xxx)变量等，形成 AST 语法树
+-   2、optimize
+    -   标记一些静态节点，用于优化，在 diff 比较的时候略过。
+-   3、generate
+    -   把 parse 生成的 AST 语法树转换为渲染函数 render function
 
--   在 create-element.js 中的 \_createElement 时，如果 tag 不是一个标签字符串，而是一个组件对象，此时通过 createComponent 创建一个组件 VNode
+#### 1-3-1、编译的入口
+
+在 entry-runtime-with-compiler.js 中的 \$mount 过程，如果发现没有 render 函数，那么会启动编译流程把模板编译成 render 函数, 而 compileToFunctions 就是编译的入口
 
 ```
-export function _createElement (
-  context: Component,
-  tag?: string | Class<Component> | Function | Object,
-  data?: VNodeData,
-  children?: any,
-  normalizationType?: number
-): VNode | Array<VNode> {
-
-  if (typeof tag === 'string') {
-
-  } else if ((!data || !data.pre) && isDef(Ctor = resolveAsset(context.$options, 'components', tag))) {
-      // component
-      vnode = createComponent(Ctor, data, context, children, tag)
-  }
-}
-```
-
--   在 create-component.js 的 createComponent 中，会调用 Vue.extend(组件)(即: Ctor = baseCtor.extend(Ctor)), 这里的 extend 主要就是把 Vue 的功能赋给组件，并且合并配置, 在 extend 中会对组件做缓存
-
-```
-extend.js
-
-// 判断缓存中有没有存在,有就直接使用
-if (cachedCtors[SuperId]) {
-  return cachedCtors[SuperId]
-}
-```
-
--   通过在 create-component.js 的 createComponent 中安装一些组件的钩子 installComponentHooks(data)
--   在 create-component.js 中创建组件 VNode。组件 VNode 与 普通 VNode 区别: 没有 children, 多了 componentOptions
-
-```
-const vnode = new VNode(
-  `vue-component-${Ctor.cid}${name ? `-${name}` : ''}`,
-  data, undefined, undefined, undefined, context,
-  { Ctor, propsData, listeners, tag, children },
-  asyncFactory
-)
-```
-
-### 2-2、组件的 patch 过程 (patch.js、create-component.js、init.js)
-
-#### 组件 patch 的整体流程(组件 VNode 渲染成真实 Dom)
-
-![VNode](/imgs/img2.png)
-
--   组件的 patch 也会调用 patch.js 中的 createElm, 其中与普通元素 patch 不一样的就是 createElm 中的 createComponent 处理
--   在 patch.js 的 createComponent 中, vnode.componentInstance, 这个主要在 create-component.js 中创建组件 VNode 的时候挂载钩子时的，vnode.componentInstance 这个主要就是调用了 createComponentInstanceForVnode 这个去执行 Ctor 组件构造器，这个构造器又会去 init.js 中 initInternalComponent(vm, options) 合并; 继续在 init.js 中 调用 initLifecycle
--   在 lifecycle.js 中 initLifecycle，拿到父组件 vm: let parent = options.parent, options.parent 就是父组件 vm 实例。 在 setActiveInstance 实现每次 \_update 把 vm 赋给 activeInstance
-
-```
-export function initLifecycle (vm: Component) {
-  // 这个 vm 是子组件实例
-  const options = vm.$options
-
-  // locate first non-abstract parent
-  let parent = options.parent  // 此时的 parent 其实是 activeInstance，也是父组件 vm 实例
-  if (parent && !options.abstract) {
-    while (parent.$options.abstract && parent.$parent) {
-      parent = parent.$parent
-    }
-    // 将子组件实例放到父组件的 $children
-    parent.$children.push(vm)
-  }
-
-  // 父组件挂载到子组件的 $parent 上
-  vm.$parent = parent
-  vm.$root = parent ? parent.$root : vm
-}
-```
-
--   继续在 create-component.js 中 child.$mount(hydrating ? vnode.elm : undefined, hydrating), 这个就会执行 entry-runtime-with-compiler.js 中的 Vue.prototype.$mount, 后执行 lifecycle.js 中的 mountComponent，执行 render 完成子组件的渲染，然后执行渲染 watcher(子组件的渲染 watcher)
-
-### 2-3、组件的生命周期
-
--   beforeCreate: data 数据没有初始化之前执行
--   created: data 数据初始化之后执行
-
-```
-// 在 init.js 中
-
-export function initMixin (Vue: Class<Component>) {
-  Vue.prototype._init = function (options?: Object) {
-
-    initLifecycle(vm)
-    initEvents(vm) // 初始化事件中心
-    initRender(vm) // 初始化渲染
-    callHook(vm, 'beforeCreate')
-    initInjections(vm) // resolve injections before data/props  在 data/props 之前解决注入
-    initState(vm)  // 初始化 data
-    initProvide(vm) // resolve provide after data/props
-    callHook(vm, 'created')
-
-  }
-}
-```
-
--   beforeMounted: 页面渲染之前执行
--   mounted: 页面渲染之后执行
-
-```
-// 在 lifecycle.js 中
-
-export function mountComponent (
-  vm: Component,
-  el: ?Element,
-  hydrating?: boolean
-): Component {
-
-  // 数据渲染之前 beforeMount
-  callHook(vm, 'beforeMount')
-
-  let updateComponent
-  /* istanbul ignore if */
-  if (process.env.NODE_ENV !== 'production' && config.performance && mark) {
-    updateComponent = () => {
-      const name = vm._name
-      const id = vm._uid
-      const startTag = `vue-perf-start:${id}`
-      const endTag = `vue-perf-end:${id}`
-
-      mark(startTag)
-      const vnode = vm._render()
-      mark(endTag)
-      measure(`vue ${name} render`, startTag, endTag)
-
-      mark(startTag)
-      vm._update(vnode, hydrating)
-      mark(endTag)
-      measure(`vue ${name} patch`, startTag, endTag)
-    }
-  } else {
-    updateComponent = () => {
-      vm._update(vm._render(), hydrating)
-    }
-  }
-
-  // manually mounted instance, call mounted on self
-  // mounted is called for render-created child components in its inserted hook
-  // vm.$vnode 表示 Vue 实例的父虚拟 node，为 null 则表示当前是根 Vue 实例
-  // 设置 vm._isMounted 为 true，表示该实例已经挂载
-  // 最后调用 mounted 钩子函数
-  if (vm.$vnode == null) {
-    vm._isMounted = true
-    callHook(vm, 'mounted')
-  }
-  return vm
-}
-}
-```
-
--   beforeUpdate: 数据更新之前，并且首次渲染不会触发
--   updated: 数据更新之后，并且首次渲染不会触发
-
-```
-// 在 lifecycle.js 中  _isMounted 为 true 表示已挂载
-
-new Watcher(vm, updateComponent, noop, {
-  before () {
-    if (vm._isMounted && !vm._isDestroyed) {
-      callHook(vm, 'beforeUpdate')
-    }
-  }
-}, true /* isRenderWatcher */)
-```
-
--   beforeDestroy: 页面卸载之前，此时 data、method 还存在
--   destroyed: 页面卸载之后，此时 data、method 不存在
-
-### 2-4、组件的注册
-
-#### 2-4-1、全局注册：全局注册组件就是 Vue 实例化前创建一个基于 Vue 的子类构造器，并将组件的信息加载到实例 options.components 对象中
-
-```
-// 全局注册组件的方式
-Vue.component('my-test', {
-    template: '<div>{{test}}</div>',
-    data () {
-        return {
-            test: 1212
-        }
-    }
-})
-
-// 在全局 api 的 assets.js
-
-var ASSET_TYPES = [
-    'component',
-    'directive',
-    'filter'
-]
-
-// 组件的注册(全局注册： Vue.component)
-export function initAssetRegisters (Vue: GlobalAPI) {
-  /**
-   * Create asset registration methods.
-   */
-  ASSET_TYPES.forEach(type => {
-    Vue[type] = function (
-      id: string,
-      definition: Function | Object
-    ): Function | Object | void {
-      if (!definition) {
-        return this.options[type + 's'][id]
-      } else {
-        /* istanbul ignore if */
-        if (process.env.NODE_ENV !== 'production' && type === 'component') {
-          validateComponentName(id)
-        }
-        if (type === 'component' && isPlainObject(definition)) {
-          // 组件名称设置
-          definition.name = definition.name || id
-          // Vue.extend() 创建子组件，返回子类构造器
-          definition = this.options._base.extend(definition)
-        }
-        if (type === 'directive' && typeof definition === 'function') {
-          definition = { bind: definition, update: definition }
-        }
-        // 为Vue.options 上的 component 属性添加将子类构造器
-        this.options[type + 's'][id] = definition
-        return definition
-      }
-    }
-  })
-}
-```
-
-#### 2-4-2、局部注册: 在 createElement 中, 发现是组件标签，就调用 createComponent
-
-**局部注册和全局注册区别**
-
--   1.局部注册添加的对象配置是在某个组件下，而全局注册添加的子组件是在根实例下
--   2.局部注册添加的是一个子组件的配置对象，而全局注册添加的是一个子类构造器
-
-因此局部注册中缺少了一步构建子类构造器的过程，这个过程放在 createComponent 中, 源码中根据选项是对象还是函数来区分局部和全局注册组件，如果选项的值是对象，则该组件是局部注册的组件，此时在创建子 Vnode 时会调用 父类的 extend 方法去创建一个子类构造器
-
-```
-// create-element.js
-
-function createComponent (...) {
+const mount = Vue.prototype.$mount
+// 再重新定义 $mount
+Vue.prototype.$mount = function (){
   ...
-  var baseCtor = context.$options._base;
 
-  // 针对局部组件注册场景
-  if (isObject(Ctor)) {
-      Ctor = baseCtor.extend(Ctor);
+  if (template) {
+    const { render, staticRenderFns } = compileToFunctions(template, {
+      outputSourceRange: process.env.NODE_ENV !== 'production',
+      shouldDecodeNewlines,
+      shouldDecodeNewlinesForHref,
+      delimiters: options.delimiters,
+      comments: options.comments
+    }, this)
+  }
+  // 调用原先原型上的 $mount 方法挂载, 此时实际也是调用重新定义的 mount，这样做主要是为了复用
+  return mount.call(this, el, hydrating)
+}
+```
+
+compileToFunctions 在 platfroms/web/compiler/index 由 compiler/index 的 createCompiler 执行后得到
+
+```
+import { createCompiler } from 'compiler/index'
+
+const { compile, compileToFunctions } = createCompiler(baseOptions)
+
+export { compile, compileToFunctions }
+```
+
+createCompiler 又是由 create-compiler.js 的 createCompilerCreator 得到
+
+```
+export const createCompiler = createCompilerCreator(function baseCompile (){})
+```
+
+createCompilerCreator: const { compile, compileToFunctions } = createCompiler(baseOptions) 可以看出，compile 是 createCompilerCreator 中的 createCompiler 的 compile， 而 compileToFunctions 由 to-function.js 的 createCompileToFunctionFn 得到
+
+```
+export function createCompilerCreator (baseCompile: Function): Function {
+  return function createCompiler (baseOptions: CompilerOptions) {
+
+    function compile () {}
+
+    ...
+
+    return {
+      compile,
+      compileToFunctions: createCompileToFunctionFn(compile)
+    }
   }
 }
 ```
 
-### Vue 异步组件
+**得到，编译的入口是 to-function.js 的 createCompileToFunctionFn**
 
--   总的来说，异步组件的实现通常是 2 次渲染，先渲染成注释节点，组件加载成功后再通过 forceRender 重新渲染，这是异步组件的核心所在。
+to-function.js 的 createCompileToFunctionFn 执行编译的是 compile，这个由参数传进来 compileToFunctions: createCompileToFunctionFn(compile)
 
--   当在 createComponent 中发现是异步组件, 调用 resolveAsyncComponent, 这个是异步组件的核心
-
-#### 2-5-1、工厂函数
-
--   定义异步请求成功的函数处理，定义异步请求失败的函数处理；
--   执行组件定义的工厂函数；
--   同步返回请求成功的函数处理。
--   异步组件加载完毕，会调用 resolve 定义的方法，方法会通过 ensureCtor 将加载完成的组件转换为组件构造器，并存储在 resolved 属性中
--   组件构造器创建完毕，会进行一次视图的重新渲染。由于 Vue 是数据驱动视图渲染的，而组件在加载到完毕的过程中，并没有数据发生变化，因此需要手动强制更新视图
--   forceRender: 这个中执行 $forceUpdate，$forceUpdate 的逻辑非常简单，就是调用渲染 watcher 的 update 方法，让渲染 watcher 对应的回调函数执行，也就是触发了组件的重新渲染。
--   异步组件加载失败后，会调用 reject 定义的方法，方法会提示并标记错误，最后同样会强制更新视图。
+而 compile 函数执行的编译函数 baseCompile 也是由参数传进来
 
 ```
-Vue.component('async-example', function (resolve, reject) {
-  // 这个特殊的 require 语法告诉 webpack
-  // 自动将编译后的代码分割成不同的块，
-  // 这些块将通过 Ajax 请求自动下载。
-  require(['./my-async-component'], resolve)
+// create-compiler.js
+export function createCompilerCreator (baseCompile: Function): Function {
+  return function createCompiler (baseOptions: CompilerOptions) {
+    function compile () {
+
+      // baseCompile 传进来的函数，真正执行编译三步 parse、optimize、generate
+      const compiled = baseCompile(template.trim(), finalOptions)
+    }
+
+    return {
+      compile,
+      compileToFunctions: createCompileToFunctionFn(compile)
+    }
+  }
+}
+```
+
+baseCompile 中执行编译的三步 parse、optimize、generate
+
+```
+// compiler/index.js
+export const createCompiler = createCompilerCreator(function baseCompile (
+  template: string,
+  options: CompilerOptions
+): CompiledResult {
+  // parse 过程，转换为 ast 树
+  const ast = parse(template.trim(), options)
+  // optimize 标记静态节点等优化
+  if (options.optimize !== false) {
+    optimize(ast, options)
+  }
+  // generate:
+  const code = generate(ast, options)
+  return {
+    ast,
+    render: code.render,
+    staticRenderFns: code.staticRenderFns
+  }
 })
-```
 
 ```
-export function resolveAsyncComponent(
-  factory: Function,
-  baseCtor: Class < Component >
-): Class < Component > | void {
-  if (isTrue(factory.error) && isDef(factory.errorComp)) {
-    return factory.errorComp
-  }
 
-  if (isDef(factory.resolved)) {
-    return factory.resolved
-  }
+**总结：实际上进行的编译三部曲是通过 baseCompile 这个参数函数中的 parse、optimize、generate 执行**
 
-  const owner = currentRenderingInstance
-  if (owner && isDef(factory.owners) && factory.owners.indexOf(owner) === -1) {
-    // already pending
-    factory.owners.push(owner)
-  }
+#### 1-3-2、parse：使用正则解释 template 编译成 AST 语法树
 
-  if (isTrue(factory.loading) && isDef(factory.loadingComp)) {
-    return factory.loadingComp
-  }
+#### 1-3-3、optimize：标记一些静态节点，用于优化，在 diff 比较的时候略过
 
-  if (owner && !isDef(factory.owners)) {
-    const owners = factory.owners = [owner]
-    let sync = true
-    let timerLoading = null
-    let timerTimeout = null
+#### 1-3-4、generate：把 parse 生成的 AST 语法树转换为渲染函数 render function
 
-    ;
-    (owner: any).$on('hook:destroyed', () => remove(owners, owner))
 
-    const forceRender = (renderCompleted: boolean) => {
-      for (let i = 0, l = owners.length; i < l; i++) {
-        // $forceUpdate 的逻辑非常简单，就是调用渲染 watcher 的 update 方法，让渲染 watcher 对应的回调函数执行，也就是触发了组件的重新渲染。
-        // 之所以这么做是因为 Vue 通常是数据驱动视图重 新渲染，但是在整个异步组件加载过程中是没有数据发生变化的，所以通过执行 $forceUpdate 可以强制组件重新渲染一次。
-        (owners[i]: any).$forceUpdate()
-      }
-
-      if (renderCompleted) {
-        owners.length = 0
-        if (timerLoading !== null) {
-          clearTimeout(timerLoading)
-          timerLoading = null
-        }
-        if (timerTimeout !== null) {
-          clearTimeout(timerTimeout)
-          timerTimeout = null
-        }
-      }
-    }
-
-    // once 确保包装的函数只执行一次
-    const resolve = once((res: Object | Class < Component > ) => {
-      // cache resolved
-      factory.resolved = ensureCtor(res, baseCtor)
-      // invoke callbacks only if this is not a synchronous resolve
-      // (async resolves are shimmed as synchronous during SSR)
-      if (!sync) {
-        forceRender(true)
-      } else {
-        owners.length = 0
-      }
-    })
-
-    const reject = once(reason => {
-      process.env.NODE_ENV !== 'production' && warn(
-        `Failed to resolve async component: ${String(factory)}` +
-        (reason ? `\nReason: ${reason}` : '')
-      )
-      if (isDef(factory.errorComp)) {
-        factory.error = true
-        forceRender(true)
-      }
-    })
-
-    // 普通工厂函数异步组件执行
-    const res = factory(resolve, reject)
-  }
-}
-```
-
--   执行异步过程会同步为加载中的异步组件创建一个注释节点 Vnode
-
-```
-createComponent.js
-
-if (Ctor === undefined) {
-  // 是创建一个注释节点vnode
-  return createAsyncPlaceholder(asyncFactory, data, context, children, tag);
-}
-```
-
--   执行 forceRender 触发组件的重新渲染过程时，又会再次调用 resolveAsyncComponent,这时返回值 Ctor 不再为 undefined 了，因此会正常走组件的 render,patch 过程。这时，旧的注释节点也会被取代。
-
-#### 2-5-2、Promise
-
--   主要是在 res.then(resolve, reject) 这里
-
-```
-Vue.component( 'async-webpack-example', () => import('./my-async-component') )
-```
-
-```
-export function resolveAsyncComponent(
-  factory: Function,
-  baseCtor: Class < Component >
-): Class < Component > | void {
-
-    // once 确保包装的函数只执行一次
-    const resolve = once((res: Object | Class < Component > ) => {
-      // cache resolved
-      factory.resolved = ensureCtor(res, baseCtor)
-      // invoke callbacks only if this is not a synchronous resolve
-      // (async resolves are shimmed as synchronous during SSR)
-      if (!sync) {
-        forceRender(true)
-      } else {
-        owners.length = 0
-      }
-    })
-
-    const reject = once(reason => {
-      process.env.NODE_ENV !== 'production' && warn(
-        `Failed to resolve async component: ${String(factory)}` +
-        (reason ? `\nReason: ${reason}` : '')
-      )
-      if (isDef(factory.errorComp)) {
-        factory.error = true
-        forceRender(true)
-      }
-    })
-
-    // 普通工厂函数异步组件执行
-    const res = factory(resolve, reject)
-
-    if (isObject(res)) {
-      // promise 形式异步组件
-      if (isPromise(res)) {
-        // () => Promise
-        if (isUndef(factory.resolved)) {
-          res.then(resolve, reject)
-        }
-      } else if (isPromise(res.component)) {
-
-      }
-    }
-  }
-}
-```
-
-#### 2-5-3、高级异步组件
-
-```
-const AsyncComp = () => ({
-  // 需要加载的组件。应当是一个 Promise
-  component: import('./MyComp.vue'),
-  // 加载中应当渲染的组件
-  loading: LoadingComp,
-  // 出错时渲染的组件
-  error: ErrorComp,
-  // 渲染加载中组件前的等待时间。默认：200ms。
-  delay: 200,
-  // 最长等待时间。超出此时间则渲染错误组件。默认：Infinity
-  timeout: 3000
-})
-Vue.component('async-example', AsyncComp)
-```
-
-```
-export function resolveAsyncComponent(
-  factory: Function,
-  baseCtor: Class < Component >
-): Class < Component > | void {
-
-  if (owner && !isDef(factory.owners)) {
-    const owners = factory.owners = [owner]
-    let sync = true
-    let timerLoading = null
-    let timerTimeout = null
-
-    ;
-    (owner: any).$on('hook:destroyed', () => remove(owners, owner))
-
-    const forceRender = (renderCompleted: boolean) => {
-      for (let i = 0, l = owners.length; i < l; i++) {
-        // $forceUpdate 的逻辑非常简单，就是调用渲染 watcher 的 update 方法，让渲染 watcher 对应的回调函数执行，也就是触发了组件的重新渲染。
-        // 之所以这么做是因为 Vue 通常是数据驱动视图重 新渲染，但是在整个异步组件加载过程中是没有数据发生变化的，所以通过执行 $forceUpdate 可以强制组件重新渲染一次。
-        (owners[i]: any).$forceUpdate()
-      }
-
-      if (renderCompleted) {
-        owners.length = 0
-        if (timerLoading !== null) {
-          clearTimeout(timerLoading)
-          timerLoading = null
-        }
-        if (timerTimeout !== null) {
-          clearTimeout(timerTimeout)
-          timerTimeout = null
-        }
-      }
-    }
-
-    // once 确保包装的函数只执行一次
-    const resolve = once((res: Object | Class < Component > ) => {
-      // cache resolved
-      factory.resolved = ensureCtor(res, baseCtor)
-      // invoke callbacks only if this is not a synchronous resolve
-      // (async resolves are shimmed as synchronous during SSR)
-      if (!sync) {
-        forceRender(true)
-      } else {
-        owners.length = 0
-      }
-    })
-
-    const reject = once(reason => {
-      process.env.NODE_ENV !== 'production' && warn(
-        `Failed to resolve async component: ${String(factory)}` +
-        (reason ? `\nReason: ${reason}` : '')
-      )
-      if (isDef(factory.errorComp)) {
-        factory.error = true
-        forceRender(true)
-      }
-    })
-
-    // 普通工厂函数异步组件执行
-    const res = factory(resolve, reject)
-
-    if (isObject(res)) {
-      // promise 形式异步组件
-      if (isPromise(res)) {
-      } else if (isPromise(res.component)) {
-        // 高级异步组件
-        res.component.then(resolve, reject)
-
-        if (isDef(res.error)) {
-          factory.errorComp = ensureCtor(res.error, baseCtor)
-        }
-
-        if (isDef(res.loading)) {
-          factory.loadingComp = ensureCtor(res.loading, baseCtor)
-          if (res.delay === 0) {
-            factory.loading = true
-          } else {
-            timerLoading = setTimeout(() => {
-              timerLoading = null
-              if (isUndef(factory.resolved) && isUndef(factory.error)) {
-                factory.loading = true
-                forceRender(false)
-              }
-            }, res.delay || 200)
-          }
-        }
-
-        if (isDef(res.timeout)) {
-          timerTimeout = setTimeout(() => {
-            timerTimeout = null
-            if (isUndef(factory.resolved)) {
-              reject(
-                process.env.NODE_ENV !== 'production' ?
-                `timeout (${res.timeout}ms)` :
-                null
-              )
-            }
-          }, res.timeout)
-        }
-      }
-    }
-  }
-}
-```
 
 ## 3、响应式原理
 
@@ -2730,21 +2199,598 @@ export function set (target: Array<any> | Object, key: any, val: any): any {
 }
 ```
 
-## 4、Vue 的一些扩展功能
 
-### 4-1、Vue 的事件机制 event
 
-### 4-2、Vue 的插槽
+## 4、Vue 的组件化
 
-#### 4-2-1、普通插槽
+-   1.加载渲染过程：父 beforeCreate -> 父 created -> 父 beforeMount -> 子 beforeCreate -> 子 created -> 子 beforeMount -> 子 mounted -> 父 mounted
+-   2.子组件更新过程：父 beforeUpdate -> 子 beforeUpdate -> 子 updated -> 父 updated
+-   3.父组件更新过程：父 beforeUpdate -> 父 updated
+-   4.销毁过程：父 beforeDestroy -> 子 beforeDestroy -> 子 destroyed -> 父 destroyed
 
-#### 4-2-2、具名插槽
+当父在创建真实节点的过程中，遇到组件会进行组件的初始化和实例化，实例化会执行挂载 \$mount 的过程，这又到了组件的 vm.\_render 和 vm.\_update 过程
 
-#### 4-2-3、作用域插槽
+-   1.从根实例入手进行实例的挂载，如果有手写的 render 函数，则直接进入 \$mount 挂载流程
+-   2.只有 template 模板则需要对模板进行解析，这里分为两个阶段，一个是将模板解析为 AST 树，另一个是根据不同平台生成执行代码，例如 render 函数
+-   3.\$mount 流程也分为两步，第一步是将 render 函数生成 Vnode 树，子组件会以 vue-componet- 为 tag 标记，另一步是把 Vnode 渲染成真正的 DOM 节点
+-   4.创建真实节点过程中，如果遇到子的占位符组件会进行子组件的实例化过程，这个过程又将回到流程的第一步
 
-### 4-3、Vue 的 v-model
+首先在 this.\_init 中调用 initRender 初始化，然后 initRender 中 createElement, 在 createElement 中发现是组件, 那么 createComponent
 
-#### 4-3-1、v-model 实现机制
+### 4-1、组件的 VNode (create-element.js、create-component.js、vnode.js、extend.js)
+
+![VNode](/imgs/img1.png)
+
+-   在 create-element.js 中的 \_createElement 时，如果 tag 不是一个标签字符串，而是一个组件对象，此时通过 createComponent 创建一个组件 VNode
+
+```
+export function _createElement (
+  context: Component,
+  tag?: string | Class<Component> | Function | Object,
+  data?: VNodeData,
+  children?: any,
+  normalizationType?: number
+): VNode | Array<VNode> {
+
+  if (typeof tag === 'string') {
+
+  } else if ((!data || !data.pre) && isDef(Ctor = resolveAsset(context.$options, 'components', tag))) {
+      // component
+      vnode = createComponent(Ctor, data, context, children, tag)
+  }
+}
+```
+
+-   在 create-component.js 的 createComponent 中，会调用 Vue.extend(组件)(即: Ctor = baseCtor.extend(Ctor)), 这里的 extend 主要就是把 Vue 的功能赋给组件，并且合并配置, 在 extend 中会对组件做缓存
+
+```
+extend.js
+
+// 判断缓存中有没有存在,有就直接使用
+if (cachedCtors[SuperId]) {
+  return cachedCtors[SuperId]
+}
+```
+
+-   通过在 create-component.js 的 createComponent 中安装一些组件的钩子 installComponentHooks(data)
+-   在 create-component.js 中创建组件 VNode。组件 VNode 与 普通 VNode 区别: 没有 children, 多了 componentOptions
+
+```
+const vnode = new VNode(
+  `vue-component-${Ctor.cid}${name ? `-${name}` : ''}`,
+  data, undefined, undefined, undefined, context,
+  { Ctor, propsData, listeners, tag, children },
+  asyncFactory
+)
+```
+
+### 4-2、组件的 patch 过程 (patch.js、create-component.js、init.js)
+
+#### 组件 patch 的整体流程(组件 VNode 渲染成真实 Dom)
+
+![VNode](/imgs/img2.png)
+
+-   组件的 patch 也会调用 patch.js 中的 createElm, 其中与普通元素 patch 不一样的就是 createElm 中的 createComponent 处理
+-   在 patch.js 的 createComponent 中, vnode.componentInstance, 这个主要在 create-component.js 中创建组件 VNode 的时候挂载钩子时的，vnode.componentInstance 这个主要就是调用了 createComponentInstanceForVnode 这个去执行 Ctor 组件构造器，这个构造器又会去 init.js 中 initInternalComponent(vm, options) 合并; 继续在 init.js 中 调用 initLifecycle
+-   在 lifecycle.js 中 initLifecycle，拿到父组件 vm: let parent = options.parent, options.parent 就是父组件 vm 实例。 在 setActiveInstance 实现每次 \_update 把 vm 赋给 activeInstance
+
+```
+export function initLifecycle (vm: Component) {
+  // 这个 vm 是子组件实例
+  const options = vm.$options
+
+  // locate first non-abstract parent
+  let parent = options.parent  // 此时的 parent 其实是 activeInstance，也是父组件 vm 实例
+  if (parent && !options.abstract) {
+    while (parent.$options.abstract && parent.$parent) {
+      parent = parent.$parent
+    }
+    // 将子组件实例放到父组件的 $children
+    parent.$children.push(vm)
+  }
+
+  // 父组件挂载到子组件的 $parent 上
+  vm.$parent = parent
+  vm.$root = parent ? parent.$root : vm
+}
+```
+
+-   继续在 create-component.js 中 child.$mount(hydrating ? vnode.elm : undefined, hydrating), 这个就会执行 entry-runtime-with-compiler.js 中的 Vue.prototype.$mount, 后执行 lifecycle.js 中的 mountComponent，执行 render 完成子组件的渲染，然后执行渲染 watcher(子组件的渲染 watcher)
+
+### 4-3、组件的生命周期
+
+-   beforeCreate: data 数据没有初始化之前执行
+-   created: data 数据初始化之后执行
+
+```
+// 在 init.js 中
+
+export function initMixin (Vue: Class<Component>) {
+  Vue.prototype._init = function (options?: Object) {
+
+    initLifecycle(vm)
+    initEvents(vm) // 初始化事件中心
+    initRender(vm) // 初始化渲染
+    callHook(vm, 'beforeCreate')
+    initInjections(vm) // resolve injections before data/props  在 data/props 之前解决注入
+    initState(vm)  // 初始化 data
+    initProvide(vm) // resolve provide after data/props
+    callHook(vm, 'created')
+
+  }
+}
+```
+
+-   beforeMounted: 页面渲染之前执行
+-   mounted: 页面渲染之后执行
+
+```
+// 在 lifecycle.js 中
+
+export function mountComponent (
+  vm: Component,
+  el: ?Element,
+  hydrating?: boolean
+): Component {
+
+  // 数据渲染之前 beforeMount
+  callHook(vm, 'beforeMount')
+
+  let updateComponent
+  /* istanbul ignore if */
+  if (process.env.NODE_ENV !== 'production' && config.performance && mark) {
+    updateComponent = () => {
+      const name = vm._name
+      const id = vm._uid
+      const startTag = `vue-perf-start:${id}`
+      const endTag = `vue-perf-end:${id}`
+
+      mark(startTag)
+      const vnode = vm._render()
+      mark(endTag)
+      measure(`vue ${name} render`, startTag, endTag)
+
+      mark(startTag)
+      vm._update(vnode, hydrating)
+      mark(endTag)
+      measure(`vue ${name} patch`, startTag, endTag)
+    }
+  } else {
+    updateComponent = () => {
+      vm._update(vm._render(), hydrating)
+    }
+  }
+
+  // manually mounted instance, call mounted on self
+  // mounted is called for render-created child components in its inserted hook
+  // vm.$vnode 表示 Vue 实例的父虚拟 node，为 null 则表示当前是根 Vue 实例
+  // 设置 vm._isMounted 为 true，表示该实例已经挂载
+  // 最后调用 mounted 钩子函数
+  if (vm.$vnode == null) {
+    vm._isMounted = true
+    callHook(vm, 'mounted')
+  }
+  return vm
+}
+}
+```
+
+-   beforeUpdate: 数据更新之前，并且首次渲染不会触发
+-   updated: 数据更新之后，并且首次渲染不会触发
+
+```
+// 在 lifecycle.js 中  _isMounted 为 true 表示已挂载
+
+new Watcher(vm, updateComponent, noop, {
+  before () {
+    if (vm._isMounted && !vm._isDestroyed) {
+      callHook(vm, 'beforeUpdate')
+    }
+  }
+}, true /* isRenderWatcher */)
+```
+
+-   beforeDestroy: 页面卸载之前，此时 data、method 还存在
+-   destroyed: 页面卸载之后，此时 data、method 不存在
+
+### 4-4、组件的注册
+
+#### 4-4-1、全局注册：全局注册组件就是 Vue 实例化前创建一个基于 Vue 的子类构造器，并将组件的信息加载到实例 options.components 对象中
+
+```
+// 全局注册组件的方式
+Vue.component('my-test', {
+    template: '<div>{{test}}</div>',
+    data () {
+        return {
+            test: 1212
+        }
+    }
+})
+
+// 在全局 api 的 assets.js
+
+var ASSET_TYPES = [
+    'component',
+    'directive',
+    'filter'
+]
+
+// 组件的注册(全局注册： Vue.component)
+export function initAssetRegisters (Vue: GlobalAPI) {
+  /**
+   * Create asset registration methods.
+   */
+  ASSET_TYPES.forEach(type => {
+    Vue[type] = function (
+      id: string,
+      definition: Function | Object
+    ): Function | Object | void {
+      if (!definition) {
+        return this.options[type + 's'][id]
+      } else {
+        /* istanbul ignore if */
+        if (process.env.NODE_ENV !== 'production' && type === 'component') {
+          validateComponentName(id)
+        }
+        if (type === 'component' && isPlainObject(definition)) {
+          // 组件名称设置
+          definition.name = definition.name || id
+          // Vue.extend() 创建子组件，返回子类构造器
+          definition = this.options._base.extend(definition)
+        }
+        if (type === 'directive' && typeof definition === 'function') {
+          definition = { bind: definition, update: definition }
+        }
+        // 为Vue.options 上的 component 属性添加将子类构造器
+        this.options[type + 's'][id] = definition
+        return definition
+      }
+    }
+  })
+}
+```
+
+#### 4-4-2、局部注册: 在 createElement 中, 发现是组件标签，就调用 createComponent
+
+**局部注册和全局注册区别**
+
+-   1.局部注册添加的对象配置是在某个组件下，而全局注册添加的子组件是在根实例下
+-   2.局部注册添加的是一个子组件的配置对象，而全局注册添加的是一个子类构造器
+
+因此局部注册中缺少了一步构建子类构造器的过程，这个过程放在 createComponent 中, 源码中根据选项是对象还是函数来区分局部和全局注册组件，如果选项的值是对象，则该组件是局部注册的组件，此时在创建子 Vnode 时会调用 父类的 extend 方法去创建一个子类构造器
+
+```
+// create-element.js
+
+function createComponent (...) {
+  ...
+  var baseCtor = context.$options._base;
+
+  // 针对局部组件注册场景
+  if (isObject(Ctor)) {
+      Ctor = baseCtor.extend(Ctor);
+  }
+}
+```
+
+### 4-5、Vue 异步组件
+
+-   总的来说，异步组件的实现通常是 2 次渲染，先渲染成注释节点，组件加载成功后再通过 forceRender 重新渲染，这是异步组件的核心所在。
+
+-   当在 createComponent 中发现是异步组件, 调用 resolveAsyncComponent, 这个是异步组件的核心
+
+#### 4-5-1、工厂函数
+
+-   定义异步请求成功的函数处理，定义异步请求失败的函数处理；
+-   执行组件定义的工厂函数；
+-   同步返回请求成功的函数处理。
+-   异步组件加载完毕，会调用 resolve 定义的方法，方法会通过 ensureCtor 将加载完成的组件转换为组件构造器，并存储在 resolved 属性中
+-   组件构造器创建完毕，会进行一次视图的重新渲染。由于 Vue 是数据驱动视图渲染的，而组件在加载到完毕的过程中，并没有数据发生变化，因此需要手动强制更新视图
+-   forceRender: 这个中执行 $forceUpdate，$forceUpdate 的逻辑非常简单，就是调用渲染 watcher 的 update 方法，让渲染 watcher 对应的回调函数执行，也就是触发了组件的重新渲染。
+-   异步组件加载失败后，会调用 reject 定义的方法，方法会提示并标记错误，最后同样会强制更新视图。
+
+```
+Vue.component('async-example', function (resolve, reject) {
+  // 这个特殊的 require 语法告诉 webpack
+  // 自动将编译后的代码分割成不同的块，
+  // 这些块将通过 Ajax 请求自动下载。
+  require(['./my-async-component'], resolve)
+})
+```
+
+```
+export function resolveAsyncComponent(
+  factory: Function,
+  baseCtor: Class < Component >
+): Class < Component > | void {
+  if (isTrue(factory.error) && isDef(factory.errorComp)) {
+    return factory.errorComp
+  }
+
+  if (isDef(factory.resolved)) {
+    return factory.resolved
+  }
+
+  const owner = currentRenderingInstance
+  if (owner && isDef(factory.owners) && factory.owners.indexOf(owner) === -1) {
+    // already pending
+    factory.owners.push(owner)
+  }
+
+  if (isTrue(factory.loading) && isDef(factory.loadingComp)) {
+    return factory.loadingComp
+  }
+
+  if (owner && !isDef(factory.owners)) {
+    const owners = factory.owners = [owner]
+    let sync = true
+    let timerLoading = null
+    let timerTimeout = null
+
+    ;
+    (owner: any).$on('hook:destroyed', () => remove(owners, owner))
+
+    const forceRender = (renderCompleted: boolean) => {
+      for (let i = 0, l = owners.length; i < l; i++) {
+        // $forceUpdate 的逻辑非常简单，就是调用渲染 watcher 的 update 方法，让渲染 watcher 对应的回调函数执行，也就是触发了组件的重新渲染。
+        // 之所以这么做是因为 Vue 通常是数据驱动视图重 新渲染，但是在整个异步组件加载过程中是没有数据发生变化的，所以通过执行 $forceUpdate 可以强制组件重新渲染一次。
+        (owners[i]: any).$forceUpdate()
+      }
+
+      if (renderCompleted) {
+        owners.length = 0
+        if (timerLoading !== null) {
+          clearTimeout(timerLoading)
+          timerLoading = null
+        }
+        if (timerTimeout !== null) {
+          clearTimeout(timerTimeout)
+          timerTimeout = null
+        }
+      }
+    }
+
+    // once 确保包装的函数只执行一次
+    const resolve = once((res: Object | Class < Component > ) => {
+      // cache resolved
+      factory.resolved = ensureCtor(res, baseCtor)
+      // invoke callbacks only if this is not a synchronous resolve
+      // (async resolves are shimmed as synchronous during SSR)
+      if (!sync) {
+        forceRender(true)
+      } else {
+        owners.length = 0
+      }
+    })
+
+    const reject = once(reason => {
+      process.env.NODE_ENV !== 'production' && warn(
+        `Failed to resolve async component: ${String(factory)}` +
+        (reason ? `\nReason: ${reason}` : '')
+      )
+      if (isDef(factory.errorComp)) {
+        factory.error = true
+        forceRender(true)
+      }
+    })
+
+    // 普通工厂函数异步组件执行
+    const res = factory(resolve, reject)
+  }
+}
+```
+
+-   执行异步过程会同步为加载中的异步组件创建一个注释节点 Vnode
+
+```
+createComponent.js
+
+if (Ctor === undefined) {
+  // 是创建一个注释节点vnode
+  return createAsyncPlaceholder(asyncFactory, data, context, children, tag);
+}
+```
+
+-   执行 forceRender 触发组件的重新渲染过程时，又会再次调用 resolveAsyncComponent,这时返回值 Ctor 不再为 undefined 了，因此会正常走组件的 render,patch 过程。这时，旧的注释节点也会被取代。
+
+#### 4-5-2、Promise
+
+-   主要是在 res.then(resolve, reject) 这里
+
+```
+Vue.component( 'async-webpack-example', () => import('./my-async-component') )
+```
+
+```
+export function resolveAsyncComponent(
+  factory: Function,
+  baseCtor: Class < Component >
+): Class < Component > | void {
+
+    // once 确保包装的函数只执行一次
+    const resolve = once((res: Object | Class < Component > ) => {
+      // cache resolved
+      factory.resolved = ensureCtor(res, baseCtor)
+      // invoke callbacks only if this is not a synchronous resolve
+      // (async resolves are shimmed as synchronous during SSR)
+      if (!sync) {
+        forceRender(true)
+      } else {
+        owners.length = 0
+      }
+    })
+
+    const reject = once(reason => {
+      process.env.NODE_ENV !== 'production' && warn(
+        `Failed to resolve async component: ${String(factory)}` +
+        (reason ? `\nReason: ${reason}` : '')
+      )
+      if (isDef(factory.errorComp)) {
+        factory.error = true
+        forceRender(true)
+      }
+    })
+
+    // 普通工厂函数异步组件执行
+    const res = factory(resolve, reject)
+
+    if (isObject(res)) {
+      // promise 形式异步组件
+      if (isPromise(res)) {
+        // () => Promise
+        if (isUndef(factory.resolved)) {
+          res.then(resolve, reject)
+        }
+      } else if (isPromise(res.component)) {
+
+      }
+    }
+  }
+}
+```
+
+#### 4-5-3、高级异步组件
+
+```
+const AsyncComp = () => ({
+  // 需要加载的组件。应当是一个 Promise
+  component: import('./MyComp.vue'),
+  // 加载中应当渲染的组件
+  loading: LoadingComp,
+  // 出错时渲染的组件
+  error: ErrorComp,
+  // 渲染加载中组件前的等待时间。默认：200ms。
+  delay: 200,
+  // 最长等待时间。超出此时间则渲染错误组件。默认：Infinity
+  timeout: 3000
+})
+Vue.component('async-example', AsyncComp)
+```
+
+```
+export function resolveAsyncComponent(
+  factory: Function,
+  baseCtor: Class < Component >
+): Class < Component > | void {
+
+  if (owner && !isDef(factory.owners)) {
+    const owners = factory.owners = [owner]
+    let sync = true
+    let timerLoading = null
+    let timerTimeout = null
+
+    ;
+    (owner: any).$on('hook:destroyed', () => remove(owners, owner))
+
+    const forceRender = (renderCompleted: boolean) => {
+      for (let i = 0, l = owners.length; i < l; i++) {
+        // $forceUpdate 的逻辑非常简单，就是调用渲染 watcher 的 update 方法，让渲染 watcher 对应的回调函数执行，也就是触发了组件的重新渲染。
+        // 之所以这么做是因为 Vue 通常是数据驱动视图重 新渲染，但是在整个异步组件加载过程中是没有数据发生变化的，所以通过执行 $forceUpdate 可以强制组件重新渲染一次。
+        (owners[i]: any).$forceUpdate()
+      }
+
+      if (renderCompleted) {
+        owners.length = 0
+        if (timerLoading !== null) {
+          clearTimeout(timerLoading)
+          timerLoading = null
+        }
+        if (timerTimeout !== null) {
+          clearTimeout(timerTimeout)
+          timerTimeout = null
+        }
+      }
+    }
+
+    // once 确保包装的函数只执行一次
+    const resolve = once((res: Object | Class < Component > ) => {
+      // cache resolved
+      factory.resolved = ensureCtor(res, baseCtor)
+      // invoke callbacks only if this is not a synchronous resolve
+      // (async resolves are shimmed as synchronous during SSR)
+      if (!sync) {
+        forceRender(true)
+      } else {
+        owners.length = 0
+      }
+    })
+
+    const reject = once(reason => {
+      process.env.NODE_ENV !== 'production' && warn(
+        `Failed to resolve async component: ${String(factory)}` +
+        (reason ? `\nReason: ${reason}` : '')
+      )
+      if (isDef(factory.errorComp)) {
+        factory.error = true
+        forceRender(true)
+      }
+    })
+
+    // 普通工厂函数异步组件执行
+    const res = factory(resolve, reject)
+
+    if (isObject(res)) {
+      // promise 形式异步组件
+      if (isPromise(res)) {
+      } else if (isPromise(res.component)) {
+        // 高级异步组件
+        res.component.then(resolve, reject)
+
+        if (isDef(res.error)) {
+          factory.errorComp = ensureCtor(res.error, baseCtor)
+        }
+
+        if (isDef(res.loading)) {
+          factory.loadingComp = ensureCtor(res.loading, baseCtor)
+          if (res.delay === 0) {
+            factory.loading = true
+          } else {
+            timerLoading = setTimeout(() => {
+              timerLoading = null
+              if (isUndef(factory.resolved) && isUndef(factory.error)) {
+                factory.loading = true
+                forceRender(false)
+              }
+            }, res.delay || 200)
+          }
+        }
+
+        if (isDef(res.timeout)) {
+          timerTimeout = setTimeout(() => {
+            timerTimeout = null
+            if (isUndef(factory.resolved)) {
+              reject(
+                process.env.NODE_ENV !== 'production' ?
+                `timeout (${res.timeout}ms)` :
+                null
+              )
+            }
+          }, res.timeout)
+        }
+      }
+    }
+  }
+}
+```
+
+
+
+## 5、Vue 的一些扩展功能
+
+### 5-1、Vue 的事件机制 event
+
+### 5-2、Vue 的插槽
+
+#### 5-2-1、普通插槽
+
+#### 5-2-2、具名插槽
+
+#### 5-2-3、作用域插槽
+
+### 5-3、Vue 的 v-model
+
+#### 5-3-1、v-model 实现机制
 
 v-model 会把它关联的响应式数据（如 message），动态地绑定到表单元素的 value 属性上，然后监听表单元素的 input 事件：当 v-model 绑定的响应数据发生变化时，表单元素的 value 值也会同步变化；当表单元素接受用户的输入时，input 事件会触发，input 的回调逻辑会把表单元素 value 最新值同步赋值给 v-model 绑定的响应式数据
 
@@ -2752,7 +2798,7 @@ v-model 会把它关联的响应式数据（如 message），动态地绑定到�
 <input type="text" :value="message" @input="(e) => { this.message = e.target.value }" >
 ```
 
-#### 4-3-2、v-model 实现原理
+#### 5-3-2、v-model 实现原理
 
 首先，在模板解析阶段，v-model 跟其他指令一样，会被解析到 el.directives
 
@@ -2963,11 +3009,11 @@ addHandler(el, event, code, null, true)
 
 -   5.然后在 patch 过程根据生成的 VNode 进行 value 绑定，事件 input 监听
 
-### 4-4、Vue 的 keep-alive
+### 5-4、Vue 的 keep-alive
 
 被 keep-alive 包裹的组件不会重新渲染
 
-#### 4-4-1、keep-alive 基本使用：
+#### 5-4-1、keep-alive 基本使用：
 
 ```
 <keep-alive exclude="c" max="5">
@@ -2982,7 +3028,7 @@ addHandler(el, event, code, null, true)
 </keep-alive>
 ```
 
-#### 4-4-2、keep-alive 首次渲染
+#### 5-4-2、keep-alive 首次渲染
 
 **初始渲染流程最关键的一步是对渲染的组件 Vnode 进行缓存，其中也包括了组件的真实节点存储**
 
@@ -3173,7 +3219,7 @@ export default {
 }
 ```
 
-#### 4-4-3、keep-alive 再次渲染
+#### 5-4-3、keep-alive 再次渲染
 
 再次渲染是由于数据发生更新，触发派发更新通知组件去重新渲染，而在重新渲染中的 patch 中，主要的是 patchVnode
 
@@ -3339,7 +3385,7 @@ export default {
 }
 ```
 
-## 5、Vue.mixin
+## 6、Vue.mixin
 
 主要就是通过 mergeOptions 将 mixin 的参数合并到全局的 Vue 配置中
 
@@ -3353,7 +3399,7 @@ export function initMixin (Vue: GlobalAPI) {
 }
 ```
 
-## 6、vue-use
+## 7、vue-use
 
 -   检查插件是否安装，如果安装了就不再安装
 -   如果没有没有安装，那么调用插件的 install 方法，并传入 Vue 实例
@@ -3397,11 +3443,11 @@ export function initUse(Vue: GlobalAPI) {
 -   首次渲染的时候，除了再 <keep-alive> 中建立缓存，设置 vnode.data.keepAlive 为 true，其他的过程和普通组件一样。
 -   缓存渲染的时候，会根据 vnode.componentInstance（首次渲染 vnode.componentInstance 为 undefined） 和 vnode.data.keepAlive 进行判断不会执行组件的 created、mounted 等钩子函数，而是对缓存的组件执行 patch 过程，最后直接把缓存的 DOM 对象直接插入到目标元素中，完成了数据更新的情况下的渲染过程。
 
-## 7、vue-router
+## 8、vue-router
 
-### 7-1、vue-router 的注册
+### 8-1、vue-router 的注册
 
-#### 7-1-1、Vue.use() 是插件的安装，通过它可以将一些功能或 API 入侵到 Vue 内部；在 Vue.use() 中，接收一个参数，如果这个参数有 install 方法，那么 Vue.use()会执行这个 install 方法，如果接收到的参数是一个函数，那么这个函数会作为 install 方法被执行
+#### 8-1-1、Vue.use() 是插件的安装，通过它可以将一些功能或 API 入侵到 Vue 内部；在 Vue.use() 中，接收一个参数，如果这个参数有 install 方法，那么 Vue.use()会执行这个 install 方法，如果接收到的参数是一个函数，那么这个函数会作为 install 方法被执行
 
 ```
 // 在 vue-router/src/install.js
@@ -3423,7 +3469,7 @@ class VueRouter {
 VueRouter.install = install
 ```
 
-#### 7-1-2、install 函数是真正的 vue-router 的注册流程
+#### 8-1-2、install 函数是真正的 vue-router 的注册流程
 
 -   判断是否注册过，如果注册过不会再重新注册
 -   \_Vue = Vue 将 Vue 保存，并导出 \_Vue，使 vue-router 在任何时候都能访问到 Vue
@@ -3499,9 +3545,9 @@ export function install (Vue) {
 }
 ```
 
-### 7-2、VueRouter 对象
+### 8-2、VueRouter 对象
 
-#### 7-2-1、VueRouter 是一个类，在 new VueRouter 的时候实际上就是执行这个 VueRouter 类
+#### 8-2-1、VueRouter 是一个类，在 new VueRouter 的时候实际上就是执行这个 VueRouter 类
 
 // const router = new VueRouter({
 // mode: 'hash',
@@ -3557,7 +3603,7 @@ export default class VueRouter {
 }
 ```
 
-#### 7-2-2、VueRouter 的 init 函数
+#### 8-2-2、VueRouter 的 init 函数
 
 -   存储当前 app（Vue 实例）到 apps，并且在 VueRouter 上挂载 app 属性
 -   transitionTo 对不同路由模式进行路由导航
@@ -3611,7 +3657,7 @@ class VueRouter {
 }
 ```
 
-#### 7-2-3、HashHistory(即 hash 模式)
+#### 8-2-3、HashHistory(即 hash 模式)
 
 大致流程
 
@@ -3967,7 +4013,7 @@ setupListeners () {
 
 得出：setupListeners 这里主要做了 2 件事情，一个是对路由切换滚动位置的处理，具体的可以参考这里滚动行为。另一个是对路由变动做了一次监听 window.addEventListener(supportsPushState ? 'popstate' : 'hashchange', () => {})
 
-#### 7-2-4、HTML5History(即 history 模式)
+#### 8-2-4、HTML5History(即 history 模式)
 
 ```
 // index.js
@@ -4011,4 +4057,4 @@ export class HTML5History extends History {
 
 在这种模式下，初始化作的工作相比 hash 模式少了很多，只是调用基类构造函数以及初始化监听事件
 
-## 8、vuex
+## 9、vuex

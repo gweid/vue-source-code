@@ -14,14 +14,17 @@ const idToTemplate = cached(id => {
   return el && el.innerHTML
 })
 
-// 首先缓存了原型上的 $mount 方法
+// 首先缓存了原型上的 $mount 方法，原型上的 $mount 最先在 `src/platform/web/runtime/index.js` 中定义
 const mount = Vue.prototype.$mount
+
 // 再重新定义 $mount
 Vue.prototype.$mount = function (
   el?: string | Element,
   hydrating?: boolean
 ): Component {
   // 通过 query 将 el 转化为 dom 对象
+  // 这里的 el 可能是 string 类型，也可能是 element 类型
+  // query 对 el 进行转换，如果是 string，那么通过 document.query(el) 转换为 element
   el = el && query(el)
 
   /* istanbul ignore if */
@@ -36,8 +39,10 @@ Vue.prototype.$mount = function (
   const options = this.$options
   // resolve template/el and convert to render function
 
-  // 如果有 rander 函数，直接执行 mount.call(this, el, hydrating)， 没有，就编译 template，转化为 render 函数，再调用 mount
+  // 如果有 render 函数，直接执行 mount.call(this, el, hydrating)
+  // 没有 render，代表的是 template 模式，就编译 template，转化为 render 函数，再调用 mount
   if (!options.render) {
+    // 没有 render 函数
     let template = options.template
     // 判断有没有 template
     if (template) {
@@ -70,7 +75,8 @@ Vue.prototype.$mount = function (
         mark('compile')
       }
     
-      // compileToFunctions 执行编译的函数
+      // compileToFunctions 执行编译的函数（将 template 转化为 render）
+      // compileToFunctions 方法会返回render函数方法，render 方法会保存到 vm.$options 下面
       const { render, staticRenderFns } = compileToFunctions(template, {
         outputSourceRange: process.env.NODE_ENV !== 'production',
         shouldDecodeNewlines,
@@ -78,6 +84,7 @@ Vue.prototype.$mount = function (
         delimiters: options.delimiters,
         comments: options.comments
       }, this)
+
       options.render = render
       options.staticRenderFns = staticRenderFns
 
@@ -88,7 +95,7 @@ Vue.prototype.$mount = function (
       }
     }
   }
-  // 调用原先原型上的 $mount 方法挂载, 此时实际也是调用重新定义的 mount，这样做主要是为了复用
+  // 无论是 template 模板还是手写 render 函数最终调用缓存的 $mount 方法
   return mount.call(this, el, hydrating)
 }
 
