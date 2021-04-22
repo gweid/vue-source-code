@@ -23,6 +23,7 @@ let uid = 0;
  * and fires callback when the expression value changes.
  * This is used for both the $watch() api and directives.
  */
+ //一个组件一个 watcher（渲染 watcher）或者一个表达式一个 watcher（用户watcher）
 export default class Watcher {
   vm: Component;
   expression: string;
@@ -107,6 +108,7 @@ export default class Watcher {
     const vm = this.vm;
     try {
       // 执行 this.getter（this.getter 就是 new Watcher 传进来 updateComponent 函数）
+      // 执行更新函数，进入实例挂载阶段
       value = this.getter.call(vm, vm);
     } catch (e) {
       if (this.user) {
@@ -120,7 +122,7 @@ export default class Watcher {
       if (this.deep) {
         traverse(value);
       }
-      // 将 Dep.target 置空
+      // 关闭 Dep.target，Dep.target = null
       popTarget();
       this.cleanupDeps();
     }
@@ -130,13 +132,18 @@ export default class Watcher {
   /**
    * Add a dependency to this directive.
    */
+  // 将 dep 放到自己（watcher）上
+  // 将自己（watcher）添加到 dep 的 subs 数组
   addDep(dep: Dep) {
     const id = dep.id;
     if (!this.newDepIds.has(id)) {
-      // newDepIds是具有唯一成员是Set数据结构，newDeps是数组，他们用来记录当前watcher所拥有的数据，这一过程会进行逻辑判断，避免同一数据添加多次。
+      // newDepIds是具有唯一成员是Set数据结构，newDeps是数组
+      // 他们用来记录当前 watcher 所拥有的数据，这一过程会进行逻辑判断，避免同一数据添加多次
       this.newDepIds.add(id);
+      // 将 dep 添加进 watcher.newDeps 中
       this.newDeps.push(dep);
       if (!this.depIds.has(id)) {
+        // 调用 dep.addSub 将 watcher 添加进 dep
         dep.addSub(this);
       }
     }
@@ -167,17 +174,23 @@ export default class Watcher {
    * Subscriber interface.
    * Will be called when a dependency changes.
    */
+  // 根据 watcher 配置项，决定接下来怎么走，一般是 queueWatcher
   update() {
     /* istanbul ignore else */
     // lazy 为 true 代表是 computed
     if (this.lazy) {
-      // 是 computed
+      // 如果是 computed，则将 dirty 置为 true
+      // 可以让 computedGetter 执行时重新计算 computed 回调函数的执行结果
       this.dirty = true;
     } else if (this.sync) {
       // 是否是同步 watcher
+      // 同步执行，在使用 vm.$watch 或者 watch 选项时可以传一个 sync 选项，
+      // 当为 true 时在数据更新时该 watcher 就不走异步更新队列，直接执行 this.run 
+      // 方法进行更新
       this.run();
     } else {
       // 把需要更新的 watcher 往一个队列里面推
+      // 更新时一般都进到这里
       queueWatcher(this);
     }
   }
@@ -186,8 +199,15 @@ export default class Watcher {
    * Scheduler job interface.
    * Will be called by the scheduler.
    */
+  /**
+   * 刷新队列函数 flushSchedulerQueue 调用，完成如下几件事：
+   *   1、执行实例化 watcher 传递的第二个参数，updateComponent 或者 获取 this.xx 的一个函数(parsePath 返回的函数)
+   *   2、更新旧值为新值
+   *   3、执行实例化 watcher 时传递的第三个参数，比如用户 watcher 的回调函数，或者渲染 watcher 的空函数
+   */
   run() {
     if (this.active) {
+      // 首先就执行 watcher.get，watcher.get 会执行更新函数进行实例挂载流程
       const value = this.get();
       if (
         value !== this.value ||
@@ -201,6 +221,7 @@ export default class Watcher {
         const oldValue = this.value;
         this.value = value;
         if (this.user) {
+          // 如果是用户 watcher，则执行用户传递的第三个参数 —— 回调函数
           try {
             // 执行回调，进行数据更新
             this.cb.call(this.vm, value, oldValue);
@@ -212,6 +233,7 @@ export default class Watcher {
             );
           }
         } else {
+          // 如果是渲染 watcher，第三个参数是一个空函数 this.cb = noop
           this.cb.call(this.vm, value, oldValue);
         }
       }

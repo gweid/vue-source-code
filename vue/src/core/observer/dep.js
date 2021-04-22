@@ -23,7 +23,7 @@ export default class Dep {
     this.subs = []
   }
 
-  // 添加 watcher
+  // 在 dep 中添加 watcher
   addSub (sub: Watcher) {
     this.subs.push(sub)
   }
@@ -32,7 +32,7 @@ export default class Dep {
     remove(this.subs, sub)
   }
 
-  // 依赖收集
+  // 将 dep 添加进 watcher
   depend () {
     if (Dep.target) {
       Dep.target.addDep(this)
@@ -40,6 +40,8 @@ export default class Dep {
   }
 
   // 派发更新
+  // 通知 dep 中的所有 watcher，执行 watcher.update() 方法
+  // watcher.update 中实际上就是调用 updateComponent 对页面进行重新渲染
   notify () {
     // stabilize the subscriber list first
     const subs = this.subs.slice()
@@ -61,6 +63,7 @@ export default class Dep {
 Dep.target = null
 const targetStack = []
 
+// 开放出去的方法，主要用来往 Dep 类上添加 target（也就是 watcher）
 export function pushTarget (target: ?Watcher) {
   targetStack.push(target)
   Dep.target = target

@@ -41,7 +41,7 @@ eventsMixin(Vue)
 lifecycleMixin(Vue)   // 添加了与生命周期相关的
 
 // 在 Vue 原型上，定义 $nextTick 方法
-// Vue原型上，定义 _render 方法，
+// Vue原型上，定义 _render 方法
 // _render方法会调用 vm.$createElement 创建虚拟 DOM，如果返回值 vnode 不是虚拟 DOM 类型，将创建一个空的虚拟 DOM
 renderMixin(Vue)
 

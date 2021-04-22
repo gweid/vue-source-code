@@ -40,6 +40,9 @@ const sharedPropertyDefinition = {
   set: noop
 }
 
+// 设置代理，将 key 代理到 target 上
+// 例如：对于 data 来讲，target 是 vm，sourceKey 是 data 本身 _data，key 就是 data 的每一个 key
+// 这样做的好处就是访问 this.xxx 的时候可以直接访问到 this[data].xxx
 export function proxy(target: Object, sourceKey: string, key: string) {
   // target: vm  sourceKey: _data  key: key
   sharedPropertyDefinition.get = function proxyGetter() {
@@ -48,35 +51,43 @@ export function proxy(target: Object, sourceKey: string, key: string) {
   sharedPropertyDefinition.set = function proxySetter(val) {
     this[sourceKey][key] = val
   }
-  // 使用 Object.defineProperty 对 targrt 的 key 的访问进行了一层 getter 和 setter
-  // 所以 sharedPropertyDefinition.get 中的 this[sourceKey][key] 实际上就是 vm['_data'].key
-  // 即是访问 this.key 的时候是会访问 vm['_data'].key
-  // target 就是 vm
-  // 这实际就是把 data 或者 props 里面的 key 全部挂载到 vm 上
+  // 这实际就是把 data 或者 props 等里面的 key 全部挂载到 vm 上
   Object.defineProperty(target, key, sharedPropertyDefinition)
 }
 
-// 主要
+// 这里面分别调用不同的函数处理了 props、methods、data、computed、watch
 export function initState (vm: Component) {
   vm._watchers = []
   const opts = vm.$options
-  // 初始化 props，将 props 对象上的每个属性在哪换为响应式，并代理到 vm
+
+  // 初始化 props，将 props 对象上的每个属性转换为响应式，并代理到 vm
   if (opts.props) initProps(vm, opts.props)
 
-  // 初始化 methods，校验每个属性的值是否为函数，最后得到 vm[key] = methods[key]
+  // 初始化 methods:
+  //   校验每个属性的值是否为函数
+  //   metheds 里面的每一个 key 不能和 props 中的有冲突
+  //   最后得到 vm[key] = methods[key]
   if (opts.methods) initMethods(vm, opts.methods)
 
-  // 判断 data 对象上的属性不能和 props、methods 对象上的属性相同
-  // 将 data 代理到 vm 上
-  // 将 data 的每个属性转换为响应式
   if (opts.data) {
+    // initData 做了：
+    //   data 对象上的属性不能和 props、methods 对象上的属性相同
+    //   将 data 代理到 vm 上
+    //   将 data 的每个属性转换为响应式
     initData(vm)
   } else {
+    // 用户没有传 data 的情况下，在 vm 上挂载 vm._data 默认值为空对象 {}
     observe(vm._data = {}, true /* asRootData */ )
   }
-  // 初始化 computed
+
+  // 初始化 computed:
+  //   遍历 computed 对象为每一个 computed 添加一个计算 watcher(计算 watcher 的标志是有一个 lazy)
+  //   将每个 compulted 代理到 vm 上并转换为响应式
+  //   compulted 中的键 key 不能和 data、props 重复
   if (opts.computed) initComputed(vm, opts.computed)
-  // 初始化 wathcer
+
+  // 初始化 wathcer:
+  //   遍历 watch 对象，为每个 watch 添加一个 user watch 
   if (opts.watch && opts.watch !== nativeWatch) {
     initWatch(vm, opts.watch)
   }
@@ -87,14 +98,18 @@ function initProps(vm: Component, propsOptions: Object) {
   const props = vm._props = {}
   // cache prop keys so that future props updates can iterate using Array
   // instead of dynamic object key enumeration.
+  // 定义一个 keys，去缓存 props 中的每个 key 属性，为了性能优化
   const keys = vm.$options._propKeys = []
   const isRoot = !vm.$parent
   // root instance props should be converted
   if (!isRoot) {
     toggleObserving(false)
   }
+  // 遍历 props 对象
   for (const key in propsOptions) {
+    // 将每一个 key 添加到 keys 中缓存
     keys.push(key)
+    // 获取每一个 prop 的默认值
     const value = validateProp(key, propsOptions, propsData, vm)
     /* istanbul ignore else */
     if (process.env.NODE_ENV !== 'production') {
@@ -106,7 +121,6 @@ function initProps(vm: Component, propsOptions: Object) {
           vm
         )
       }
-      // 主要就是把 props 变成响应式的
       defineReactive(props, key, value, () => {
         if (!isRoot && !isUpdatingChildComponent) {
           warn(
@@ -119,6 +133,7 @@ function initProps(vm: Component, propsOptions: Object) {
         }
       })
     } else {
+      // 主要就是把 props 变成响应式的
       defineReactive(props, key, value)
     }
     // static props are already proxied on the component's prototype
@@ -135,11 +150,13 @@ function initProps(vm: Component, propsOptions: Object) {
 // data
 function initData(vm: Component) {
   let data = vm.$options.data
-  // 判断 data 是函数还是对象，并把 vm.$options.data 挂到 vm._data 上
+  // 判断 data 是函数还是对象，data 在跟实例上是对象，在组件实例上是function
+  // 是函数，调用 getData 将 data 转换为对象
+  // 并把 vm.$options.data 挂到 vm._data 上
   data = vm._data = typeof data === 'function' ?
     getData(data, vm) :
     data || {}
-  // 如果 data 不是 object 类型，就报警告
+  // 处理过的 data 不是 object 类型，就报警告
   if (!isPlainObject(data)) {
     data = {}
     process.env.NODE_ENV !== 'production' && warn(
@@ -153,10 +170,12 @@ function initData(vm: Component) {
   const props = vm.$options.props
   const methods = vm.$options.methods
   let i = keys.length
+  // 循环
   while (i--) {
     const key = keys[i]
-    // 循环做一个对比， 是 data 里面定义的属性名不能跟 props 与 method 中的一样
+    // 循环做一个对比，data 里面定义的属性名不能跟 props 与 method 中的一样
     if (process.env.NODE_ENV !== 'production') {
+      // data 的 key 不能跟 method 中的一样
       if (methods && hasOwn(methods, key)) {
         warn(
           `Method "${key}" has already been defined as a data property.`,
@@ -164,6 +183,7 @@ function initData(vm: Component) {
         )
       }
     }
+    // data 的 key 不能跟 props 中的一样
     if (props && hasOwn(props, key)) {
       process.env.NODE_ENV !== 'production' && warn(
         `The data property "${key}" is already declared as a prop. ` +
@@ -303,8 +323,10 @@ function createGetterInvoker(fn) {
 
 function initMethods(vm: Component, methods: Object) {
   const props = vm.$options.props
+  // 遍历 methods
   for (const key in methods) {
     if (process.env.NODE_ENV !== 'production') {
+      // 判断 metheds 里面的每个方法是否都是函数
       if (typeof methods[key] !== 'function') {
         warn(
           `Method "${key}" has type "${typeof methods[key]}" in the component definition. ` +
@@ -312,12 +334,14 @@ function initMethods(vm: Component, methods: Object) {
           vm
         )
       }
+      // metheds 里面的每一个 key 不能和 props 中的有冲突
       if (props && hasOwn(props, key)) {
         warn(
           `Method "${key}" has already been defined as a prop.`,
           vm
         )
       }
+      // methods 中的方法与 Vue 实例上已有的内置方法不能重叠
       if ((key in vm) && isReserved(key)) {
         warn(
           `Method "${key}" conflicts with an existing Vue instance method. ` +
@@ -325,6 +349,7 @@ function initMethods(vm: Component, methods: Object) {
         )
       }
     }
+    // 将每一个 method 挂到 vm 上，即 vm[key] = methods[key]
     vm[key] = typeof methods[key] !== 'function' ? noop : bind(methods[key], vm)
   }
 }
