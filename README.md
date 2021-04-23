@@ -2029,38 +2029,116 @@ watcher.update 里面会分别处理 computed 的情况、同步 watcher 的情�
 
 
 
-### 3-4、异步更新
+### 3-3、异步更新
 
--   nextTick：就是将任务放到异步队列里面，等到主线程执行完再执行
--   在 Vue 中，进行数据操作的时候，Vue 并没有马上去更新 DOM 数据，而是将这个操作放进一个队列中，如果重复执行的话，队列还会进行去重操作；等待同一事件循环中的所有数据变化完成之后，会将队列中的事件拿出来处理。这样做主要是为了提升性能，因为如果在主线程中更新 DOM，循环 100 次就要更新 100 次 DOM；但是如果等事件循环完成之后更新 DOM，只需要更新 1 次。也就是说数据改变后触发的渲染 watcher 的 update 是在 nextTick 中的。
+#### 3-3-1、回顾一下派发更新
 
+上面的派发更新其实就是：设置值的时候被拦截 --> 调用 dep.notify() 去通知更新 --> 调用 watcher.update --> 调用 queueWatcher(this) 将 watcher 往全局队列 queue 中推。然后就是异步更新的过程了
+
+```js
+Object.defineProperty(obj, key, {
+    set() {
+        // ...
+        
+        dep.notify();
+    }
+}
+
+
+Dep.notify = function() {
+    // ...
+    for (let i = 0, l = subs.length; i < l; i++) {
+      subs[i].update()
+    }
+}
+
+
+Watcher.update = function() {
+    //...
+    // lazy 为 true 代表是 computed
+    if (this.lazy) {
+      // 如果是 computed，则将 dirty 置为 true
+      // 可以让 computedGetter 执行时重新计算 computed 回调函数的执行结果
+      this.dirty = true;
+    } else if (this.sync) {
+      // 是否是同步 watcher
+      // 同步执行，在使用 vm.$watch 或者 watch 选项时可以传一个 sync 选项，
+      // 当为 true 时在数据更新时该 watcher 就不走异步更新队列，直接执行 this.run 
+      // 方法进行更新
+      this.run();
+    } else {
+      // 把需要更新的 watcher 往一个队列里面推
+      // 更新时一般都进到这里
+      queueWatcher(this);
+    }
+}
 ```
-// scheduler.js 中的 queueWatcher
 
+#### 3-3-2、queueWatcher
+
+> vue\src\core\observer\scheduler.js
+
+```js
+// 定义了全局 queue 数组，用于存储 watcher
+const queue: Array<Watcher> = []
+let waiting = false;
+let flushing = false;
+
+// 将 watcher 放进 watcher 队列 queue 中
 export function queueWatcher(watcher: Watcher) {
-    ...
-
+  const id = watcher.id;
+  // 如果 watcher 已经存在，则会跳过，不会重复
+  if (has[id] == null) {
+    // 缓存 watcher id，主要用来判断 watcher 有没有重复入队
+    has[id] = true;
+    if (!flushing) {
+      // 如果没有处于刷新队列状态，直接如队
+      queue.push(watcher);
+    } else {
+      // 已经在刷新队列了
+      // 从队列末尾开始倒序遍历，根据当前 watcher.id 找到它大于的 watcher.id 的位置，然后将自己插入到该位置之后的下一个位置
+      // 即将当前 watcher 放入已排序的队列中，且队列仍是有序的
+      let i = queue.length - 1;
+      while (i > index && queue[i].id > watcher.id) {
+        i--;
+      }
+      queue.splice(i + 1, 0, watcher);
+    }
+    // queue the flush
     if (!waiting) {
       waiting = true;
-      ...
 
-      nextTick(flushSchedulerQueue); // 将更新 DOM 的操作放到异步队列里面
+      if (process.env.NODE_ENV !== "production" && !config.async) {
+        // 如果是同步执行，直接刷新调度队列
+        // Vue 默认是异步执行，一般是不会同步执行，如果改为同步执行，性能将会受到很大影响
+        flushSchedulerQueue();
+        return;
+      }
+      // nextTick 函数，vm.$nextTick、Vue.nextTick
+      //   1、接收一个回调函数 flushSchedulerQueue，并将 flushSchedulerQueue 放入 callbacks 数组
+      //   2、通过 pending 控制向浏览器任务队列中添加 flushCallbacks 函数
+      //   3、通过事件循环的微任务、宏任务实现异步更新
+      nextTick(flushSchedulerQueue);
     }
   }
 }
 ```
 
-#### 3-5-1、nextTick 的实现原理
+queueWatcher 主要的任务就是将 watcher 放进队列 queue 中，然后调用 nextTick，nextTick 接收参数 flushSchedulerQueue 用作回调函数；异步更新的主要逻辑是在 nextTick 中
 
--   将回调函数放到 callbacks 中等待执行
+#### 3-3-3、nextTick
 
-```
-const callbacks = []
+> vue\src\core\util\next-tick.js
+
+```js
+const callbacks = [] // 用于存放回调函数数组
 let pending = false
-let timerFunc
 
+// cb：回调函数 flushSchedulerQueue
+// ctx：上下文
 export function nextTick (cb?: Function, ctx?: Object) {
   let _resolve
+  // 将回调函数 cb（flushSchedulerQueue）放进 callbacks 数组中
   callbacks.push(() => {
     if (cb) {
       try {
@@ -2072,19 +2150,36 @@ export function nextTick (cb?: Function, ctx?: Object) {
       _resolve(ctx)
     }
   })
+  
+  // 如果 pending 为 false，代表浏览器任务队列为空（即没有 flushCallbacks）
+  // 如果 pending 为 true，代表浏览器任务队列存在任务
+  // 在执行 flushCallbacks 的时候会再次将 pending 标记为 false
+  // 也就是说，pending 在这里的作用就是：保证在同一时刻，浏览器的任务队列中只有一个 flushCallbacks 函数
   if (!pending) {
     pending = true
+
+    // 执行 timerFunc 函数
+    // timerFunc 函数的主要作用就是：通过微任务或者宏任务的方式往浏览器添加任务队列
     timerFunc()
   }
+
+  //...
 }
-
 ```
 
--   将执行函数放到微任务或者宏任务中: 这里 Vue 做了兼容性的处理，尝试使用原生的 Promise.then、MutationObserver 和 setImmediate，上述三个都不支持最后使用 setTimeout； 其中 Promise.then、MutationObserver 是微任务，setImmediate 和 setTimeout 是宏任务。
 
-```
+
+#### 3-3-4、timerFunc 与 flushCallbacks
+
+看看 timerFunc 函数往浏览器添加任务的逻辑：
+
+> vue\src\core\util\next-tick.js
+
+```js
+let timerFunc
+
 if (typeof Promise !== 'undefined' && isNative(Promise)) {
-  //判断1：是否原生支持 Promise
+  // 如果支持 Promise 则优先使用 Promise
   const p = Promise.resolve()
   timerFunc = () => {
     p.then(flushCallbacks)
@@ -2095,7 +2190,7 @@ if (typeof Promise !== 'undefined' && isNative(Promise)) {
   isNative(MutationObserver) ||
   MutationObserver.toString() === '[object MutationObserverConstructor]'
 )) {
-  //判断2：是否原生支持 MutationObserver
+  // 使用 MutationObserver
   let counter = 1
   const observer = new MutationObserver(flushCallbacks)
   const textNode = document.createTextNode(String(counter))
@@ -2108,30 +2203,151 @@ if (typeof Promise !== 'undefined' && isNative(Promise)) {
   }
   isUsingMicroTask = true
 } else if (typeof setImmediate !== 'undefined' && isNative(setImmediate)) {
-  //判断3：是否原生支持 setImmediate
+  // 使用 setImmediate，其实 setImmediate 已经算是宏任务了，但是性能会比 setTimeout 稍微好点
   timerFunc = () => {
     setImmediate(flushCallbacks)
   }
 } else {
-  //判断4：上面都不行，直接用 setTimeout
+  // setTimeout 是最后的选择
   timerFunc = () => {
     setTimeout(flushCallbacks, 0)
   }
 }
 ```
 
--   最后依次执行 callbacks 中的回调
+可以看到，timerFunc 的逻辑特别简单：主要就是将 flushCallbacks 放进浏览器的异步任务队列里面。知识中间通过降级的方式处理兼容问题，优先使用 Promise，其次是 MutationObserver，然后是 setImmediate，最后才是使用 setTimeout，也就是优先微任务处理，微任务不行逐步降级到宏任务处理
 
-```
+
+
+再看看 flushCallbacks：
+
+> vue\src\core\util\next-tick.js
+
+```js
+// 作为 微任务 或者 宏任务 的回调函数
+// 例如：setTimeout(flushCallbacks, 0)
 function flushCallbacks () {
+  // 1、将 pending 置为 false
   pending = false
+  // 2、从 callbacks 中取出所有回调回调函数，slice(0)相当于复制一份
   const copies = callbacks.slice(0)
+  // 3、将 callbacks 数组置空
   callbacks.length = 0
+  // 4、遍历执行每一个回调函数 flushSchedulerQueue
   for (let i = 0; i < copies.length; i++) {
     copies[i]()
   }
 }
 ```
+
+
+
+#### 3-3-5、最后回到 flushSchedulerQueue
+
+> vue\src\core\observer\scheduler.js
+
+```js
+function flushSchedulerQueue() {
+  currentFlushTimestamp = getNow();
+  flushing = true; // 将 flushing 置为 true，代表正在刷新队列
+  let watcher, id;
+
+  // 刷新前先对队列进行排序，保证了：
+  //  1、组件的更新顺序为从父级到子级，因为父组件总是在子组件之前被创建
+  //  2、一个组件的用户 watcher 在其渲染 watcher 之前被执行，因为用户 watcher 先于渲染 watcher 创建
+  //  3、如果一个组件在其父组件的 watcher 执行期间被销毁，则它的 watcher 可以被跳过
+  queue.sort((a, b) => a.id - b.id);
+
+  // 使用 queue.length，动态计算队列的长度，没有缓存长度
+  // 是因为在执行现有 watcher 期间队列中可能会被 push 进新的 watcher
+  for (index = 0; index < queue.length; index++) {
+    watcher = queue[index];
+    // 如果 watcher 中存在 before，执行 before 钩子
+    // new Watcher(vm, updateComponent, noop, {
+    //   before () {
+    //     if (vm._isMounted && !vm._isDestroyed) {
+    //       callHook(vm, 'beforeUpdate')
+    //     }
+    //   }
+    // }, true /* isRenderWatcher */)
+    if (watcher.before) {
+      watcher.before();
+    }
+    id = watcher.id;
+    has[id] = null;
+    // 执行 watcher 的 run 去执行相应的更新函数进行页面更新
+    // watcher.run 实际上也就是调用 updateComponent 进到页面挂载
+    watcher.run();
+      
+    // ...
+  }
+
+  // keep copies of post queues before resetting state
+  const activatedQueue = activatedChildren.slice();
+  const updatedQueue = queue.slice();
+
+  // 重置，将 flushing 置为 false
+  resetSchedulerState();
+
+  // 触发 activated
+  callActivatedHooks(activatedQueue);
+  // 触发 update 生命周期
+  callUpdatedHooks(updatedQueue);
+}
+```
+
+其实，flushSchedulerQueue 的主要作用就是：将之前存进 queue 中的 watcher 拿出来执行 watcher.run
+
+
+
+#### 3-3-5、watcher.run 与 watcher.get
+
+> vue\src\core\observer\watcher.js
+
+```js
+class Watcher {
+    constructor(
+    	vm: Component,
+        expOrFn: string | Function,
+        cb: Function,
+        options?: ?Object,
+        isRenderWatcher?: boolean
+    ) {
+      if (typeof expOrFn === "function") {
+          // expOrFn 实际就是 new Watcher 传进来的 updateComponent
+          // 将 expOrFn（updateComponent）赋值给 this.getter
+          this.getter = expOrFn;
+      }
+    }
+    
+    get() {
+        // ...
+ 
+        // 执行 this.getter（this.getter 就是 new Watcher 传进来 updateComponent 函数）
+        // 执行更新函数，进入实例挂载阶段
+        value = this.getter.call(vm, vm);
+    }
+    
+    run() {
+        // ...
+        
+        // 执行 watcher.get
+        const value = this.get();
+    }
+}
+```
+
+可以知道，调用 watcher.run，watcher.run 又会调用 watcher.get，watcher.get 中会调用 updateComponent 进入页面挂载流程：生成虚拟 dom，patch 对比更新
+
+
+
+#### 3-3-6、总结异步更新
+
+异步更新：其实就是通过 Promise 或者 MutationObserver 或者 setImmediate 或者 setTimeout或者将更新操作放到异步任务队列里面，这也是 nextTick 的原理
+
+在 Vue 中，进行数据操作的时候，Vue 并没有马上去更新 DOM 数据，而是将这个操作放进一个队列中，如果重复执行的话，队列还会进行去重操作；等待同一事件循环中的所有数据变化完成之后，会将队列中的事件拿出来处理。这样做主要是为了提升性能，因为如果在主线程中更新 DOM，循环 100 次就要更新 100 次 DOM；但是如果等事件循环完成之后更新 DOM，只需要更新 1 次。也就是说数据改变后触发的渲染 watcher 的 update 是在 nextTick 中的。
+
+
 
 ### 3-5、数组检测
 
@@ -2139,7 +2355,7 @@ function flushCallbacks () {
 
 2、七个方法分别是：push、pop、shift、unshift、unshift、sort、reverse
 
-#### 3-4-1、数组的重写
+#### 3-5-1、数组的重写
 
 ```
 // 新建一个继承于 Array 的对象
@@ -2223,7 +2439,7 @@ export class Observer {
 }
 ```
 
-#### 3-4-2、数组的依赖收集
+#### 3-5-2、数组的依赖收集
 
 当为数组，会递归数组的每一项，子项添加依赖
 
@@ -2251,7 +2467,7 @@ export class Observer {
 }
 ```
 
-#### 3-4-3、数组的派发更新
+#### 3-5-3、数组的派发更新
 
 当调用数组的方法去添加或者删除数据时，数据的 setter 方法是无法拦截的，所以唯一可以拦截的过程就是调用数组方法的时候，数组方法的调用会代理到新类 arrayMethods 的方法中,而 arrayMethods 的数组方法是进行重写过的
 
