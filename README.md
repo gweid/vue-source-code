@@ -1314,6 +1314,8 @@ export const createCompiler = createCompilerCreator(function baseCompile (
 
 ![响应式流程](/imgs/img7.png)
 
+
+
 ### 3-1、initState 初始化
 
 首先，在 new Vue 的时候，会执行 initState
@@ -2349,19 +2351,104 @@ class Watcher {
 
 
 
-### 3-5、数组检测
+### 3-4、响应式对数组的处理
 
-1、Object.defineProperty 只能检测到对象的属性变化, 对于数组的变化无法监听到，所以，在 vue2.x 中对七个数组的方法重写了，在保留原数组功能的前提下，对数组进行额外的操作处理。
+Object.defineProperty 只能检测到对象的属性变化, 对于数组的变化无法监听到，所以，在 vue2.x 中对七个数组的方法重写了，在保留原数组功能的前提下，对数组进行额外的操作处理。
 
-2、七个方法分别是：push、pop、shift、unshift、unshift、sort、reverse
+回头来看看当 data[key] 是数组的处理方案：
 
-#### 3-5-1、数组的重写
+#### 3-4-1、Observer 类中对数组的处理
+
+在上面分析 Observer 类的时候知道，Observer 类对 data 的数据会分为两种情况，一种是非数组形式，一种是数组形式：
+
+> vue\src\core\observer\index.js
+
+```js
+class Observer {
+    constructor(value: any) {
+    	this.value = value
+        
+        if (Array.isArray(value)) {
+            // 如果是数组
+
+            // 当支持 __proto__ 时，执行 protoAugment 会将当前数组的原型指向新的数组类 arrayMethods,
+            // 如果不支持__proto__，则通过copyAugment代理设置，在访问数组方法时代理访问新数组 arrayMethods 中的数组方法
+            // 通过上面两步，接下来在实例内部调用 push, unshift 等数组的方法时，会执行 arrayMethods 类的方法
+            // 这也是数组进行依赖收集和派发更新的前提
+            if (hasProto) { // export const hasProto = '__proto__' in {}
+                // hasProto 用来判断当前环境下是否支持 __proto__ 属性
+                // protoAugment 是通过原型指向的方式，将数组指定的七个方法指向 arrayMethods
+                protoAugment(value, arrayMethods);
+            } else {
+                // copyAugment 通过数据代理的方式, 将数组指定的七个方法指向 arrayMethods
+                copyAugment(value, arrayMethods, arrayKeys);
+            }
+
+            // 调用 this.observeArray 遍历数组，为数组的每一项设置观察，处理数组元素为对象的情况
+            this.observeArray(value);
+        }
+    }
+
+    // 遍历数组，对里面的的每一个元素进行观察
+    observeArray(items: Array < any > ) {
+        for (let i = 0, l = items.length; i < l; i++) {
+            observe(items[i]);
+        }
+    }
+}
+
+// 通过更改原型指向的方式
+function protoAugment(target, src: Object) {
+  target.__proto__ = src;
+}
+
+
+// 通过 Object.defineProperty 代理的方式
+function copyAugment(target: Object, src: Object, keys: Array < string > ) {
+  for (let i = 0, l = keys.length; i < l; i++) {
+    const key = keys[i];
+    def(target, key, src[key]);
+  }
+}
+```
+
+> vue\src\core\util\lang.js
+
+```js
+export function def(obj: Object, key: string, val: any, enumerable ? : boolean) {
+  Object.defineProperty(obj, key, {
+    value: val,
+    enumerable: !!enumerable, // 两个取反, 如果不传，那么就会是 !!undefined = false, 代表不可枚举
+    writable: true,
+    configurable: true
+  })
+}
+```
+
+可以看到，当 data[key] 是数组的时候：
+
+- 判断数组是否存在 \_\_proto\_\_ 属性，如果存在，直接通过 protoAugment 更改数组的原型指向 arrayMethods
+- 如果不支持 \_\_proto\_\_ 属性，那么通过 Object.defineProperty 代理的方式劫持数组，代理到 arrayMethods
+- 最后，通过 Observer.observeArray 对数组的每一项进行响应式处理
+
+上面对数组的两种处理方法，需要一个参数 arrayMethods，来看看 arrayMethods 这个是什么东西
+
+
+
+#### 3-4-2、数组的重写
+
+上面 arrayMethods 主要就是对能改变数组的其中方法进行了重写
+
+> vue\src\core\observer\array.js
 
 ```
-// 新建一个继承于 Array 的对象
+// 对数组的原型进行备份
 const arrayProto = Array.prototype
+// 通过继承的方式创建新的 arrayMethods
 export const arrayMethods = Object.create(arrayProto)
 
+// 当外部访问通过以下7种方法访问数组，会被处理
+// 因为这7种方法会改变数组
 const methodsToPatch = [
   'push',
   'pop',
@@ -2371,150 +2458,103 @@ const methodsToPatch = [
   'sort',
   'reverse'
 ]
-```
 
-对数组的重写
-
-```
-// 对数组方法设置了代理，执行数组那七种方法的时候会执行 mutator 函数
+/**
+ * Intercept mutating methods and emit events
+ */
+// 对数组那七种方法进行拦截并执行 mutator 函数
 methodsToPatch.forEach(function (method) {
   // cache original method
   // 缓冲原始数组的方法
   const original = arrayProto[method]
-  // 利用 Object.defineProperty 对方法的执行进行改写
-  def(arrayMethods, method, function mutator(...args) {})
-})
-
-function def (obj, key, val, enumerable) {
-  Object.defineProperty(obj, key, {
-    value: val,
-    enumerable: !!enumerable,
-    writable: true,
-    configurable: true
-  });
-}
-```
-
-当执行 arrayMethods 时， 会代理执行 mutator 函数
-
-当在访问数组时，如何不调用原生的数组方法，而是将过程指向这个新的类
-
-当支持 \_\_proto\_\_ 时，执行 protoAugment 会将当前数组的原型指向新的数组类 arrayMethods,如果不支持 \_\_proto\_\_，则通过代理设置，在访问数组方法时代理访问新数组类中的数组方法。
-
--   protoAugment 是通过原型指向的方式，将数组指定的七个方法指向 arrayMethods
--   copyAugment 通过数据代理的方式, 将数组指定的七个方法指向 arrayMethods
-
-有了这两步的处理，接下来我们在实例内部调用 push, unshift 等数组的方法时，会执行 arrayMethods 类的方法。这也是数组进行依赖收集和派发更新的前提。
-
-```
-export class Observer {
-  value: any;
-  dep: Dep;
-  vmCount: number; // number of vms that have this object as root $data
-
-  constructor(value: any) {
-    this.value = value;
-    this.dep = new Dep();
-    this.vmCount = 0;
-    // 将__ob__属性设置成不可枚举属性。外部无法通过遍历获取。
-    def(value, "__ob__", this);
-    if (Array.isArray(value)) {
-      // 传入是数组
-      // hasProto 用来判断当前环境下是否支持__proto__属性
-      // protoAugment 是通过原型指向的方式，将数组指定的七个方法指向 arrayMethods
-      // copyAugment 通过数据代理的方式, 将数组指定的七个方法指向 arrayMethods
-      // 当支持__proto__时，执行protoAugment会将当前数组的原型指向新的数组类arrayMethods,如果不支持__proto__，则通过代理设置，在访问数组方法时代理访问新数组类中的数组方法。
-      if (hasProto) { // export const hasProto = '__proto__' in {}
-        protoAugment(value, arrayMethods);
-      } else {
-        copyAugment(value, arrayMethods, arrayKeys);
-      }
-      // 通过上面两步，接下来在实例内部调用push, unshift等数组的方法时，会执行 arrayMethods 类的方法。这也是数组进行依赖收集和派发更新的前提。
-      this.observeArray(value);
-    } else {
-      // 对象
-      this.walk(value);
-    }
-  }
-}
-```
-
-#### 3-5-2、数组的依赖收集
-
-当为数组，会递归数组的每一项，子项添加依赖
-
-```
-export class Observer {
-  ...
-
-  constructor(value: any) {
-    if (Array.isArray(value)) {
-      ...
-
-      this.observeArray(value);
-    } else {
-      // 对象
-      this.walk(value);
-    }
-  }
-
-  observeArray(items: Array < any > ) {
-    for (let i = 0, l = items.length; i < l; i++) {
-      // 遍历对数组的每一个元素进行观察
-      observe(items[i]);
-    }
-  }
-}
-```
-
-#### 3-5-3、数组的派发更新
-
-当调用数组的方法去添加或者删除数据时，数据的 setter 方法是无法拦截的，所以唯一可以拦截的过程就是调用数组方法的时候，数组方法的调用会代理到新类 arrayMethods 的方法中,而 arrayMethods 的数组方法是进行重写过的
-
--   首先调用原始的数组方法进行运算，这保证了与原始数组类型的方法一致性
--   inserted 变量用来标志数组是否是增加了元素，如果增加的元素不是原始类型，而是数组对象类型，则需要触发 observeArray 方法，对每个元素进行依赖收集。
--   调用 ob.dep.notify(), 进行依赖的派发更新
-
-```
-// 对数组方法设置了代理，执行数组那七种方法的时候会执行 mutator 函数
-methodsToPatch.forEach(function (method) {
-  // cache original method
-  // 缓冲原始数组的方法
-  const original = arrayProto[method]
-  // 利用 Object.defineProperty 对方法的执行进行改写
+  // 利用 Object.defineProperty 对 arrayMethods 进行拦截
   def(arrayMethods, method, function mutator(...args) {
-    // 执行原数组方法，保证了与原始数组类型的方法一致性
+    // 先执行数组原生方法，保证了与原生数组方法的执行结果一致
+    // 例如 push.apply()
     const result = original.apply(this, args)
+
     const ob = this.__ob__
-    // inserted变量用来标志数组是否是增加了元素，如果增加的元素不是原始类型，而是数组对象类型，则需要触发 observeArray 方法，对每个元素进行依赖收集。
+    // 如果 method 是以下三个之一，说明是新插入了元素
     let inserted
     switch (method) {
       case 'push':
       case 'unshift':
-        inserted = args
+        inserted = args // 比如：args 是 [{...}]
         break
       case 'splice':
         inserted = args.slice(2)
         break
     }
+    // 对插入的元素进行响应式处理
     if (inserted) ob.observeArray(inserted)
-    // notify change
-    // 进行依赖的派发更新
+
+    // 通过 dep.notify 通知更新
     ob.dep.notify()
     return result
   })
 })
 ```
 
-**数组改写的方法或者通过 Vue.set 本质上就是手动的调用 dep.notify() 去通知渲染 watcher 进行更新**
+- 对于新增的元素进行响应式处理
+- 操作数组后通过 dep.notify 通知更新
 
-**总结：总的来说。数组的改变不会触发 setter 进行依赖更新，所以 Vue 创建了一个新的数组类，重写了数组的方法，将数组方法指向了新的数组类。**
-**同时在访问到数组时依旧触发 getter 进行依赖收集，在更改数组时，触发数组新方法运算，并进行依赖的派发。**
+
+
+#### 3-4-3、总结响应式对数组的处理
+
+Object.defineProperty 只能劫持对象，对于数组，没办法进行劫持。vue 做的处理就是：对于能够改变数组的七种方法进行了重写，也就是说，当外部访问数组那那七种 ['push','pop','shift','unshift','splice','sort','reverse'] 方法时，进行劫持。里面会进行如下操作：
+
+- 首先使用原生数组方法获取到结果
+- 如果有新增元素，对新能元素进行响应式处理
+- 最后无论新增还是删除还是对数组重新排序都会通过调用 dep.notify 通知更新
+
+
+
+### 3-5、\$set
+
+vm.\$set 原理：
+
+-   如果目标是数组，直接使用数组的 splice 方法触发相应式；
+-   如果目标是对象，会先判读属性是否存在、对象是否是响应式，最终如果要对属性进行响应式处理，则是通过调用 defineReactive 方法进行响应式处理（ defineReactive 方法就是 Vue 在初始化对象时，给对象属性采用 Object.defineProperty 动态添加 getter 和 setter 的功能所调用的方法）
+-   最后通过 dep.notify 通知更新
+
+```
+export function set (target: Array<any> | Object, key: any, val: any): any {
+  // target 为数组
+  if (Array.isArray(target) && isValidArrayIndex(key)) {
+    // 修改数组的长度, 避免索引>数组长度导致splcie()执行有误
+    target.length = Math.max(target.length, key)
+    // 利用数组的splice变异方法触发响应式
+    target.splice(key, 1, val)
+    return val
+  }
+  // key 已经存在，直接修改属性值
+  if (key in target && !(key in Object.prototype)) {
+    target[key] = val
+    return val
+  }
+  const ob = (target: any).__ob__
+  // target 本身就不是响应式数据, 直接赋值
+  if (!ob) {
+    target[key] = val
+    return val
+  }
+  // 对属性进行响应式处理
+  defineReactive(ob.value, key, val)
+  
+  // 通知更新
+  ob.dep.notify()
+  return val
+}
+```
+
 
 
 ### 3-6、computed
 
 ![computed](/imgs/img4.png)
+
+
 
 #### 3-6-1、computed 的依赖收集
 
@@ -2720,11 +2760,13 @@ Watcher.prototype.update = function update () {
 
 **由于 data 数据拥有渲染 watcher 这个依赖，所以同时会执行 updateComponent 进行视图重新渲染,而 render 过程中会访问到计算属性,此时由于 this.dirty 值为 true,又会对计算属性重新求值**
 
+
+
 ### 3-7、watch
 
 ![watch](/imgs/img5.png)
 
-最基本的用法
+watch 的最基本的用法：
 
 ```
 watch: {
@@ -2740,6 +2782,14 @@ watch: {
   }
 }
 ```
+
+
+
+#### 3-7-1、初始化 watch
+
+
+
+
 
 #### 3-7-1、watch 的依赖收集
 
@@ -2851,42 +2901,6 @@ export default class Watcher {
 #### 3-7-2、watch 的派发更新
 
 watch 派发更新的过程: 数据发生改变时，setter 拦截对依赖进行更新，而此前 user watcher 已经被当成依赖收集了。这个时候依赖的更新就是回调函数的执行。
-
-### 3-8、\$set
-
-vm.\$set 原理：
-
--   如果目标是数组，直接使用数组的 splice 方法触发相应式；
-
--   如果目标是对象，会先判读属性是否存在、对象是否是响应式，最终如果要对属性进行响应式处理，则是通过调用 defineReactive 方法进行响应式处理（ defineReactive 方法就是 Vue 在初始化对象时，给对象属性采用 Object.defineProperty 动态添加 getter 和 setter 的功能所调用的方法）
-
-```
-export function set (target: Array<any> | Object, key: any, val: any): any {
-  // target 为数组
-  if (Array.isArray(target) && isValidArrayIndex(key)) {
-    // 修改数组的长度, 避免索引>数组长度导致splcie()执行有误
-    target.length = Math.max(target.length, key)
-    // 利用数组的splice变异方法触发响应式
-    target.splice(key, 1, val)
-    return val
-  }
-  // key 已经存在，直接修改属性值
-  if (key in target && !(key in Object.prototype)) {
-    target[key] = val
-    return val
-  }
-  const ob = (target: any).__ob__
-  // target 本身就不是响应式数据, 直接赋值
-  if (!ob) {
-    target[key] = val
-    return val
-  }
-  // 对属性进行响应式处理
-  defineReactive(ob.value, key, val)
-  ob.dep.notify()
-  return val
-}
-```
 
 
 

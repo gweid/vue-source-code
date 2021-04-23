@@ -54,12 +54,12 @@ export class Observer {
     if (Array.isArray(value)) {
       // 如果是数组
 
-      // 当支持__proto__时，执行 protoAugment 会将当前数组的原型指向新的数组类 arrayMethods,
-      // 如果不支持__proto__，则通过代理设置，在访问数组方法时代理访问新数组类中的数组方法
+      // 当支持 __proto__ 时，执行 protoAugment 会将当前数组的原型指向新的数组类 arrayMethods,
+      // 如果不支持 __proto__，则通过 copyAugment 代理设置，在访问数组方法时代理访问新数组 arrayMethods 中的数组方法
       // 通过上面两步，接下来在实例内部调用 push, unshift 等数组的方法时，会执行 arrayMethods 类的方法
       // 这也是数组进行依赖收集和派发更新的前提
       if (hasProto) { // export const hasProto = '__proto__' in {}
-        // hasProto 用来判断当前环境下是否支持__proto__属性
+        // hasProto 用来判断当前环境下是否支持 __proto__ 属性
         // protoAugment 是通过原型指向的方式，将数组指定的七个方法指向 arrayMethods
         protoAugment(value, arrayMethods);
       } else {
@@ -92,8 +92,8 @@ export class Observer {
    * Observe a list of Array items.
    */
   observeArray(items: Array < any > ) {
+    // 遍历数组，对里面的的每一个元素进行观察
     for (let i = 0, l = items.length; i < l; i++) {
-      // 遍历对数组的每一个元素进行观察
       observe(items[i]);
     }
   }
@@ -105,7 +105,7 @@ export class Observer {
  * Augment a target Object or Array by intercepting
  * the prototype chain using __proto__
  */
-// 直接通过原型指向的方式
+// 通过更改原型指向的方式
 function protoAugment(target, src: Object) {
   /* eslint-disable no-proto */
   target.__proto__ = src;
@@ -117,7 +117,7 @@ function protoAugment(target, src: Object) {
  * hidden properties.
  */
 /* istanbul ignore next */
-// 通过数据代理的方式
+// 通过 Object.defineProperty 代理的方式
 function copyAugment(target: Object, src: Object, keys: Array < string > ) {
   for (let i = 0, l = keys.length; i < l; i++) {
     const key = keys[i];

@@ -9,6 +9,8 @@
 <body>
   <div id="app">
     <div>{{msg}}</div>
+    <p v-for="item in list" :key="item.id">{{item.info}}</p>
+    <button @click="addItem">添加一项</button>
   </div>
 
   <script src="../dist/vue.js"></script>
@@ -16,7 +18,22 @@
     new Vue({
       el: '#app',
       data: {
-        msg: 'Hello Vue'
+        msg: 'Hello Vue',
+        list: [
+          {
+            id: '1',
+            info: '这是1'
+          }
+        ]
+      },
+      methods: {
+        addItem() {
+          const item = {
+            id: JSON.stringify(this.list.length),
+            info: `这是${JSON.stringify(this.list.length)}`
+          }
+          this.list.push(item)
+        }
       }
     })
   </script>
