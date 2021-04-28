@@ -2774,6 +2774,84 @@ Watcher.prototype.update = function update () {
 
 
 
+先看看使用 watch 的方法：
+
+- 字符串形式
+
+  ```js
+  data: {
+    userName: ''
+  },
+  methods: {
+      userNameChange() {}
+  },
+  watch: {
+      userName: 'userNameChange'
+  }
+  ```
+
+- 函数形式
+
+  ```js
+  data: {
+    a: ''
+  },
+  watch: {
+    a() {}
+  }
+  ```
+
+- 对象形式
+
+  ```js
+  data: {
+    a: ''
+  },
+  watch: {
+    a: {
+      handler(newName, oldName) {
+         console.log('obj.a changed');
+      },
+      immediate: true, // 立即执行一次 handler
+      deep: true
+    }
+  }
+  ```
+
+- 数组形式
+
+  ```js
+  data: {
+    info: {
+      size: ''
+    }
+  },
+  watch: {
+    'info.size': [
+      'handler',
+      handle2 () {},
+      {
+        handler: function handle3 () {},
+      }
+    ],  
+  },
+  methods: {
+    handler () {}
+  }
+  ```
+
+- 直接 this.$watch
+
+  ```js
+  data: {
+    msg: ''
+  },
+  
+  this.$watch('msg', () => {})
+  ```
+
+
+
 #### 3-7-1、初始化 watch
 
 > vue\src\core\instance\state.js
@@ -2812,7 +2890,7 @@ function initWatch(vm: Component, watch: Object) {
 }
 ```
 
-initWatch 主要就是遍历 watch 对象，得到每一个 watch，然后调用 createWatcher
+initWatch 主要就是遍历 watch 对象，得到每一个 watch，然后调用 createWatcher。这里会处理数组形式的 watch 使用
 
 
 
@@ -2870,42 +2948,14 @@ function createWatcher(
 }
 ```
 
-对每一个 watch做兼容处理，watch 可能是：
+对一下几种 watch 使用方法做兼容处理：
 
 - 对象形式
 
-  ```js
-  watch: {
-    a: {
-      handler(newName, oldName) {
-         console.log('obj.a changed');
-      },
-      immediate: true, // 立即执行一次 handler
-      deep: true
-    }
-  }
-  ```
-
 - 字符串形式
-
-  ```js
-  methods: {
-      userNameChange() {}
-  },
-  watch: {
-      userName: 'userNameChange'
-  }
-  ```
 
 - 函数形式（不用处理）
 
-  ```js
-  watch: {
-      a() {
-          
-      }
-  }
-  ```
 
 无论是哪种形式，最后都是调用了 vm.$watch
 
