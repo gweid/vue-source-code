@@ -212,7 +212,7 @@ export default class Watcher {
    */
   run() {
     if (this.active) {
-      // 首先就执行 watcher.get，watcher.get 会执行更新函数进行实例挂载流程
+      // 首先就执行 watcher.get，watcher.get 中执行 this.getter 得到 value
       const value = this.get();
       if (
         value !== this.value ||
@@ -226,9 +226,9 @@ export default class Watcher {
         const oldValue = this.value;
         this.value = value;
         if (this.user) {
-          // 如果是用户 watcher，则执行用户传递的第三个参数 —— 回调函数
+          // 如果是用户 watcher
           try {
-            // 执行回调，进行数据更新
+            // 执行 handler 回调
             this.cb.call(this.vm, value, oldValue);
           } catch (e) {
             handleError(

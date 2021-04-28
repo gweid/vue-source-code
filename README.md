@@ -4,7 +4,7 @@
 
 
 
-**调试方式：**
+## 调试方式：
 
 1. 把 vue 源码 clone 下来，cd 进 vue 源码目录，然后 npm i 装包
 
@@ -3092,7 +3092,47 @@ function initMixin (Vue: Class<Component>) {
 
 
 
-watch 派发更新的过程:  data 数据发生改变时，触发 setter 拦截，将收集到的 watcher 遍历出来，逐个执行，最后执行 render watcher，调用更新函数进行视图更新
+执行 user watcher 实际就是执行 Watcher.run 方法:
+
+```js
+export default class Watcher {
+  constructor(
+    vm: Component,
+    expOrFn: string | Function,
+    cb: Function,
+    options?: ?Object,
+    isRenderWatcher?: boolean
+  ) {
+    // ...
+  }
+    
+  get() {
+    // ...
+    value = this.getter.call(vm, vm);
+    return value
+  }
+    
+  run() {
+    // 首先就执行 watcher.get，watcher.get 中执行 this.getter 得到 value
+    const value = this.get();
+      
+    if (this.user) {
+      // 执行 handler 回调
+      this.cb.call(this.vm, value, oldValue);
+
+    }else {/.../}
+  }
+}
+```
+
+对于 user watcher 的 Watcher.run，主要是：
+
+- 先调用 watcher.get，watcher.get 中执行 this.getter 得到新的 value
+- this.cb.call(this.vm, value, oldValue)，这个 this.cb 对于 user watcher 来说就是每一个 watch 的 handler，在 new Watcher 的时候传入
+
+
+
+watch 派发更新的过程:  data 数据发生改变时，触发 setter 拦截，将收集到的 watcher 遍历出来，逐个执行，最后执行 render watcher，调用更新函数 updateComponent 进行视图更新
 
 
 
