@@ -2984,6 +2984,7 @@ export function stateMixin(Vue: Class < Component > ) {
     const vm: Component = this
 
     // 先判断一下 handler 回调函数会不会是对象，是对象，继续调用 createWatcher 处理
+    // 这里是因为有这种情况：this.$watch('msg', { handler: () => {} })
     if (isPlainObject(cb)) {
       return createWatcher(vm, expOrFn, cb, options)
     }
