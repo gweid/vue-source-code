@@ -355,8 +355,10 @@ function initMethods(vm: Component, methods: Object) {
 }
 
 function initWatch(vm: Component, watch: Object) {
-  const handler = watch[key]
-    for (const key in watch) {
+  // 遍历 watch 对象
+  for (const key in watch) {
+    // 获取 handler = watch[key]
+    const handler = watch[key]
     // handler可以是数组的形式，执行多个回调
     if (Array.isArray(handler)) {
       for (let i = 0; i < handler.length; i++) {
@@ -375,15 +377,43 @@ function createWatcher(
   handler: any,
   options ? : Object
 ) {
+  // 如果 handler(watch[key]) 是一个对象，那么获取其中的 handler 方法
+  // watch: {
+  //   a: {
+  //     handler(newName, oldName) {
+  //       console.log('obj.a changed');
+  //     },
+  //     immediate: true, // 立即执行一次 handler
+  //     // deep: true
+  //   }
+  // }
   if (isPlainObject(handler)) {
+    // 如果是对象，那么 options 就是 watch[key]
     options = handler
+    // handler 是 watch[key].handler
     handler = handler.handler
   }
+
+  // watch 也可以是字符串形式
+  // methods: {
+  //   userNameChange() {}
+  // },
+  // watch: {
+  //   userName: 'userNameChange'
+  // }
+  // 如果 handler(watch[key]) 是字符串类型
   if (typeof handler === 'string') {
+    // 找到 vm 实例上的 handler
     handler = vm[handler]
   }
 
-  // stateMixin 中定义了 vm.$watch
+  // handler(watch[key]) 不是对象也不是字符串，那么不需要处理 handler，直接执行 vm.$watch
+  // 例如：watch: { a(newName, oldName) {} }
+  /**
+   * expOrFn: 就是每一个 watch 的名字(key 值)
+   * handler: watch[key]
+   * options: 如果是对象形式，options 有值，不是，可能是 undefined
+   */
   return vm.$watch(expOrFn, handler, options)
 }
 
@@ -417,21 +447,34 @@ export function stateMixin(Vue: Class < Component > ) {
   Vue.prototype.$set = set
   Vue.prototype.$delete = del
 
+  /**
+   * expOrFn: key，也就是 watch 名字
+   * cb: handler 回调函数
+   * options: 配置项，当 watch 是对象时，或者直接调用 $watch 都可能存在，其他情况可能是 undefined
+   */
   Vue.prototype.$watch = function (
     expOrFn: string | Function,
     cb: any,
     options ? : Object
   ): Function {
     const vm: Component = this
+
+    // 先判断一下 handler 会不会是对象，是对象，继续调用 createWatcher 处理
     if (isPlainObject(cb)) {
       return createWatcher(vm, expOrFn, cb, options)
     }
+
+    // 如果 options 是 undefined，将 options 赋值为空对象 {}
     options = options || {}
+
     // options.user 这个是用户定义 watcher 的标志
     options.user = true
-    // 创建一个user watcher，在实例化 user watcher 的时候会执行一次 getter 求值，这时，user watcher 会作为依赖被数据所收集
+
+    // 创建一个user watcher
+    // 在实例化 user watcher 的时候会执行一次 getter 求值，这时，user watcher 会作为依赖被数据所收集
     const watcher = new Watcher(vm, expOrFn, cb, options)
-    // 如果有 immediate，立即执行回调函数
+
+    // 如果有 immediate，立即执行回调函数 handler
     if (options.immediate) {
       try {
         cb.call(vm, watcher.value)
@@ -439,6 +482,8 @@ export function stateMixin(Vue: Class < Component > ) {
         handleError(error, vm, `callback for immediate watcher "${watcher.expression}"`)
       }
     }
+
+    // 返回 unwatch 函数，用于取消 watch 监听
     return function unwatchFn() {
       watcher.teardown()
     }

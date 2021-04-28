@@ -19,12 +19,17 @@
       el: '#app',
       data: {
         msg: 'Hello Vue',
+        age: 18,
+        userName: '张三',
         list: [
           {
             id: '1',
             info: '这是1'
           }
-        ]
+        ],
+        info: {
+          size: 'small'
+        }
       },
       methods: {
         addItem() {
@@ -33,7 +38,21 @@
             info: `这是${JSON.stringify(this.list.length)}`
           }
           this.list.push(item)
-        }
+        },
+        userNameChange() {}
+      },
+      watch: {
+        msg: {
+          handler(newName, oldName) {
+            console.log(newName)
+          },
+          immediate: true
+        },
+        age(newName, oldName) {},
+        userName: 'userNameChange',
+        'info.size'() {
+          
+        } 
       }
     })
   </script>

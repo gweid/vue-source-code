@@ -75,12 +75,15 @@ export default class Watcher {
     this.newDepIds = new Set();
     this.expression =
       process.env.NODE_ENV !== "production" ? expOrFn.toString() : "";
-    // parse expression for getter
+    // expOrFn: 主要看 new Watcher 的时候传进来什么，不同场景会有区别
+    //  1、如果是渲染 watcher（处理 data），就是 new Watcher 传进来的 updateComponent
+    //  2、如果是用户 watcher（处理 watch），就是 watch 的键 key（每一个 watch 的名字）
+    // 将 expOrFn 赋值给 this.getter
     if (typeof expOrFn === "function") {
-      // expOrFn 实际就是 new Watcher 传进来的 updateComponent
-      // 将 expOrFn（updateComponent）赋值给 this.getter
+      // 如果 expOrFn 是一个函数，比如 渲染watcher 的情况，是 updateComponent 函数
       this.getter = expOrFn;
     } else {
+      // 不是函数，比如 用户watcher 的情况，是 watch 的 key
       this.getter = parsePath(expOrFn);
       if (!this.getter) {
         this.getter = noop;
@@ -107,8 +110,10 @@ export default class Watcher {
     let value;
     const vm = this.vm;
     try {
-      // 执行 this.getter（this.getter 就是 new Watcher 传进来 updateComponent 函数）
-      // 执行更新函数，进入实例挂载阶段
+      // 执行 this.getter
+      // 上面已经分析过，this.getter 会根据不同的 watcher 会不一样
+      //  1、渲染 watcher：this.getter 是 updateComponent 函数
+      //  2、用户 watcher：this.getter 是经过 parsePath() 解析后返回的函数
       value = this.getter.call(vm, vm);
     } catch (e) {
       if (this.user) {

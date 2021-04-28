@@ -2315,19 +2315,25 @@ class Watcher {
         options?: ?Object,
         isRenderWatcher?: boolean
     ) {
+      // expOrFn:
+      //  1、如果是渲染 watcher（处理 data），就是 new Watcher 传进来的 updateComponent
+      //  2、如果是用户 watcher（处理 watch），就是 watch 的键 key（每一个 watch 的名字）
+      // 将 expOrFn 赋值给 this.getter
       if (typeof expOrFn === "function") {
-          // expOrFn 实际就是 new Watcher 传进来的 updateComponent
-          // 将 expOrFn（updateComponent）赋值给 this.getter
-          this.getter = expOrFn;
-      }
+        // 如果 expOrFn 是一个函数，比如 渲染watcher 的情况
+        this.getter = expOrFn;
+
+      } else {/..../}
     }
     
     get() {
         // ...
- 
-        // 执行 this.getter（this.getter 就是 new Watcher 传进来 updateComponent 函数）
-        // 执行更新函数，进入实例挂载阶段
-        value = this.getter.call(vm, vm);
+        
+      // 执行 this.getter
+      // 上面已经分析过，this.getter 会根据不同的 watcher 会不一样
+      //  1、渲染 watcher：this.getter 是 updateComponent 函数
+      //  2、用户 watcher：this.getter 是经过 parsePath() 解析后返回的函数
+      value = this.getter.call(vm, vm);
     }
     
     run() {
@@ -2339,7 +2345,7 @@ class Watcher {
 }
 ```
 
-可以知道，调用 watcher.run，watcher.run 又会调用 watcher.get，watcher.get 中会调用 updateComponent 进入页面挂载流程：生成虚拟 dom，patch 对比更新
+可以知道，调用 watcher.run，watcher.run 又会调用 watcher.get，watcher.get 中,因为是渲染 watcher，会调用 updateComponent 进入页面挂载流程：生成虚拟 dom，patch 对比更新
 
 
 
@@ -2766,41 +2772,33 @@ Watcher.prototype.update = function update () {
 
 ![watch](/imgs/img5.png)
 
-watch 的最基本的用法：
-
-```
-watch: {
-  a: {
-    handler(newName, oldName) {
-      console.log('obj.a changed');
-    },
-    immediate: true,
-    // deep: true
-  },
-  b() {
-
-  }
-}
-```
-
 
 
 #### 3-7-1、初始化 watch
 
+> vue\src\core\instance\state.js
 
-
-
-
-#### 3-7-1、watch 的依赖收集
-
-首先初始化调用 initWatch 初始化 watch， initWatch 的核心是 createWatcher
-
+```js
+function initState (vm: Component) {
+    // ...
+    
+    // 初始化 wathcer:
+    //   遍历 watch 对象，为每个 watch 添加一个 user watch 
+    if (opts.watch && opts.watch !== nativeWatch) {
+        initWatch(vm, opts.watch)
+    }
+}
 ```
-// state.js
 
+主要就是调用 initWatch 去初始化 watch
+
+> vue\src\core\instance\state.js
+
+```js
 function initWatch(vm: Component, watch: Object) {
-  // 遍历 watch
+  // 遍历 watch 对象
   for (const key in watch) {
+    // 获取 handler = watch[key]
     const handler = watch[key]
     // handler可以是数组的形式，执行多个回调
     if (Array.isArray(handler)) {
@@ -2812,14 +2810,26 @@ function initWatch(vm: Component, watch: Object) {
     }
   }
 }
+```
 
+initWatch 主要就是遍历 watch 对象，得到每一个 watch，然后调用 createWatcher
+
+
+
+#### 3-7-1、watch 的依赖收集
+
+看看 createWatcher 函数：
+
+> vue\src\core\instance\state.js
+
+```
 function createWatcher(
   vm: Component,
   expOrFn: string | Function,
   handler: any,
   options ? : Object
 ) {
-  // 如果是对象形式的 watch
+  // 如果 handler(watch[key]) 是一个对象，那么获取其中的 handler 方法
   // watch: {
   //   a: {
   //     handler(newName, oldName) {
@@ -2830,39 +2840,113 @@ function createWatcher(
   //   }
   // }
   if (isPlainObject(handler)) {
+    // 如果是对象，那么 options 就是 watch[key]
     options = handler
+    // handler 是 watch[key].handler
     handler = handler.handler
   }
+
+  // watch 也可以是字符串形式
+  // methods: {
+  //   userNameChange() {}
+  // },
+  // watch: {
+  //   userName: 'userNameChange'
+  // }
+  // 如果 handler(watch[key]) 是字符串类型
   if (typeof handler === 'string') {
+    // 找到 vm 实例上的 handler
     handler = vm[handler]
   }
+
+  // handler(watch[key]) 不是对象也不是字符串，那么不需要处理 handler，直接执行 vm.$watch
+  // 例如：watch: { a(newName, oldName) {} }
+  /**
+   * expOrFn: 就是每一个 watch 的名字(key 值)
+   * handler: watch[key]
+   * options: 如果是对象形式，options 有值，不是，可能是 undefined
+   */
   return vm.$watch(expOrFn, handler, options)
 }
 ```
 
-无论是选项的形式，还是 api 的形式，最终都会调用实例的 \$watch 方法，其中 expOrFn 是监听的字符串，handler 是监听的回调函数，options 是相关配置
+对每一个 watch做兼容处理，watch 可能是：
+
+- 对象形式
+
+  ```js
+  watch: {
+    a: {
+      handler(newName, oldName) {
+         console.log('obj.a changed');
+      },
+      immediate: true, // 立即执行一次 handler
+      deep: true
+    }
+  }
+  ```
+
+- 字符串形式
+
+  ```js
+  methods: {
+      userNameChange() {}
+  },
+  watch: {
+      userName: 'userNameChange'
+  }
+  ```
+
+- 函数形式（不用处理）
+
+  ```js
+  watch: {
+      a() {
+          
+      }
+  }
+  ```
+
+无论是哪种形式，最后都是调用了 vm.$watch
+
+
+
+下面来看看 vm.$watch，在 stateMixin 方法上被定义
+
+> vue\src\core\instance\state.js
 
 ```
-// state.js
-
 export function stateMixin(Vue: Class < Component > ) {
-  ...
+  // ...
 
+  /**
+   * expOrFn: key，也就是 watch 名字
+   * cb: handler 回调函数
+   * options: 配置项，当 watch 是对象时，或者直接调用 $watch 都可能存在，其他情况可能是 undefined
+   */
   Vue.prototype.$watch = function (
     expOrFn: string | Function,
     cb: any,
     options ? : Object
   ): Function {
     const vm: Component = this
+
+    // 先判断一下 handler 回调函数会不会是对象，是对象，继续调用 createWatcher 处理
     if (isPlainObject(cb)) {
       return createWatcher(vm, expOrFn, cb, options)
     }
+
+    // 如果 options 是 undefined，将 options 赋值为空对象 {}
     options = options || {}
+
     // options.user 这个是用户定义 watcher 的标志
     options.user = true
-    // 创建一个 user watcher，在实例化 user watcher 的时候会执行一次 getter 求值，这时，user watcher 会作为依赖被数据所收集
+
+    // 创建一个user watcher
+    // 在实例化 user watcher 的时候会执行一次 getter 求值，这时，user watcher 会作为依赖被数据所收集
     const watcher = new Watcher(vm, expOrFn, cb, options)
-    // 如果有 immediate，立即执行回调函数
+
+    // 如果有 immediate，立即执行回调函数 handler
     if (options.immediate) {
       try {
         cb.call(vm, watcher.value)
@@ -2870,6 +2954,8 @@ export function stateMixin(Vue: Class < Component > ) {
         handleError(error, vm, `callback for immediate watcher "${watcher.expression}"`)
       }
     }
+
+    // 返回 unwatch 函数，用于取消 watch 监听
     return function unwatchFn() {
       watcher.teardown()
     }
@@ -2877,30 +2963,136 @@ export function stateMixin(Vue: Class < Component > ) {
 }
 ```
 
--   options.user = true：表示为用户定义的 watch 的 watcher
--   new Watcher(vm, expOrFn, cb, options)：创建一个用户 watcher，在实例化 watcher 的时候，会执行 watcher.getter 对 vm.xxx 进行取值，并让 vm.xxx 的 dep 收集当前的用户 watcher
+vm.$watch 主要做的事：
+
+1. 先判断一下 handler 回调函数会不会是对象，是对象，继续调用 createWatcher 处理
+2. 处理 options（如果 options 是 undefined，将 options 赋值为空对象 {}）
+3. options.user 设置为 true，标记当前为用户 watcher，也就是标记这个是 watch 响应式
+4. new Watcher 创建一个 user watcher
+   - 在实例化 user watcher 的时候会执行一次 getter 求值，这时，user watcher 会作为依赖被数据所收集
+5. 如果有 immediate，立即执行回调函数 handler
+6. 返回 unwatch 函数，用于取消 watch 监听
+
+
+
+最后回顾一下 Watcher 实例化所做的事：
+
+> vue\src\core\observer\watcher.js
 
 ```
 export default class Watcher {
   constructor() {
-    ...
+    // ...
 
+    // expOrFn: 主要看 new Watcher 的时候传进来什么，不同场景会有区别
+    //  1、如果是渲染 watcher（处理 data），就是 new Watcher 传进来的 updateComponent
+    //  2、如果是用户 watcher（处理 watch），就是 watch 的键 key（每一个 watch 的名字）
+    // 将 expOrFn 赋值给 this.getter
+    if (typeof expOrFn === "function") {
+      // 如果 expOrFn 是一个函数，比如 渲染watcher 的情况，是 updateComponent 函数
+      this.getter = expOrFn;
+    } else {
+      // 不是函数，比如 用户watcher 的情况，是 watch 的 key
+      this.getter = parsePath(expOrFn);
+    }
+    
+    // 如果是 lazy 代表的是 computed
+    // 不是 computed，执行 this.get()
     this.value = this.lazy ? undefined : this.get();
   }
 
   get() {
     // 将 user watcher 添加到 Dep.target
     pushTarget(this);
-
-    // getter 回调函数，触发依赖收集（因为 watch 监听的是 data 或者 props 的数据，当访问 data 的数据是，触发 get 去把 user watcher 添加到 dep）
+    
+    // 执行 this.getter
+    // 上面已经分析过，this.getter 会根据不同的 watcher 会不一样
+    //  1、渲染 watcher：this.getter 是 updateComponent 函数
+    //  2、用户 watcher：this.getter 是经过 parsePath() 解析后返回的函数
     value = this.getter.call(vm, vm);
   }
 }
 ```
 
+new Watcher 的时候，会执行：
+
+- constructor：这里面主要就是定义了 this.getter 是什么；因为是 用户watcher，在 new Watcher 的时候，expOrFn 传进来的是 watch 的 key，所以使用了 parsePath(expOrFn) 方法解析得到 this.getter
+- Watcher.get：pushTarget(this) 将 user watcher 添加到 Dep.target；执行在 constructor 中定义的 this.getter
+
+
+
+看完 new Watcher 很迷惑，没发现什么时候进行了依赖收集呀？其实是有的，答案就在   parsePath(expOrFn) 中：
+
+> vue\src\core\util\lang.js
+
+```js
+const bailRE = new RegExp(`[^${unicodeRegExp.source}.$_\\d]`)
+export function parsePath(path: string): any {
+  if (bailRE.test(path)) {
+    return
+  }
+  // 这里为什么要用 path.split('.') 呢？
+  // data() {
+  //   return {
+  //     msg: '',
+  //     info: { size: '' }
+  //   }
+  // }
+  // watch: {
+  //   msg() {},
+  //   'info.size'() {}
+  // }
+  // 如果是 msg，那么 'msg'.split('.') 返回 ['msg']
+  // 如果是 info.size，那么 'info.size'.split('.') 返回 ['info', 'size']
+  const segments = path.split('.')
+
+  // 在调用的时候，传入的是 obj 是 vm
+  return function (obj) {
+    for (let i = 0; i < segments.length; i++) {
+      if (!obj) return
+      // 如果是 ['msg']，那么这里就是 obj = vm[[msg][0]]
+      // 这就相当于访问了 data 的 msg，那么就会触发 data 的 getter 进行依赖收集
+
+      // 如果是 ['info', 'size'], 那么就分两次
+      //  1、obj = vm[['info', 'size'][0]]，得到 obj = vm['info']，相当于访问了 data 的 info
+      //  2、obj = vm['info'][['info', 'size'][1]]，相当于访问了 info['size']
+      // 上面一次访问 data 的 info 以及第二次访问的 info.size 都会触发 data 的 getter 进行依赖收集
+
+      // 并且，收集的依赖是 user watcher，区别于 渲染watcher
+      obj = obj[segments[i]]
+    }
+    // 将 info['size'] 返回
+    return obj
+  }
+}
+```
+
+实际上，watch 的依赖收集还是通过访问 data 中相关的数据触发 getter 进行依赖收集，只是这时收集的是 user watcher
+
+
+
 #### 3-7-2、watch 的派发更新
 
-watch 派发更新的过程: 数据发生改变时，setter 拦截对依赖进行更新，而此前 user watcher 已经被当成依赖收集了。这个时候依赖的更新就是回调函数的执行。
+经过上面的依赖收集可以知道，其实每一个 data 的数据身上至少会有两个 watcher，['user watcher',  'render watcher', ...]，这里 user watcher 的是会在 render watcher 前面的，因为 render watcher 是在 $mount 进行挂载的时候才 new Watcher 创建，而 user watcher 是在 initState 期间就会创建 initState 先于 $mount 执行
+
+```js
+function initMixin (Vue: Class<Component>) {
+    // ...
+    
+    initState(vm)
+    
+    // ...
+    
+    if (vm.$options.el) {
+      // 调用 $mount 方法，进入挂载阶段
+      vm.$mount(vm.$options.el)
+    }
+}
+```
+
+
+
+watch 派发更新的过程:  data 数据发生改变时，触发 setter 拦截，将收集到的 watcher 遍历出来，逐个执行，最后执行 render watcher，调用更新函数进行视图更新
 
 
 

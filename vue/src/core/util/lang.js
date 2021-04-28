@@ -35,12 +35,37 @@ export function parsePath(path: string): any {
   if (bailRE.test(path)) {
     return
   }
+  // 这里为什么要用 path.split('.') 呢？
+  // data() {
+  //   return {
+  //     msg: '',
+  //     info: { size: '' }
+  //   }
+  // }
+  // watch: {
+  //   msg() {},
+  //   'info.size'() {}
+  // }
+  // 如果是 msg，那么 'msg'.split('.') 返回 ['msg']
+  // 如果是 info.size，那么 'info.size'.split('.') 返回 ['info', 'size']
   const segments = path.split('.')
+
+  // 在调用的时候，传入的是 obj 是 vm
   return function (obj) {
     for (let i = 0; i < segments.length; i++) {
       if (!obj) return
+      // 如果是 ['msg']，那么这里就是 obj = vm[[msg][0]]
+      // 这就相当于访问了 data 的 msg，那么就会触发 data 的 getter 进行依赖收集
+
+      // 如果是 ['info', 'size'], 那么就分两次
+      //  1、obj = vm[['info', 'size'][0]]，得到 obj = vm['info']，相当于访问了 data 的 info
+      //  2、obj = vm['info'][['info', 'size'][1]]，相当于访问了 info['size']
+      // 上面一次访问 data 的 info 以及第二次访问的 info.size 都会触发 data 的 getter 进行依赖收集
+
+      // 并且，收集的依赖是 user watcher，区别于 渲染watcher
       obj = obj[segments[i]]
     }
+    // 将 info['size'] 返回
     return obj
   }
 }
