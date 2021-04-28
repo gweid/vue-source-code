@@ -80,164 +80,168 @@ initGlobalAPI(Vue)
 
 new Vue 就是执行了 Vue 的初始化
 
-- 首先，Vue 是 Function 出来的
 
-  > vue\src\core\instance\index.js
 
-  ```js
-  function Vue (options) {
-    if (process.env.NODE_ENV !== 'production' &&
-      !(this instanceof Vue)
-    ) {
-      // 判断如果不是通过 new 的方式调用，则抛出警告
-      warn('Vue is a constructor and should be called with the `new` keyword')
-    }
-    // 初始化 Vue
-    // options = {
-    //   el: "#app",
-    //   data: {},
-    //   methods: {},
-    //   ...
-    // }
-    this._init(options)
+**首先，Vue 是 Function 出来的**
+
+> vue\src\core\instance\index.js
+
+```js
+function Vue (options) {
+  if (process.env.NODE_ENV !== 'production' &&
+    !(this instanceof Vue)
+  ) {
+    // 判断如果不是通过 new 的方式调用，则抛出警告
+    warn('Vue is a constructor and should be called with the `new` keyword')
   }
-  
-  // 定义了 Vue.prototype._init, 初始化 Vue，实际上 new Vue 就是执行的这个方法
-  initMixin(Vue)
-  
-  // Vue.prototype.$set Vue.prototype.$watch 等
-  stateMixin(Vue)
-  
-  // 在 Vue 原型上，定义 $on, $once, $off, $emit 事件方法，并返回 vm
-  eventsMixin(Vue)
-  
-  // 在 Vue.prototype 上定义 _update, $forceUpdate, $destroy 方法
-  lifecycleMixin(Vue)   // 添加了与生命周期相关的
-  
-  // 在 Vue 原型上，定义 $nextTick 方法
-  // Vue原型上，定义 _render 方法，
-  // _render方法会调用 vm.$createElement 创建虚拟 DOM，如果返回值 vnode 不是虚拟 DOM 类型，将创建一个空的虚拟 DOM
-  renderMixin(Vue)
-  ```
-
-- new Vue 实际上就是执行了 Vue 自身的 \_init 方法, \_init 方法就是初始化 Vue 的，\_init 通过 initMixin(Vue) 往 Vue 原型上添加
-
-  > vue\src\core\instance\init.js
-  
-  ```js
-  // Vue 初始化阶段，往 Vue 原型上添加 _init 方法，new Vue 实际上就是执行的这个 _init 方法
-  export function initMixin (Vue: Class<Component>) {
-    Vue.prototype._init = function (options?: Object) {
-      // 将 this（实际上就是 Vue） 赋值给 vm
-      const vm: Component = this
-      // 每个 vue 实例都有一个 uid，并且 uid 往上递增
-      vm._uid = uid++
-  
-      let startTag, endTag
-      /* istanbul ignore if */
-      if (process.env.NODE_ENV !== 'production' && config.performance && mark) {
-        startTag = `vue-perf-start:${vm._uid}`
-        endTag = `vue-perf-end:${vm._uid}`
-        mark(startTag)
-      }
-  
-      vm._isVue = true
-      // 组件初始化时的配置合并（通过判断 options 上有没有 _isComponent 属性来确定是否是组件）
-      if (options && options._isComponent) {
-        /**
-         * 每个子组件初始化时走这里，这里只做了一些性能优化
-         * 将组件配置对象上的一些深层次属性放到 vm.$options 选项中，以提高代码的执行效率
-         */
-        initInternalComponent(vm, options)
-      } else {
-        // new Vue 时的配置合并（new Vue 传入的是用户配置，需要和系统配置合并）
-        // 进行 options 的合并,并挂载到 Vue.$options 上，那么 $options.data 可以访问到 data
-        vm.$options = mergeOptions(
-          resolveConstructorOptions(vm.constructor),
-          options || {},
-          vm
-        )
-      }
-  
-      if (process.env.NODE_ENV !== 'production') {
-        // 设置代理，将 vm 实例上的属性代理到 vm._renderProxy
-        initProxy(vm)
-      } else {
-        vm._renderProxy = vm
-      }
-  
-      vm._self = vm
-  
-      // 初始化组件实例关系属性，比如 $parent、$children、$root、$refs、_watcher、_isMounted 等等
-      initLifecycle(vm)
-  
-      // 初始化事件系统，例如 v-on 或者 @ 定义的事件
-      initEvents(vm)
-  
-      // 解析插槽 slot，得到 vm.$slot
-      // 定义了 vm._c 方法，用于处理 template 模式
-      // 定义了 vm.$createElement，用于处理手写 render 模式
-      // 无论是 vm._c 还是 vm.$createElement 最终都会调用 createElement 方法
-      // 将 vm.$attrs、vm.$listeners 转换为响应式
-      initRender(vm)
-  
-      // 调用 beforeCreate 生命周期钩子
-      // beforeCreate 之前三个处理都和数据无关，
-      // 在 beforeCreate 生命周期中只能访问上面三个操作相关的内容
-      // 当前周期中是没有数据的，所以在此期间不要做数据操作
-      callHook(vm, 'beforeCreate')
-      
-      // 初始化组件的 inject 注入配置项（处理注入祖辈传递下来的数据）
-      // inject 是需要和 provide 配合使用的
-      // 父组件通过 provide 提供数据，其他组价可以使用 inject 注入数据
-      initInjections(vm) // resolve injections before data/props  在 data/props 之前解决注入
-  
-      // 初始化 state, props, methods, computed, watch
-      // 其中初始化state, props, methods时，会遍历 data 中所有的 key，检测是否在 props，methods 重复定义
-      // props变量有多种写法，vue会进行统一转化，转化成{ a: {type: "xx", default: 'xx'} } 形式
-      // 将 data, props 都挂载到vm._data, vm._props上。设置访问数据代理，访问this.xx，实际上访问的是 vm._data[xx], vm._props[xx]
-      // 给 _data, _props 添加响应式监听
-      initState(vm)
-  
-      // 解析组件配置项上的 provide 对象，再挂载一份到 vm._provided 属性上（原本在 vm.$options.provide 上）
-      initProvide(vm) // resolve provide after data/props
-  
-      // 调用 create 生命周期钩子
-      // 在 beforeCreate 和 create 之间做了一系列的数据处理
-      // 所以在 create 生命周期可以访问到数据
-      callHook(vm, 'created')
-  
-      /* istanbul ignore if */
-      if (process.env.NODE_ENV !== 'production' && config.performance && mark) {
-        vm._name = formatComponentName(vm, false)
-        mark(endTag)
-        measure(`vue ${vm._name} init`, startTag, endTag)
-      }
-  
-      // 最后, 如果有根元素，那么就挂载
-      // options = { el: "#app", data: {}, methods: {}, ... }
-      // 有 el 选项，自动调用 $mount 方法，就不需要再手动调用 $mount
-      // 没有 el 则必须手动调用 $mount
-      if (vm.$options.el) {
-        // 调用 $mount 方法，进入挂载阶段
-        vm.$mount(vm.$options.el)
-      }
-    }
+  // 初始化 Vue
+  // options = {
+  //   el: "#app",
+  //   data: {},
+  //   methods: {},
+  //   ...
+  // }
+  this._init(options)
 }
-  ```
 
-  基本上 new vue 就可以总结为：
-  
-  - 用户传入的配置和系统配置的合并
-  - 初始化相关属性：$parent、$children、$root、$refs、_watcher、_isMounted 等
-  - 初始化事件系统，例如 v-on 或者 @ 定义的事件
-  -  解析插槽，定义 vm._c 处理 template 默认，定义 vm.$createElement 处理手写 render 模式
-  - 挂载 beforeCreate 生命周期
-  - 初始化组件的 inject 注入配置项
-  - 构建响应式系统（props、methods、data、computed、watch）
-  - 解析组件配置项上的 provide 对象
-  - 挂载 create 生命周期
-  - 最后调用 $mount 进行页面挂载
+// 定义了 Vue.prototype._init, 初始化 Vue，实际上 new Vue 就是执行的这个方法
+initMixin(Vue)
+
+// Vue.prototype.$set Vue.prototype.$watch 等
+stateMixin(Vue)
+
+// 在 Vue 原型上，定义 $on, $once, $off, $emit 事件方法，并返回 vm
+eventsMixin(Vue)
+
+// 在 Vue.prototype 上定义 _update, $forceUpdate, $destroy 方法
+lifecycleMixin(Vue)   // 添加了与生命周期相关的
+
+// 在 Vue 原型上，定义 $nextTick 方法
+// Vue原型上，定义 _render 方法，
+// _render方法会调用 vm.$createElement 创建虚拟 DOM，如果返回值 vnode 不是虚拟 DOM 类型，将创建一个空的虚拟 DOM
+renderMixin(Vue)
+```
+
+
+
+**new Vue 实际上就是执行了 Vue 自身的 \_init 方法, \_init 方法就是初始化 Vue 的，\_init 通过 initMixin(Vue) 往 Vue 原型上添加**
+
+> vue\src\core\instance\init.js
+
+```js
+// Vue 初始化阶段，往 Vue 原型上添加 _init 方法，new Vue 实际上就是执行的这个 _init 方法
+export function initMixin (Vue: Class<Component>) {
+  Vue.prototype._init = function (options?: Object) {
+    // 将 this（实际上就是 Vue） 赋值给 vm
+    const vm: Component = this
+    // 每个 vue 实例都有一个 uid，并且 uid 往上递增
+    vm._uid = uid++
+
+    let startTag, endTag
+    /* istanbul ignore if */
+    if (process.env.NODE_ENV !== 'production' && config.performance && mark) {
+      startTag = `vue-perf-start:${vm._uid}`
+      endTag = `vue-perf-end:${vm._uid}`
+      mark(startTag)
+    }
+
+    vm._isVue = true
+    // 组件初始化时的配置合并（通过判断 options 上有没有 _isComponent 属性来确定是否是组件）
+    if (options && options._isComponent) {
+      /**
+       * 每个子组件初始化时走这里，这里只做了一些性能优化
+       * 将组件配置对象上的一些深层次属性放到 vm.$options 选项中，以提高代码的执行效率
+       */
+      initInternalComponent(vm, options)
+    } else {
+      // new Vue 时的配置合并（new Vue 传入的是用户配置，需要和系统配置合并）
+      // 进行 options 的合并,并挂载到 Vue.$options 上，那么 $options.data 可以访问到 data
+      vm.$options = mergeOptions(
+        resolveConstructorOptions(vm.constructor),
+        options || {},
+        vm
+      )
+    }
+
+    if (process.env.NODE_ENV !== 'production') {
+      // 设置代理，将 vm 实例上的属性代理到 vm._renderProxy
+      initProxy(vm)
+    } else {
+      vm._renderProxy = vm
+    }
+
+    vm._self = vm
+
+    // 初始化组件实例关系属性，比如 $parent、$children、$root、$refs、_watcher、_isMounted 等等
+    initLifecycle(vm)
+
+    // 初始化事件系统，例如 v-on 或者 @ 定义的事件
+    initEvents(vm)
+
+    // 解析插槽 slot，得到 vm.$slot
+    // 定义了 vm._c 方法，用于处理 template 模式
+    // 定义了 vm.$createElement，用于处理手写 render 模式
+    // 无论是 vm._c 还是 vm.$createElement 最终都会调用 createElement 方法
+    // 将 vm.$attrs、vm.$listeners 转换为响应式
+    initRender(vm)
+
+    // 调用 beforeCreate 生命周期钩子
+    // beforeCreate 之前三个处理都和数据无关，
+    // 在 beforeCreate 生命周期中只能访问上面三个操作相关的内容
+    // 当前周期中是没有数据的，所以在此期间不要做数据操作
+    callHook(vm, 'beforeCreate')
+    
+    // 初始化组件的 inject 注入配置项（处理注入祖辈传递下来的数据）
+    // inject 是需要和 provide 配合使用的
+    // 父组件通过 provide 提供数据，其他组价可以使用 inject 注入数据
+    initInjections(vm) // resolve injections before data/props  在 data/props 之前解决注入
+
+    // 初始化 state, props, methods, computed, watch
+    // 其中初始化state, props, methods时，会遍历 data 中所有的 key，检测是否在 props，methods 重复定义
+    // props变量有多种写法，vue会进行统一转化，转化成{ a: {type: "xx", default: 'xx'} } 形式
+    // 将 data, props 都挂载到vm._data, vm._props上。设置访问数据代理，访问this.xx，实际上访问的是 vm._data[xx], vm._props[xx]
+    // 给 _data, _props 添加响应式监听
+    initState(vm)
+
+    // 解析组件配置项上的 provide 对象，再挂载一份到 vm._provided 属性上（原本在 vm.$options.provide 上）
+    initProvide(vm) // resolve provide after data/props
+
+    // 调用 create 生命周期钩子
+    // 在 beforeCreate 和 create 之间做了一系列的数据处理
+    // 所以在 create 生命周期可以访问到数据
+    callHook(vm, 'created')
+
+    /* istanbul ignore if */
+    if (process.env.NODE_ENV !== 'production' && config.performance && mark) {
+      vm._name = formatComponentName(vm, false)
+      mark(endTag)
+      measure(`vue ${vm._name} init`, startTag, endTag)
+    }
+
+    // 最后, 如果有根元素，那么就挂载
+    // options = { el: "#app", data: {}, methods: {}, ... }
+    // 有 el 选项，自动调用 $mount 方法，就不需要再手动调用 $mount
+    // 没有 el 则必须手动调用 $mount
+    if (vm.$options.el) {
+      // 调用 $mount 方法，进入挂载阶段
+      vm.$mount(vm.$options.el)
+    }
+  }
+}
+```
+
+基本上 new vue 就可以总结为：
+
+- 用户传入的配置和系统配置的合并
+- 初始化相关属性：$parent、$children、$root、$refs、_watcher、_isMounted 等
+- 初始化事件系统，例如 v-on 或者 @ 定义的事件
+-  解析插槽，定义 vm._c 处理 template 默认，定义 vm.$createElement 处理手写 render 模式
+- 挂载 beforeCreate 生命周期
+- 初始化组件的 inject 注入配置项
+- 构建响应式系统（props、methods、data、computed、watch）
+- 解析组件配置项上的 provide 对象
+- 挂载 create 生命周期
+- 最后调用 $mount 进行页面挂载
 
 
 
