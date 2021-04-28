@@ -2567,8 +2567,6 @@ export function set (target: Array<any> | Object, key: any, val: any): any {
 在初始化 computed 的过程，会遍历 computed 的每一个属性值，并为每一个属性值添加一个计算 watcher，{lazy: true} 代表计算 watcher，get 最后调用 defineComputed 将数据设置为响应式
 
 ```
-// state.js
-
 // computed watcher 的标志，lazy 属性为 true
 const computedWatcherOptions = {
   lazy: true
