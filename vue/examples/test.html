@@ -11,6 +11,11 @@
     <div>{{msg}}</div>
     <p v-for="item in list" :key="item.id">{{item.info}}</p>
     <button @click="addItem">添加一项</button>
+    <p>---------------------computed---------------------------</p>
+    <p>{{getNewTest}}</p>
+    <button @click="changeTest">改变test</button>
+    <p>{{formatPrice}}</p>
+    <button @click="changePrice">改变price</button>
   </div>
 
   <script src="../dist/vue.js"></script>
@@ -29,7 +34,9 @@
         ],
         info: {
           size: 'small'
-        }
+        },
+        test: 'test',
+        price: 10
       },
       methods: {
         addItem() {
@@ -39,7 +46,13 @@
           }
           this.list.push(item)
         },
-        userNameChange() {}
+        userNameChange() {},
+        changeTest() {
+          this.test = 'newTest'
+        },
+        changePrice() {
+          this.price = 20
+        }
       },
       watch: {
         msg: {
@@ -53,6 +66,17 @@
         'info.size'() {
           
         } 
+      },
+      computed: {
+        getNewTest() {
+          return `hello, ${this.test}`
+        },
+        formatPrice: {
+          get() {
+            return this.price.toFixed(2)
+          },
+          set(val) {}
+        }
       }
     })
   </script>

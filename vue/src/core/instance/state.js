@@ -215,21 +215,30 @@ export function getData(data: Function, vm: Component): any {
   }
 }
 
-// computed watcher 的标志，lazy 属性为 true
-const computedWatcherOptions = {
-  lazy: true
-}
+// 定义 computed watcher 标志，lazy 属性为 true
+const computedWatcherOptions = { lazy: true }
 
 function initComputed(vm: Component, computed: Object) {
   // $flow-disable-line
+  // 定义一个 watchers 为空对象
+  // 并且为 vm 实例上也定义 _computedWatchers 为空对象，用于存储 计算watcher
+  // 这使得 watchers 和 vm._computedWatchers 指向同一个对象
+  // 也就是说，修改 watchers 和 vm._computedWatchers 的任意一个都会对另外一个造成同样的影响
   const watchers = vm._computedWatchers = Object.create(null)
+
   // computed properties are just getters during SSR
   const isSSR = isServerRendering()
 
   // 遍历 computed 中的每一个属性值，为每一个属性值实例化一个计算 watcher
   for (const key in computed) {
+    // 获取 key 的值，也就是 getter 函数
     const userDef = computed[key]
+    
+    // 用于传给 new Watcher 作为第二个参数
+    // computed 可以是函数形式，也可以是对象形式，对象形式的 getter 函数是里面的 get
+    // computed: { getName(){} } | computed: { getPrice: { get(){}, set() {} } }
     const getter = typeof userDef === 'function' ? userDef : userDef.get
+
     if (process.env.NODE_ENV !== 'production' && getter == null) {
       warn(
         `Getter is missing for computed property "${key}".`,
@@ -239,7 +248,7 @@ function initComputed(vm: Component, computed: Object) {
 
     if (!isSSR) {
       // create internal watcher for the computed property.
-      // lazy 为 true 的 watcher 代表计算 watcher
+      // 为每一个 computed 添加上 计算watcher；lazy 为 true 的 watcher 代表 计算watcher
       // 在 new watcher 里面会执行 this.dirty = this.lazy; 所以刚开始 dirty 就是 true
       watchers[key] = new Watcher(
         vm,
@@ -253,9 +262,10 @@ function initComputed(vm: Component, computed: Object) {
     // component prototype. We only need to define computed properties defined
     // at instantiation here.
     if (!(key in vm)) {
-      // 调用 defineComputed 将数据设置为响应式数据，对应源码如下
+      // 将 computed 属性代理到 vm 上，使得可以直接 vm.xxx 的方式访问 computed 的属性
       defineComputed(vm, key, userDef)
     } else if (process.env.NODE_ENV !== 'production') {
+      // 在非生产环境会判重，computed 的属性不能和 data、props 中的属性重复
       if (key in vm.$data) {
         warn(`The computed property "${key}" is already defined in data.`, vm)
       } else if (vm.$options.props && key in vm.$options.props) {
@@ -265,20 +275,26 @@ function initComputed(vm: Component, computed: Object) {
   }
 }
 
+// 将 computed 的 key 代理到 vm 实例上
 export function defineComputed(
   target: any,
   key: string,
   userDef: Object | Function
 ) {
-  // 不是服务端渲染，就应该缓存
+  // shouldCache 用来判断是客户还是服务端渲染，客户端需要缓存
   const shouldCache = !isServerRendering()
+
+  // 如果是客户端，使用 createComputedGetter 创建 getter
+  // 如果是服务端，使用 createGetterInvoker 创建 getter
+  // 两者有很大的不同，服务端渲染不会对计算属性缓存，而是直接求值
   if (typeof userDef === 'function') {
+    // computed 是函数形式
     sharedPropertyDefinition.get = shouldCache ?
       createComputedGetter(key) :
       createGetterInvoker(userDef)
     sharedPropertyDefinition.set = noop
   } else {
-    // 如果 computed 是一个对象，那么必须要有 get 方法
+    // 如果 computed 是对象形式
     sharedPropertyDefinition.get = userDef.get ?
       shouldCache && userDef.cache !== false ?
       createComputedGetter(key) :
@@ -295,14 +311,19 @@ export function defineComputed(
       )
     }
   }
+
+  // 拦截对 computed 的 key 访问，代理到 vm 上
   Object.defineProperty(target, key, sharedPropertyDefinition)
 }
 
+// 用于创建客户端的 conputed 的 getter
+// 由于 computed 被代理了，所以当访问到 computed 的时候，会触发这个 getter
 function createComputedGetter(key) {
   return function computedGetter() {
     const watcher = this._computedWatchers && this._computedWatchers[key]
     if (watcher) {
-      // dirty 是标志是否已经执行过计算结果，如果执行过则不会执行 watcher.evaluate 重复计算，这也是缓存的原理
+      // dirty 是标志是否已经执行过计算结果；dirty=true，需要重新计算
+      // 如果执行过则不会执行 watcher.evaluate 重复计算，这也是缓存的原理
       if (watcher.dirty) {
         watcher.evaluate()
       }
@@ -310,13 +331,17 @@ function createComputedGetter(key) {
         // 进行依赖收集
         watcher.depend()
       }
+
+      // 返回结果
       return watcher.value
     }
   }
 }
 
+// 用于创建服务端的 computed 的 getter
 function createGetterInvoker(fn) {
   return function computedGetter() {
+    // 不会进行缓存，直接求值
     return fn.call(this, this)
   }
 }

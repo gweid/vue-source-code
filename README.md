@@ -34,7 +34,7 @@
      <div id="app">
        <div>{{msg}}</div>
      </div>
-
+   
      <script src="../dist/vue.js"></script>
      <script>
        new Vue({
@@ -52,7 +52,10 @@
 
    ![](/imgs/img20.png)
 
-   或者直接在 test.html 中写 debugger，也行
+   **或者直接在源码中写 debugger，也行**
+   
+   
+   
 6. 点击断点可以看到进入到源码里面
    ![](/imgs/img21.png)
 
@@ -2566,26 +2569,87 @@ export function set (target: Array<any> | Object, key: any, val: any): any {
 
 
 
-#### 3-6-1、computed 的依赖收集
+先来看看 computed 的使用方式：
 
-在初始化 computed 的过程，会遍历 computed 的每一个属性值，并为每一个属性值添加一个计算 watcher，{lazy: true} 代表计算 watcher，get 最后调用 defineComputed 将数据设置为响应式
+- 函数形式
 
-```
-// computed watcher 的标志，lazy 属性为 true
-const computedWatcherOptions = {
-  lazy: true
+  ```js
+  data: {
+    price: 10
+  },
+  computed: {
+    formatPrice() {
+      return this.price.toFixed(2)
+    }
+  }
+  ```
+
+- 对象形式
+
+  ```js
+  data: {
+    msg: 'hello',
+    newMsg: ''
+  },
+  computed: {
+    getFullName: {
+      get() {
+        return this.msg.split()
+      },
+      set(val) {
+        this.newMsg = val;
+      }
+    }
+  }
+  ```
+
+
+
+#### 3-6-1、computed 初始化
+
+先来看看 computed 的初始化，依然是在 initState 中：
+
+> vue\src\core\instance\state.js
+
+```js
+function initState (vm: Component) {
+  // ...
+
+  // 初始化 computed:
+  //   遍历 computed 对象为每一个 computed 添加一个计算 watcher(计算 watcher 的标志是有一个 lazy)
+  //   将每个 compulted 代理到 vm 上并转换为响应式
+  //   compulted 中的键 key 不能和 data、props 重复
+  if (opts.computed) initComputed(vm, opts.computed)
 }
+```
+
+
+
+可以看到，初始化是在 initComputed 中：
+
+> vue\src\core\instance\state.js
+
+```js
+// 定义 computed watcher 标志，lazy 属性为 true
+const computedWatcherOptions = { lazy: true }
 
 function initComputed(vm: Component, computed: Object) {
-  ...
+  // 定义一个 watchers 为空对象
+  // 并且为 vm 实例上也定义 _computedWatchers 为空对象，用于存储 计算watcher
+  // 这使得 watchers 和 vm._computedWatchers 指向同一个对象
+  // 也就是说，修改 watchers 和 vm._computedWatchers 的任意一个都会对另外一个造成同样的影响
+  const watchers = vm._computedWatchers = Object.create(null)
 
   // 遍历 computed 中的每一个属性值，为每一个属性值实例化一个计算 watcher
   for (const key in computed) {
-    ...
+    // 用于传给 new Watcher 作为第二个参数
+    // computed 可以是函数形式，也可以是对象形式，对象形式的 getter 函数是里面的 get
+    // computed: { getName(){} } | computed: { getPrice: { get(){}, set() {} } }
+    const getter = typeof userDef === 'function' ? userDef : userDef.get
 
     if (!isSSR) {
-      // create internal watcher for the computed property.
-      // lazy 为 true 的 watcher 代表计算 watcher
+      // 为每一个 computed 添加上 计算watcher；lazy 为 true 的 watcher 代表 计算watcher
+      // 在 new watcher 里面会执行 this.dirty = this.lazy; 所以刚开始 dirty 就是 true
       watchers[key] = new Watcher(
         vm,
         getter || noop,
@@ -2594,27 +2658,159 @@ function initComputed(vm: Component, computed: Object) {
       )
     }
 
-    if (!(key in vm)) {
-      // 调用 defineComputed 将数据设置为响应式数据，对应源码如下
-      defineComputed(vm, key, userDef)
-    } else if (process.env.NODE_ENV !== 'production') {
-      ...
-    }
+    // 将 computed 属性代理到 vm 上，使得可以直接 vm.xxx 的方式访问 computed 的属性
+    defineComputed(vm, key, userDef)
   }
 }
 ```
 
-在 new watcher 中会把 dirty 声明为 true
+initComputed 做的事：
 
+1. 定义 watchers 及 vm._computedWatchers 指向同一个对象，用于存储 `计算watcher`
+2. 遍历 computed 的属性，new Watcher 为每一个属性添加上一个 `计算watcher`，`计算watcher` 的标记就是 lazy = true
+3. 调用 defineComputed 将 computed 属性代理到 vm 上
+
+
+
+接下来先看看 defineComputed
+
+> vue\src\core\instance\state.js
+
+```js
+const sharedPropertyDefinition = {
+  enumerable: true,
+  configurable: true,
+  get: noop,
+  set: noop
+}
+
+function defineComputed(
+  target: any,
+  key: string,
+  userDef: Object | Function
+) {
+  // shouldCache 用来判断是客户还是服务端渲染，客户端需要缓存
+  const shouldCache = !isServerRendering()
+  
+  // 如果是客户端，使用 createComputedGetter 创建 getter
+  // 如果是服务端，使用 createGetterInvoker 创建 getter
+  // 两者有很大的不同，服务端渲染不会对计算属性缓存，而是直接求值
+  if (typeof userDef === 'function') {
+    // computed 是函数形式
+    sharedPropertyDefinition.get = shouldCache ?
+      createComputedGetter(key) :
+      createGetterInvoker(userDef)
+    sharedPropertyDefinition.set = noop
+  } else {
+    // 如果 computed 是对象形式
+    sharedPropertyDefinition.get = userDef.get ?
+      shouldCache && userDef.cache !== false ?
+      createComputedGetter(key) :
+      createGetterInvoker(userDef.get) :
+      noop
+    sharedPropertyDefinition.set = userDef.set || noop
+  }
+      
+  // 拦截对 computed 的 key 访问，代理到 vm 上
+  Object.defineProperty(target, key, sharedPropertyDefinition)
+}
 ```
-export default class Watcher {
-  constructor(){
-    ...
 
-    this.dirty = this.dirty = this.lazy; // for lazy watchers
+defineComputed主要做的事：将 computed 代理到 vm 实例上，并且定义了客户端与服务端拦截对 computed 的 key 访问的 getter 函数，客户端使用 createComputedGetter 创建 getter 函数，会针对 computed 进行缓存；而服务端使用 createGetterInvoker 创建 getter 函数，不会针对 computed 进行缓存，而是直接求值。
+
+缓存的意义在于，只有在相关响应式数据发生变化时，computed 才会重新求值，其余情况多次访问计算属性的值都会返回之前计算的结果。
+
+
+
+#### 3-6-2、computed 的依赖收集
+
+接下来，看看 computed 的依赖收集过程。先回到为每一个 computed 创建 `计算watcher` 的时候
+
+> vue\src\core\instance\state.js
+
+```js
+// 定义 computed watcher 标志，lazy 属性为 true
+const computedWatcherOptions = { lazy: true }
+
+function initComputed(vm: Component, computed: Object) {
+  // 并且为 vm 实例上也定义 _computedWatchers 为空对象，用于存储 计算watcher
+  // 这使得 watchers 和 vm._computedWatchers 指向同一个对象
+  // 也就是说，修改 watchers 和 vm._computedWatchers 的任意一个都会对另外一个造成同样的影响
+  const watchers = vm._computedWatchers = Object.create(null)
+  
+  // 遍历 computed 中的每一个属性值，为每一个属性值实例化一个计算 watcher
+  for (const key in computed) {
+    // 用于传给 new Watcher 作为第二个参数
+    // computed 可以是函数形式，也可以是对象形式，对象形式的 getter 函数是里面的 get
+    // computed: { getName(){} } | computed: { getPrice: { get(){}, set() {} } }
+    const getter = typeof userDef === 'function' ? userDef : userDef.get
+    
+    // 为每一个 computed 添加上 计算watcher；lazy 为 true 的 watcher 代表 计算watcher
+    // 在 new watcher 里面会执行 this.dirty = this.lazy; 所以刚开始 dirty 就是 true
+    watchers[key] = new Watcher(
+      vm,
+      getter || noop,
+      noop,
+      computedWatcherOptions  // const computedWatcherOptions = { lazy: true }
+    )
   }
 }
 ```
+
+`计算watcher` 的四个参数：
+
+- vm：vm 实例
+- getter：就是 computed 的 getter 函数
+- noop：空函数
+- computedWatcherOptions：{ lazy: true }，lazy=true 标记这个为 `计算watcher`
+
+
+
+接下来，看看 new Watcher 对 `计算watcher` 的处理
+
+> vue\src\core\instance\state.js
+
+```js
+class Watcher {
+  constructor() {
+    // ...
+      
+    // 创建 计算watcher 实例的时候，先把 this.dirty 置为 true
+    // 这个 dirty 就是 computed 缓存的关键，dirty=true，代表需要重新计算
+    this.dirty = this.lazy; // for lazy watchers
+      
+    // ...
+      
+    // expOrFn: 主要看 new Watcher 的时候传进来什么，不同场景会有区别
+    //  1、如果是渲染 watcher（处理 data），就是 new Watcher 传进来的 updateComponent
+    //  2、如果是用户 watcher（处理 watch），就是 watch 的键 key（每一个 watch 的名字）
+    //  3、如果是计算 watcher（处理 computed），就是 computed 的 getter 函数
+    // 将 expOrFn 赋值给 this.getter
+    if (typeof expOrFn === "function") {
+      // 如果 expOrFn 是一个函数，比如 渲染watcher 的情况，是 updateComponent 函数
+      this.getter = expOrFn;
+    } else {/.../}
+      
+    // 如果是 lazy 代表的是 computed
+    // 不是 computed，执行 this.get()
+    this.value = this.lazy ? undefined : this.get();
+  }
+}
+```
+
+实例化 `计算watcher` 的时候：
+
+- 把 this.dirty 置为 true。这个 dirty 就是 computed 缓存的关键，dirty=true，代表有脏数据，需要重新计算
+- 将 computed 的 getter 函数赋值给 watcher.getter
+- 当前为 `计算watcher`，this.lazy=true，不会执行 watcher.get()
+
+
+
+
+
+
+
+
 
 defineComputed: 计算属性的计算结果会被缓存，缓存的意义在于，只有在相关响应式数据发生变化时，computed 才会重新求值，其余情况多次访问计算属性的值都会返回之前计算的结果，这就是缓存的优化, 缓存的主要根据是 dirty 字段；最终调用 Object.defineProperty 进行数据拦截
 
@@ -2661,83 +2857,11 @@ dirty 是标志是否已经执行过计算结果，如果执行过则不会执�
 
 在 watcher.evaluate() 会执行 watcher.get()进行求值，后把 dirty 置为 false, watcher.get()会通过 pushTarget(this) 将 watcher 挂到 Dep.target
 
-```
-// state.js
-function createComputedGetter(key) {
-  return function computedGetter() {
-    const watcher = this._computedWatchers && this._computedWatchers[key]
-    if (watcher) {
-      // dirty 是标志是否已经执行过计算结果，如果执行过则不会执行 watcher.evaluate 重复计算，这也是缓存的原理
-      if (watcher.dirty) {
-        watcher.evaluate()
-      }
-      // 进行依赖收集
-      if (Dep.target) {
-        watcher.depend()
-      }
-      return watcher.value
-    }
-  }
-}
 
-// watcher.js
-// 执行 watcher.get(), 将 dirty 设置为 false
-watcher.prototype.evaluate = function() {
-  this.value = this.get();
-  // computed 标记为已经执行过更新
-  this.dirty = false;
-}
 
-// watcher.js
-// 添加 Dep.target
-watcher.prototype.get = function() {
-  // 将 watcher 添加到 Dep.target
-  pushTarget(this);
-  let value;
-  const vm = this.vm;
-  try {
-    value = this.getter.call(vm, vm);
-  } catch (e) {
-    if (this.user) {
-      handleError(e, vm, `getter for watcher "${this.expression}"`);
-    } else {
-      throw e;
-    }
-  } finally {
-    // "touch" every property so they are all tracked as
-    // dependencies for deep watching
-    if (this.deep) {
-      traverse(value);
-    }
-    // 将 Dep.target 置空
-    popTarget();
-    this.cleanupDeps();
-  }
-  return value;
-}
 
-```
 
-watcher.depend() 中调用 Dep.depend 进行依赖收集
-
-```
-// watcher.js
-watcher.depend = function () {
-  let i = this.deps.length;
-  while (i--) {
-    this.deps[i].depend();
-  }
-}
-
-// dep.js
-dep.depend = function() {
-  if (Dep.target) {
-    Dep.target.addDep(this)
-  }
-}
-```
-
-#### 3-6-2、computed 的派发更新
+#### 3-6-3、computed 的派发更新
 
 派发更新的前提是 data 中数据发生改变
 
@@ -3020,9 +3144,9 @@ vm.$watch 主要做的事：
 
 1. 先判断一下 handler 回调函数会不会是对象，是对象，继续调用 createWatcher 处理
 2. 处理 options（如果 options 是 undefined，将 options 赋值为空对象 {}）
-3. options.user 设置为 true，标记当前为用户 watcher，也就是标记这个是 watch 响应式
-4. new Watcher 创建一个 user watcher
-   - 在实例化 user watcher 的时候会执行一次 getter 求值，这时，user watcher 会作为依赖被数据所收集
+3. options.user 设置为 true，标记当前为 `用户watcher`，也就是标记这个是 watch 响应式
+4. new Watcher 创建一个 `user watcher`
+   - 在实例化 `user watcher` 的时候会执行一次 getter 求值，这时，`user watcher` 会作为依赖被数据所收集
 5. 如果有 immediate，立即执行回调函数 handler
 6. 返回 unwatch 函数，用于取消 watch 监听
 
@@ -3040,6 +3164,7 @@ export default class Watcher {
     // expOrFn: 主要看 new Watcher 的时候传进来什么，不同场景会有区别
     //  1、如果是渲染 watcher（处理 data），就是 new Watcher 传进来的 updateComponent
     //  2、如果是用户 watcher（处理 watch），就是 watch 的键 key（每一个 watch 的名字）
+    //  3、如果是计算 watcher（处理 computed），就是 computed 的 getter 函数
     // 将 expOrFn 赋值给 this.getter
     if (typeof expOrFn === "function") {
       // 如果 expOrFn 是一个函数，比如 渲染watcher 的情况，是 updateComponent 函数
@@ -3060,8 +3185,7 @@ export default class Watcher {
     
     // 执行 this.getter
     // 上面已经分析过，this.getter 会根据不同的 watcher 会不一样
-    //  1、渲染 watcher：this.getter 是 updateComponent 函数
-    //  2、用户 watcher：this.getter 是经过 parsePath() 解析后返回的函数
+    // 这里是用户 watcher：this.getter 是经过 parsePath() 解析后返回的函数
     value = this.getter.call(vm, vm);
   }
 }
@@ -3069,8 +3193,8 @@ export default class Watcher {
 
 new Watcher 的时候，会执行：
 
-- constructor：这里面主要就是定义了 this.getter 是什么；因为是 用户watcher，在 new Watcher 的时候，expOrFn 传进来的是 watch 的 key，所以使用了 parsePath(expOrFn) 方法解析得到 this.getter
-- Watcher.get：pushTarget(this) 将 user watcher 添加到 Dep.target；执行在 constructor 中定义的 this.getter
+- constructor：这里面主要就是定义了 this.getter 是什么；因为是 `用户watcher`，在 new Watcher 的时候，expOrFn 传进来的是 watch 的 key，所以使用了 parsePath(expOrFn) 方法解析得到 this.getter
+- Watcher.get：pushTarget(this) 将 `user watcher` 添加到 Dep.target；执行在 constructor 中定义的 this.getter
 
 
 
@@ -3120,13 +3244,13 @@ export function parsePath(path: string): any {
 }
 ```
 
-实际上，watch 的依赖收集还是通过访问 data 中相关的数据触发 getter 进行依赖收集，只是这时收集的是 user watcher
+实际上，watch 的依赖收集还是通过访问 data 中相关的数据触发 getter 进行依赖收集，只是这时收集的是 `user watcher`
 
 
 
 #### 3-7-2、watch 的派发更新
 
-经过上面的依赖收集可以知道，其实每一个 data 的数据身上至少会有两个 watcher，['user watcher',  'render watcher', ...]，这里 user watcher 的是会在 render watcher 前面的，因为 render watcher 是在 $mount 进行挂载的时候才 new Watcher 创建，而 user watcher 是在 initState 期间就会创建 initState 先于 $mount 执行
+经过上面的依赖收集可以知道，其实每一个 data 的数据身上至少会有两个 watcher，['user watcher',  'render watcher', ...]，这里 user watcher 的是会在 render watcher 前面的，因为 render watcher 是在 $mount 进行挂载的时候才 new Watcher 创建，而 user watcher 是在 initState 期间就会创建，initState 先于 $mount 执行
 
 ```js
 function initMixin (Vue: Class<Component>) {
@@ -3178,7 +3302,7 @@ export default class Watcher {
 }
 ```
 
-对于 user watcher 的 Watcher.run，主要是：
+对于 `user watcher` 的 Watcher.run，主要是：
 
 - 先调用 watcher.get，watcher.get 中执行 this.getter 得到新的 value
 - this.cb.call(this.vm, value, oldValue)，这个 this.cb 对于 user watcher 来说就是每一个 watch 的 handler，在 new Watcher 的时候传入

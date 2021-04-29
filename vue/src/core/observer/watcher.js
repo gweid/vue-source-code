@@ -68,6 +68,8 @@ export default class Watcher {
     this.cb = cb;
     this.id = ++uid; // uid for batching
     this.active = true;
+    // 创建 计算watcher 实例的时候，先把 this.dirty 置为 true
+    // 这个 dirty 就是 computed 缓存的关键，dirty=true，代表需要重新计算
     this.dirty = this.lazy; // for lazy watchers
     this.deps = [];
     this.newDeps = [];
@@ -78,6 +80,7 @@ export default class Watcher {
     // expOrFn: 主要看 new Watcher 的时候传进来什么，不同场景会有区别
     //  1、如果是渲染 watcher（处理 data），就是 new Watcher 传进来的 updateComponent
     //  2、如果是用户 watcher（处理 watch），就是 watch 的键 key（每一个 watch 的名字）
+    //  3、如果是计算 watcher（处理 computed），就是 computed 的 getter 函数
     // 将 expOrFn 赋值给 this.getter
     if (typeof expOrFn === "function") {
       // 如果 expOrFn 是一个函数，比如 渲染watcher 的情况，是 updateComponent 函数
