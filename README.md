@@ -2722,7 +2722,7 @@ defineComputed主要做的事：将 computed 代理到 vm 实例上，并且定�
 
 
 
-#### 3-6-2、computed 的依赖收集
+#### 3-6-2、computed 的依赖收集以及缓存原理
 
 接下来，看看 computed 的依赖收集过程。先回到为每一个 computed 创建 `计算watcher` 的时候
 
@@ -2802,11 +2802,43 @@ class Watcher {
 
 - 把 this.dirty 置为 true。这个 dirty 就是 computed 缓存的关键，dirty=true，代表有脏数据，需要重新计算
 - 将 computed 的 getter 函数赋值给 watcher.getter
-- 当前为 `计算watcher`，this.lazy=true，不会执行 watcher.get()
+- 当前为 `计算watcher`，**this.lazy=true，不会执行 watcher.get()**
 
 
 
+然后，回头看看创建 computed 的 getter 的函数，这里主要分析客户端的，在 defineComputed 函数中调用 createComputedGetter 创建
 
+```js
+// 用于创建客户端的 conputed 的 getter
+// 由于 computed 被代理了，所以当访问到 computed 的时候，会触发这个 getter
+function createComputedGetter(key) {
+  // 返回一个函数 computedGetter 作为 computed 的 getter 函数
+  return function computedGetter() {
+    // 得到当前 key 对应的 watcher
+    const watcher = this._computedWatchers && this._computedWatchers[key]
+    if (watcher) {
+      // dirty 是标志是否已经执行过计算结果；dirty=true，需要重新计算
+      // 如果执行过则不会执行 watcher.evaluate 重复计算，这也是缓存的原理
+      if (watcher.dirty) {
+        watcher.evaluate()
+      }
+      if (Dep.target) {
+        // 进行依赖收集
+        watcher.depend()
+      }
+
+      // 返回结果
+      return watcher.value
+    }
+  }
+}
+```
+
+createComputedGetter 实际上就是返回一个函数 computedGetter，这个函数就是 computed 的 getter 函数。之前对 computed 的每一个属性进行了代理，当访问到某一个 computed 的时候，触发 getter 函数。
+
+在页面首次渲染过程中遇到 computed，会对其进行一次取值，此时就会触发 getter 函数 computedGetter
+
+- 
 
 
 

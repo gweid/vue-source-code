@@ -117,6 +117,7 @@ export default class Watcher {
       // 上面已经分析过，this.getter 会根据不同的 watcher 会不一样
       //  1、渲染 watcher：this.getter 是 updateComponent 函数
       //  2、用户 watcher：this.getter 是经过 parsePath() 解析后返回的函数
+      //  3、如果是计算 watcher（处理 computed），就是 computed 的 getter 函数
       value = this.getter.call(vm, vm);
     } catch (e) {
       if (this.user) {
@@ -130,7 +131,7 @@ export default class Watcher {
       if (this.deep) {
         traverse(value);
       }
-      // 关闭 Dep.target，Dep.target = null
+
       popTarget();
       this.cleanupDeps();
     }

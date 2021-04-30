@@ -319,11 +319,14 @@ export function defineComputed(
 // 用于创建客户端的 conputed 的 getter
 // 由于 computed 被代理了，所以当访问到 computed 的时候，会触发这个 getter
 function createComputedGetter(key) {
+  // 返回一个函数 computedGetter 作为 computed 的 getter 函数
   return function computedGetter() {
+    // 得到当前 key 对应的 watcher
     const watcher = this._computedWatchers && this._computedWatchers[key]
     if (watcher) {
       // dirty 是标志是否已经执行过计算结果；dirty=true，需要重新计算
       // 如果执行过则不会执行 watcher.evaluate 重复计算，这也是缓存的原理
+      // 在 watcher.evaluate 中，会先调用 watcher.get 进行求值，然后将 dirty 置为 false
       if (watcher.dirty) {
         watcher.evaluate()
       }

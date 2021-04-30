@@ -70,6 +70,8 @@ export function pushTarget (target: ?Watcher) {
 }
 
 export function popTarget () {
+  // 删除 targetStack 最后一个 watcher
   targetStack.pop()
+  // 如果 targetStack=[]，那么 targetStack[targetStack.length - 1] 的结果是 undefined
   Dep.target = targetStack[targetStack.length - 1]
 }
