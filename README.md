@@ -2642,6 +2642,9 @@ function initComputed(vm: Component, computed: Object) {
 
   // 遍历 computed 中的每一个属性值，为每一个属性值实例化一个计算 watcher
   for (const key in computed) {
+    // 获取 key 的值，也就是每一个 computed
+    const userDef = computed[key]
+
     // 用于传给 new Watcher 作为第二个参数
     // computed 可以是函数形式，也可以是对象形式，对象形式的 getter 函数是里面的 get
     // computed: { getName(){} } | computed: { getPrice: { get(){}, set() {} } }
@@ -2783,8 +2786,8 @@ class Watcher {
       
     // expOrFn: 主要看 new Watcher 的时候传进来什么，不同场景会有区别
     //  1、如果是渲染 watcher（处理 data），就是 new Watcher 传进来的 updateComponent
-    //  2、如果是用户 watcher（处理 watch），就是 watch 的键 key（每一个 watch 的名字）
-    //  3、如果是计算 watcher（处理 computed），就是 computed 的 getter 函数
+    //  2、如果是用户 watcher（处理 watch），就是 watch:{ msg: function() {} }】 的 msg 函数
+    //  3、如果是计算 watcher（处理 computed），就是【computed:{ getName: function() {} }】中的 getName 函数
     // 将 expOrFn 赋值给 this.getter
     if (typeof expOrFn === "function") {
       // 如果 expOrFn 是一个函数，比如 渲染watcher 的情况，是 updateComponent 函数
@@ -2808,22 +2811,29 @@ class Watcher {
 
 然后，回头看看创建 computed 的 getter 的函数，这里主要分析客户端的，在 defineComputed 函数中调用 createComputedGetter 创建
 
+> vue\src\core\instance\state.js
+
 ```js
 // 用于创建客户端的 conputed 的 getter
 // 由于 computed 被代理了，所以当访问到 computed 的时候，会触发这个 getter
 function createComputedGetter(key) {
   // 返回一个函数 computedGetter 作为 computed 的 getter 函数
   return function computedGetter() {
-    // 得到当前 key 对应的 watcher
+    // 每次读取到 computer 触发 getter 时都先获取 key 对应的 watcher
     const watcher = this._computedWatchers && this._computedWatchers[key]
+
     if (watcher) {
-      // dirty 是标志是否已经执行过计算结果；dirty=true，需要重新计算
-      // 如果执行过则不会执行 watcher.evaluate 重复计算，这也是缓存的原理
+      // dirty 是标志是否已经执行过计算结果；dirty=true，代表有脏数据，需要重新计算
+      // dirty 初始值是 true（在 new Watcher 时确定），所以 computed 首次会进行计算，与 watch 略有差别
+      // 如果执行过并且依赖数据没有变化则不会执行 watcher.evaluate 重复计算，这也是缓存的原理
+      // 在 watcher.evaluate 中，会先调用 watcher.get 进行求值，然后将 dirty 置为 false
+      // 在 watcher.get 进行求值的时候，访问到 data 的依赖数据，触发 data 数据的 get，收集 计算watcher
       if (watcher.dirty) {
         watcher.evaluate()
       }
       if (Dep.target) {
         // 进行依赖收集
+        // 注意，这里收集的是 渲染watcer，而不是 计算watcher
         watcher.depend()
       }
 
@@ -2836,60 +2846,171 @@ function createComputedGetter(key) {
 
 createComputedGetter 实际上就是返回一个函数 computedGetter，这个函数就是 computed 的 getter 函数。之前对 computed 的每一个属性进行了代理，当访问到某一个 computed 的时候，触发 getter 函数。
 
-在页面首次渲染过程中遇到 computed，会对其进行一次取值，此时就会触发 getter 函数 computedGetter
-
-- 
+在首次渲染的时候，页面渲染会将 `render Watcher`入栈，并挂载到 `Dep.target`，渲染过程中访问到 template 中的 computed，会对其进行一次取值，调用 watcher.evaluate() 执行 watcher.get 进行求值，并且将 dirty 标记为 false，代表已经求过值。
 
 
 
+> vue\src\core\observer\watcher.js
 
-
-defineComputed: 计算属性的计算结果会被缓存，缓存的意义在于，只有在相关响应式数据发生变化时，computed 才会重新求值，其余情况多次访问计算属性的值都会返回之前计算的结果，这就是缓存的优化, 缓存的主要根据是 dirty 字段；最终调用 Object.defineProperty 进行数据拦截
-
-```
-// state.js
-
-export function defineComputed(
-  target: any,
-  key: string,
-  userDef: Object | Function
-) {
-  // 不是服务端渲染，就应该缓存
-  const shouldCache = !isServerRendering()
-  if (typeof userDef === 'function') {
-    sharedPropertyDefinition.get = shouldCache ?
-      createComputedGetter(key) :
-      createGetterInvoker(userDef)
-    sharedPropertyDefinition.set = noop
-  } else {
-    // 如果 computed 是一个对象，那么必须要有 get 方法
-    sharedPropertyDefinition.get = userDef.get ?
-      shouldCache && userDef.cache !== false ?
-      createComputedGetter(key) :
-      createGetterInvoker(userDef.get) :
-      noop
-    sharedPropertyDefinition.set = userDef.set || noop
-  }
-  if (process.env.NODE_ENV !== 'production' &&
-    sharedPropertyDefinition.set === noop) {
-    sharedPropertyDefinition.set = function () {
-      warn(
-        `Computed property "${key}" was assigned to but it has no setter.`,
-        this
-      )
+```js
+class Watcher {
+  constructor(
+    vm: Component,
+    expOrFn: string | Function,
+    cb: Function,
+    options?: ?Object,
+    isRenderWatcher?: boolean
+  ) {
+      // expOrFn: 主要看 new Watcher 的时候传进来什么，不同场景会有区别
+      //  3、如果是计算 watcher（处理 computed），就是【computed:{ getName: function() {} }】中的 getName 函数
+      // 将 expOrFn 赋值给 this.getter
+      if (typeof expOrFn === "function") {
+        // 如果 expOrFn 是一个函数，比如 渲染watcher 的情况，是 updateComponent 函数
+        this.getter = expOrFn;
+      }
     }
-  }
-  Object.defineProperty(target, key, sharedPropertyDefinition)
+
+    get() {
+      // 将 watcher 添加到 Dep.target
+      pushTarget(this);
+      
+      try {
+        //  3、如果是计算 watcher（处理 computed），就是【computed:{ getName: function() {} }】中的 getName 函数
+        value = this.getter.call(vm, vm);
+      } catch(e) {
+        // ...
+      } finally {
+        // ...
+        popTarget();
+        this.cleanupDeps();
+      }
+    }
+
+    // 主要是 computed 的
+    evaluate() {
+      this.value = this.get();
+      // computed 标记为已经执行过更新
+      this.dirty = false;
+    }
 }
 ```
 
-当访问到 computed 时，会触发 getter 进行依赖收集, 在 createComputedGetter
+> vue\src\core\observer\dep.js
 
-dirty 是标志是否已经执行过计算结果，如果执行过则不会执行 watcher.evaluate 重复计算，这也是缓存的原理
+```js
+Dep.target = null
+const targetStack = [] // 存储 watcher 的栈
 
-在 watcher.evaluate() 会执行 watcher.get()进行求值，后把 dirty 置为 false, watcher.get()会通过 pushTarget(this) 将 watcher 挂到 Dep.target
+// 开放出去的方法，主要用来往 Dep 类上添加 target（也就是 watcher）
+export function pushTarget (target: ?Watcher) {
+  targetStack.push(target)
+  Dep.target = target
+}
+
+export function popTarget () {
+  // 删除 targetStack 最后一个 watcher
+  targetStack.pop()
+  // 如果 targetStack=[]，那么 targetStack[targetStack.length - 1] 的结果是 undefined
+  Dep.target = targetStack[targetStack.length - 1]
+}
+```
+
+1. 在页面**首次渲染**的时候，会 new Watcher，这个是 `渲染watcher`，并执行 watcher.get，将`渲染watcher` 放进 `targetStack栈` 中
+
+2. 然后遇到 computed 属性，触发 getter 劫持，执行 `watcher.evaluate` ，在 `watcher.evaluate` 里面调用 `watcher.get` 进行求值，求值完之后将 dirty 置为 false，代表已经求取过值
+
+3. `watcher.get` 中会调用 pushTarget 将 `计算watcher` 推入 `targetStack栈` 中，并且将 Dep.target 设置为 `计算watcher`。那么此时的 `targetStack栈` 就有两个 watcher：[渲染wacher, 计算watcher]
+
+4. 然后 `watcher.get` 中继续执行 `this.getter.call(vm, vm)`，这个实际上就是执行对应的某个 computed，里面访问到依赖的 data 的某个属性，触发 data 属性的 get，执行 dep.depend() 进行依赖收集，因为之前已经将 Dep.target 设置为 `计算watcher`，所以这里收集的就是 `计算watcher`，也就是说，此时 data 属性的 subs 中会收集 [计算watcher]
+
+5. 完了之后继续执行 `watcher.get` 的 popTarget，这个 popTarget 会将 `targetStack栈` 最后一个 watcher 删除，之前 `targetStack栈` 为 [渲染wacher, 计算watcher]，那么现在就只剩下 [渲染watcher]，并且对 Dep.target 重新赋值
+
+   ```js
+   Dep.target = targetStack[targetStack.length - 1]
+   ```
+
+   这里的意思就是将 Dep.target 置为 `渲染watcher`
+
+6. 然后，继续回到 computed 的 getter 劫持函数，执行：
+
+   ```js
+   // vue\src\core\instance\state.js
+   if (Dep.target) {
+     watcher.depend();
+   }
+   
+   
+   // vue\src\core\observer\watcher.js
+   depend() {
+     let i = this.deps.length;
+     while (i--) {
+       this.deps[i].depend();
+     }
+   }
+   ```
+
+   上面已经把 Dep.target 置为 `渲染watcher`，那么此处调用 watcher.depend 收集的就是 `渲染watcher`，那么此时 data 属性的 subs 就有两个 watcher，分别为 [计算watcher, 渲染 watcher]
+
+以上，就是 computed 的依赖收集过程。computed 的依赖实际上是被收集进 data 响应式属性中。
 
 
+
+**问题：为什么 computed 的依赖收集需要收集 `渲染watcher`？**
+
+> 第一种情况
+
+```js
+<template>
+  <div>
+    <p>{{ msg }}</p>
+    <p>{{ getNewMsg }}</p>
+  </div>
+</template>
+
+export default {
+  data(){
+    return {
+      msg: 'hello'
+    }
+  },
+  computed:{
+    getNewMsg(){
+      return this.msg + ' world'      
+    }
+  }
+}
+```
+
+这种情况，模板 template 中 data 属性和 computed 都有使用到，那么在页面渲染对 data 属性取值时，存储了`渲染Watcher`，所以再执行 `watcher.depend` 会重复收集 `渲染watcher`，但  `watcher` 内部会通过 new Set() 去重
+
+
+
+> 第一种情况
+
+```js
+<template>
+  <div>
+    <p>{{ getNewMsg }}</p>
+  </div>
+</template>
+
+export default {
+  data(){
+    return {
+      msg: 'hello'
+    }
+  },
+  computed:{
+    getNewMsg(){
+      return this.msg + ' world'      
+    }
+  }
+}
+```
+
+这种情况，模板 template 中只使用了 computed，没有使用到 data 属性。那么此时，在页面渲染的时候，就不会访问 data 的属性，那么没有收集 `渲染watcher`，data 属性里只会有 `计算Watcher`，当 data 属性被修改，只会触发 `计算Watcher` 的 `update`。而 `计算watcher` 的 `update` 里仅仅是将 `dirty` 置为 true，并没有求值，那么就不会进行页面更新。
+
+所以需要收集 `渲染Watcher`，在执行完 `计算Watcher` 后，再执行 `渲染Watcher`。页面渲染对计算属性取值，执行 `watcher.evaluate` 才会重新计算求值，页面计算属性更新。
 
 
 

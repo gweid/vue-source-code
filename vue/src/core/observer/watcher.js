@@ -79,8 +79,8 @@ export default class Watcher {
       process.env.NODE_ENV !== "production" ? expOrFn.toString() : "";
     // expOrFn: 主要看 new Watcher 的时候传进来什么，不同场景会有区别
     //  1、如果是渲染 watcher（处理 data），就是 new Watcher 传进来的 updateComponent
-    //  2、如果是用户 watcher（处理 watch），就是 watch 的键 key（每一个 watch 的名字）
-    //  3、如果是计算 watcher（处理 computed），就是 computed 的 getter 函数
+    //  2、如果是用户 watcher（处理 watch），就是 watch:{ msg: function() {} }】 的msg 函数
+    //  3、如果是计算 watcher（处理 computed），就是【computed:{ getName: function() {} }】中的 getName 函数
     // 将 expOrFn 赋值给 this.getter
     if (typeof expOrFn === "function") {
       // 如果 expOrFn 是一个函数，比如 渲染watcher 的情况，是 updateComponent 函数
@@ -114,10 +114,11 @@ export default class Watcher {
     const vm = this.vm;
     try {
       // 执行 this.getter
+
       // 上面已经分析过，this.getter 会根据不同的 watcher 会不一样
       //  1、渲染 watcher：this.getter 是 updateComponent 函数
-      //  2、用户 watcher：this.getter 是经过 parsePath() 解析后返回的函数
-      //  3、如果是计算 watcher（处理 computed），就是 computed 的 getter 函数
+      //  2、用户 watcher：就是 watch:{ msg: function() {} }】 的 msg 函数
+      //  3、如果是计算 watcher（处理 computed），就是【computed:{ getName: function() {} }】中的 getName 函数
       value = this.getter.call(vm, vm);
     } catch (e) {
       if (this.user) {
@@ -126,8 +127,8 @@ export default class Watcher {
         throw e;
       }
     } finally {
-      // "touch" every property so they are all tracked as
-      // dependencies for deep watching
+      // "touch" every property so they are all tracked 
+      // dependencies for deep watchingas
       if (this.deep) {
         traverse(value);
       }
@@ -194,8 +195,7 @@ export default class Watcher {
     } else if (this.sync) {
       // 是否是同步 watcher
       // 同步执行，在使用 vm.$watch 或者 watch 选项时可以传一个 sync 选项，
-      // 当为 true 时在数据更新时该 watcher 就不走异步更新队列，直接执行 this.run 
-      // 方法进行更新
+      // 当为 true 时在数据更新时该 watcher 就不走异步更新队列，直接执行 this.run 方法进行更新
       this.run();
     } else {
       // 把需要更新的 watcher 往一个队列里面推
@@ -209,7 +209,7 @@ export default class Watcher {
    * Will be called by the scheduler.
    */
   /**
-   * 刷新队列函数 flushSchedulerQueue 调用，完成如下几件事：
+   * watcher.run 被刷新队列函数 flushSchedulerQueue 调用，完成如下几件事：
    *   1、执行实例化 watcher 传递的第二个参数，updateComponent 或者 获取 this.xx 的一个函数(parsePath 返回的函数)
    *   2、更新旧值为新值
    *   3、执行实例化 watcher 时传递的第三个参数，比如用户 watcher 的回调函数，或者渲染 watcher 的空函数

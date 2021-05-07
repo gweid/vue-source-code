@@ -61,7 +61,7 @@ export default class Dep {
 // This is globally unique because only one watcher
 // can be evaluated at a time.
 Dep.target = null
-const targetStack = []
+const targetStack = [] // 存储 watcher 的栈
 
 // 开放出去的方法，主要用来往 Dep 类上添加 target（也就是 watcher）
 export function pushTarget (target: ?Watcher) {
