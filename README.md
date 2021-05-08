@@ -2011,13 +2011,17 @@ dep.notify 的主要作用就是：将 dep.subs 中的 watcher 取出来，执�
 
 ```js
 class Watcher {
+  // ...
+
   // 根据 watcher 配置项，决定接下来怎么走，一般是 queueWatcher
+  // 如果是 计算watcher，那么就是将 lazy 标记为 true，代表有脏数据，需要重新计算
   update() {
     /* istanbul ignore else */
     // lazy 为 true 代表是 computed
     if (this.lazy) {
-      // 如果是 computed，则将 dirty 置为 true
-      // 可以让 computedGetter 执行时重新计算 computed 回调函数的执行结果
+      // 如果是 计算watcher，则将 dirty 置为 true
+      // 当页面渲染对计算属性取值时，触发 computed 的读取拦截 computedGetter 函数
+      // 然后执行 watcher.evaluate 重新计算取值
       this.dirty = true;
     } else if (this.sync) {
       // 是否是同步 watcher
@@ -3016,34 +3020,66 @@ export default {
 
 #### 3-6-3、computed 的派发更新
 
-派发更新的前提是 data 中数据发生改变
+派发更新的前提是计算属性依赖的 data 数据发生改变，当计算属性依赖的 data 数据发生更新时：
+- 触发 data 数据的 set，set 中执行 `dep.notify` 通知更新
 
--   当计算属性依赖的数据发生更新时，由于数据的 Dep 收集过 computed watch 这个依赖，所以会调用 dep 的 notify 方法，对依赖进行状态更新。
--   此时 computed watcher 和之前介绍的 watcher 不同，它不会立刻执行依赖的更新操作，而是通过一个 dirty 进行标记。
-
-```
-Dep.prototype.notify = function() {
-  ···
-   for (var i = 0, l = subs.length; i < l; i++) {
-      subs[i].update();
+  ```js
+  function defineReactive() {
+    Object.defineProperty(obj, key, {
+      get: function reactiveGetter() {},
+      set: function reactiveSetter(newVal) {
+        // 通知更新
+        dep.notify()
+      }
     }
-}
-
-Watcher.prototype.update = function update () {
-  // 如果是计算属性
-  if (this.lazy) {
-    this.dirty = true;
-  } else if (this.sync) {
-    this.run();
-  } else {
-    queueWatcher(this);
   }
-};
-```
+  ```
 
-所以，当为计算属性，会进入 lazy，这里面不会进行更新操作，而是把 dirty 标记为 true
+- `dep.notify` 主要就是将存储的每个watcher 拿出来，执行 watcher.update
 
-**由于 data 数据拥有渲染 watcher 这个依赖，所以同时会执行 updateComponent 进行视图重新渲染,而 render 过程中会访问到计算属性,此时由于 this.dirty 值为 true,又会对计算属性重新求值**
+  ```js
+  class Dep {
+    // ...
+  
+    notify () {
+      // ...
+      for (let i = 0, l = subs.length; i < l; i++) {
+        subs[i].update()
+      }
+    }
+  }
+  ```
+
+- 上面说过，收集的依赖有两个 watcher，分别 [计算watcher, 渲染watcher]
+
+  - 那么先执行 `计算watcher` 的 update，这一步会将 dirty 置为 true，代表有脏数据，需要重新计算
+  - 然后执行 `渲染watcher` 的 update，这一步会执行更新函数，然后进行页面重新渲染，当页面渲染对计算属性取值时，触发 computed 的读取拦截，执行 `watcher.evaluate` 重新计算。最后将新结果渲染到页面。
+
+  ```js
+  class Watcher {
+    // ...
+  
+    update() {
+      /* istanbul ignore else */
+      // lazy 为 true 代表是 computed
+      if (this.lazy) {
+        // 如果是 计算watcher，则将 dirty 置为 true
+        // 当页面渲染对计算属性取值时，触发 computed 的读取拦截 computedGetter 函数
+        // 然后执行 watcher.evaluate 重新计算取值
+        this.dirty = true;
+      } else if (this.sync) {
+        // 是否是同步 watcher
+        // 同步执行，在使用 vm.$watch 或者 watch 选项时可以传一个 sync 选项，
+        // 当为 true 时在数据更新时该 watcher 就不走异步更新队列，直接执行 this.run 方法进行更新
+        this.run();
+      } else {
+        // 把需要更新的 watcher 往一个队列里面推
+        // 更新时一般都进到这里
+        queueWatcher(this);
+      }
+    }
+  }
+  ```
 
 
 

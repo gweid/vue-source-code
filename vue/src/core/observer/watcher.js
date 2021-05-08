@@ -185,12 +185,14 @@ export default class Watcher {
    * Will be called when a dependency changes.
    */
   // 根据 watcher 配置项，决定接下来怎么走，一般是 queueWatcher
+  // 如果是 计算watcher，那么就是将 lazy 标记为 true，代表有脏数据，需要重新计算
   update() {
     /* istanbul ignore else */
     // lazy 为 true 代表是 computed
     if (this.lazy) {
-      // 如果是 computed，则将 dirty 置为 true
-      // 可以让 computedGetter 执行时重新计算 computed 回调函数的执行结果
+      // 如果是 计算watcher，则将 dirty 置为 true
+      // 当页面渲染对计算属性取值时，触发 computed 的读取拦截 computedGetter 函数
+      // 然后执行 watcher.evaluate 重新计算取值
       this.dirty = true;
     } else if (this.sync) {
       // 是否是同步 watcher
