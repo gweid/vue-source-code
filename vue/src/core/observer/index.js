@@ -286,6 +286,7 @@ export function set(target: Array < any > | Object, key: any, val: any): any {
   // 读取一下 target.__ob__，这个主要用来判断 target 是否是响应式对象
   const ob = (target: any).__ob__;
 
+  // 需要操作的目标对象不能是 Vue 实例或 Vue 实例的根数据对象
   if (target._isVue || (ob && ob.vmCount)) {
     process.env.NODE_ENV !== "production" &&
       warn(
@@ -313,6 +314,7 @@ export function set(target: Array < any > | Object, key: any, val: any): any {
 /**
  * Delete a property and trigger change if necessary.
  */
+// 通过 Vue.delete 或 vm.$delete 将 target 的 key 属性删除
 export function del(target: Array < any > | Object, key: any) {
   if (
     process.env.NODE_ENV !== "production" &&
@@ -322,11 +324,18 @@ export function del(target: Array < any > | Object, key: any) {
       `Cannot delete reactive property on undefined, null, or primitive value: ${(target: any)}`
     );
   }
+
+  // 如果 target 是数组，通过数组的变异方法 splice 删除对应对应的 key 项，并且触发响应式更新
+  // Vue.delete([1,2,3], 1)
   if (Array.isArray(target) && isValidArrayIndex(key)) {
     target.splice(key, 1);
     return;
   }
+
+  // 读取一下 target.__ob__，这个主要用来判断 target 是否是响应式对象
   const ob = (target: any).__ob__;
+
+  // 需要操作的目标对象不能是 Vue 实例或 Vue 实例的根数据对象
   if (target._isVue || (ob && ob.vmCount)) {
     process.env.NODE_ENV !== "production" &&
       warn(
@@ -335,13 +344,19 @@ export function del(target: Array < any > | Object, key: any) {
       );
     return;
   }
+
+  // 如果 target 上不存在 key 属性，直接结束
   if (!hasOwn(target, key)) {
     return;
   }
+
+  // 直接通过 delete 删除对象的 key 项
   delete target[key];
+  // target 不是响应式对象，不需要通知更新
   if (!ob) {
     return;
   }
+  // target 是响应式，通知更新
   ob.dep.notify();
 }
 

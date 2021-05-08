@@ -4174,7 +4174,7 @@ function initGlobalAPI (Vue: GlobalAPI) {
 > vue\src\core\observer\index.js
 
 ```js
-// 通过 Vue.set 或 this.$set 设置 target[key] = val
+// 通过 Vue.set 或 vm.$set 设置 target[key] = val
 function set(target: Array < any > | Object, key: any, val: any): any {
   // ...
 
@@ -4196,7 +4196,8 @@ function set(target: Array < any > | Object, key: any, val: any): any {
 
   // 读取一下 target.__ob__，这个主要用来判断 target 是否是响应式对象
   const ob = (target: any).__ob__;
-
+  
+  // 需要操作的目标对象不能是 Vue 实例或 Vue 实例的根数据对象
   if (target._isVue || (ob && ob.vmCount)) {
     process.env.NODE_ENV !== "production" &&
       warn(
@@ -4222,13 +4223,90 @@ function set(target: Array < any > | Object, key: any, val: any): any {
 }
 ```
 
-vue.set 原理：
+**vue.set 原理：**
 
 -   如果目标是数组，直接使用数组的变异方法 splice 触发相应式；
 -   如果目标是对象：
     - 如果 key 本就存在 target 中，直接 target[key]=val 更新值
     - 如果 target 不是响应式对象，并且对象本身不存在这个新属性 key，新属性会被设置，但是不会做响应式处理
     - 如果 target 是响应式对象，并且对象本身不存在这个新属性 key，给对象定义新属性，通过 defineReactive 方法将新属性设置为响应式；最后通过 dep.notify 通知更新
+
+
+
+### 6-2、Vue.delete
+
+先看初始化：
+
+```js
+import { set, del } from '../observer/index'
+
+function initGlobalAPI (Vue: GlobalAPI) {
+  // ...
+    
+ Vue.delete = del
+}
+```
+
+
+
+然后看这个 del 函数：
+
+> vue\src\core\global-api\index.js
+
+```js
+// 通过 Vue.delete 或 vm.$delete 将 target 的 key 属性删除
+function del(target: Array < any > | Object, key: any) {
+  if (
+    process.env.NODE_ENV !== "production" &&
+    (isUndef(target) || isPrimitive(target))
+  ) {
+    warn(
+      `Cannot delete reactive property on undefined, null, or primitive value: ${(target: any)}`
+    );
+  }
+
+  // 如果 target 是数组，通过数组的变异方法 splice 删除对应对应的 key 项，并且触发响应式更新
+  // Vue.delete([1,2,3], 1)
+  if (Array.isArray(target) && isValidArrayIndex(key)) {
+    target.splice(key, 1);
+    return;
+  }
+
+  // 读取一下 target.__ob__，这个主要用来判断 target 是否是响应式对象
+  const ob = (target: any).__ob__;
+
+  // 需要操作的目标对象不能是 Vue 实例或 Vue 实例的根数据对象
+  if (target._isVue || (ob && ob.vmCount)) {
+    process.env.NODE_ENV !== "production" &&
+      warn(
+        "Avoid deleting properties on a Vue instance or its root $data " +
+        "- just set it to null."
+      );
+    return;
+  }
+
+  // 如果 target 上不存在 key 属性，直接结束
+  if (!hasOwn(target, key)) {
+    return;
+  }
+
+  // 直接通过 delete 删除对象的 key 项
+  delete target[key];
+  // target 不是响应式，不需要通知更新
+  if (!ob) {
+    return;
+  }
+  // target 是响应式对象，通知更新
+  ob.dep.notify();
+}
+```
+
+**Vue.delete 原理：**
+
+- target 是数组，通过数组的变异方法 splice 删除对应对应的 key 项，并且触发响应式更新
+- target 是对象：
+  - 如果 target 上不存在 key 属性，直接结束
+  - 如果 target 上存在 key 属性，直接通过 delete 删除对象的 key 项；target 是响应式对象，ob.dep.notify 通知更新，不是响应式对象，不做通知
 
 
 
@@ -4287,7 +4365,7 @@ export function initUse(Vue: GlobalAPI) {
 }
 ```
 
-**总结：**
+**vue.use 原理：**
 
 -   首次渲染的时候，除了再 <keep-alive> 中建立缓存，设置 vnode.data.keepAlive 为 true，其他的过程和普通组件一样。
 -   缓存渲染的时候，会根据 vnode.componentInstance（首次渲染 vnode.componentInstance 为 undefined） 和 vnode.data.keepAlive 进行判断不会执行组件的 created、mounted 等钩子函数，而是对缓存的组件执行 patch 过程，最后直接把缓存的 DOM 对象直接插入到目标元素中，完成了数据更新的情况下的渲染过程。
