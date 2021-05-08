@@ -69,17 +69,9 @@
 
 ![vue](/imgs/img0.png)
 
-## initGlobalAPI 全局 api 
-
--   挂载 Vue 全局的 api 例如 nextTick set 等
-
-```
-initGlobalAPI(Vue)
-```
 
 
-
-## new Vue() 发生了什么
+## 1、new Vue() 发生了什么
 
 new Vue 就是执行了 Vue 的初始化
 
@@ -248,7 +240,7 @@ export function initMixin (Vue: Class<Component>) {
 
 
 
-## 1、Vue 渲染流程
+## 2、Vue 渲染流程
 
 首次渲染流程： \$mount --> compile/render --> VNode(render) --> patch --> DOM
 
@@ -269,7 +261,7 @@ export function initMixin (Vue: Class<Component>) {
 
 ![$mount](/imgs/img6.png)
 
-### 1-1、\$mount 的定义
+### 2-1、\$mount 的定义
 
 目前分在 web 平台，所以定义 $mount 的地方有两个
 
@@ -279,7 +271,7 @@ export function initMixin (Vue: Class<Component>) {
 
 
 
-#### 1-1-1、最先的 Vue.prototype.\$mount
+#### 2-1-1、最先的 Vue.prototype.\$mount
 
 > src/platform/web/runtime/index.js
 
@@ -300,7 +292,7 @@ Vue.prototype.$mount = function (
 
 
 
-#### 1-1-2、重新定义 Vue.prototype.\$mount
+#### 2-1-2、重新定义 Vue.prototype.\$mount
 
 -   先是缓存了原型上的 \$mount 方法（原型的 $mount 就是 `src/platform/web/runtime/index.js` 这里定义的），再重新定义该方法
 -   获取挂载元素，并且挂载元素不能为根节点 html、body 之类的，因为会覆盖
@@ -361,7 +353,7 @@ Vue.prototype.$mount = function (el, hydrating) {
 
 
 
-### 1-2、执行 \$mount
+### 2-2、执行 \$mount
 
 \$mount 主要是执行了 mountComponent，主要的作用：
 
@@ -454,11 +446,13 @@ export default class Watcher {
 
 
 
-### 1-3、updateComponent 渲染 DOM 流程
+### 2-3、updateComponent 渲染 DOM 流程
 
 在渲染 DOM 的过程，Vue 使用了虚拟 DOM 的概念，这使得 Vue 中对 DOM 的操作大多都在虚拟 DOM 中，通过对比将要改动的部分，通知更新到真实的 DOM。虚拟 DOM 其实是一个 js 对象，操作 js 的性能开销比直接操作浏览器 DOM 的低很多，并且虚拟 DOM 会把多个 DOM 的操作合并，减少真实 DOM 的回流重绘次数，这很好的解决了频繁操作 DOM 所带来的性能问题。
 
-#### 1-3-1、首先是 VNode 构造器
+
+
+#### 2-3-1、首先是 VNode 构造器
 
 构造器定义了 tag：标签、data：数据、children：子节点、elm：node 节点等
 
@@ -481,7 +475,9 @@ export default class VNode {
 }
 ```
 
-#### 1-3-2、vm.\_render 生成虚拟 DOM
+
+
+#### 2-3-2、vm.\_render 生成虚拟 DOM
 
 ![vm._render](/imgs/img8.png)
 
@@ -651,7 +647,9 @@ export function _createElement (
 }
 ```
 
-#### 1-3-3、vm.\_update 渲染真实 DOM
+
+
+#### 2-3-3、vm.\_update 渲染真实 DOM
 
 -   主要作用：把生成的 VNode 转化为真实的 DOM
 -   调用时机: 有两个，一个是发生在初次渲染阶段，这个时候没有旧的虚拟 dom；另一个发生数据更新阶段，存在新的虚拟 dom 和旧的虚拟 dom
@@ -1175,11 +1173,11 @@ function updateChildren(parentElm, oldCh, newCh) {
 
 
 
-## 2、编译 compiler
+## 3、编译 compiler
 
 
 
-### 2-1、模板编译 compiler
+### 3-1、模板编译 compiler
 
 -   1、parse
     -   使用正则解释 template 中的 Vue 指令(v-xxx)变量等，形成 AST 语法树
@@ -1188,7 +1186,9 @@ function updateChildren(parentElm, oldCh, newCh) {
 -   3、generate
     -   把 parse 生成的 AST 语法树转换为渲染函数 render function
 
-#### 2-3-1、编译的入口
+
+
+#### 3-3-1、编译的入口
 
 在 entry-runtime-with-compiler.js 中的 \$mount 过程，如果发现没有 render 函数，那么会启动编译流程把模板编译成 render 函数, 而 compileToFunctions 就是编译的入口
 
@@ -1297,15 +1297,21 @@ export const createCompiler = createCompilerCreator(function baseCompile (
 
 **总结：实际上进行的编译三部曲是通过 baseCompile 这个参数函数中的 parse、optimize、generate 执行**
 
-#### 2-3-2、parse：使用正则解释 template 编译成 AST 语法树
 
-#### 2-3-3、optimize：标记一些静态节点，用于优化，在 diff 比较的时候略过
 
-#### 2-3-4、generate：把 parse 生成的 AST 语法树转换为渲染函数 render function
+#### 3-3-2、parse：使用正则解释 template 编译成 AST 语法树
 
 
 
-## 3、响应式原理
+#### 3-3-3、optimize：标记一些静态节点，用于优化，在 diff 比较的时候略过
+
+
+
+#### 3-3-4、generate：把 parse 生成的 AST 语法树转换为渲染函数 render function
+
+
+
+## 4、响应式原理
 
 -   Observer 类，实例化一个 Observer 类会通过 Object.defineProperty 对数据的 getter,setter 方法进行改写，在 getter 阶段进行依赖的收集,在数据发生更新阶段，触发 setter 方法进行依赖的更新
 -   watcher 类，实例化 watcher 类相当于创建一个依赖，简单的理解是数据在哪里被使用就需要产生了一个依赖。当数据发生改变时，会通知到每个依赖进行更新，前面提到的渲染 wathcer 便是渲染 dom 时使用数据产生的依赖。
@@ -1323,7 +1329,7 @@ export const createCompiler = createCompilerCreator(function baseCompile (
 
 
 
-### 3-1、initState 初始化
+### 4-1、initState 初始化
 
 首先，在 new Vue 的时候，会执行 initState
 
@@ -1342,7 +1348,9 @@ Vue.prototype._init = function (options) {
 }
 ```
 
-#### 3-1-1、initState 初始化函数
+
+
+#### 4-1-1、initState 初始化函数
 
 initState 会初始化 state, props, methods, computed, watch，将其转换为响应式
 
@@ -1388,7 +1396,9 @@ export function initState (vm: Component) {
 }
 ```
 
-#### 3-1-2、initProps 处理 props
+
+
+#### 4-1-2、initProps 处理 props
 
 ```js
 function initProps(vm: Component, propsOptions: Object) {
@@ -1438,7 +1448,9 @@ export function proxy(target: Object, sourceKey: string, key: string) {
 }
 ```
 
-#### 3-1-3、initMethods 处理 methods
+
+
+#### 4-1-3、initMethods 处理 methods
 
 ```js
 function initMethods(vm: Component, methods: Object) {
@@ -1468,7 +1480,9 @@ function initMethods(vm: Component, methods: Object) {
 }
 ```
 
-#### 3-1-4、initData 处理 data
+
+
+#### 4-1-4、initData 处理 data
 
 ```js
 function initData(vm: Component) {
@@ -1531,11 +1545,13 @@ export function getData(data: Function, vm: Component): any {
 
 
 
-### 3-2、data 依赖收集、派发更新
+### 4-2、data 依赖收集、派发更新
 
 常常说，vue 的响应式分为依赖收集以及派发更新两个阶段，那么 vue 是怎么进行依赖收集的呢？现在来详细了解一下
 
-#### 3-2-1、data 的依赖收集
+
+
+#### 4-2-1、data 的依赖收集
 
 **回看 initData 中，将 data 转化为响应式，主要调用了 observe：**
 
@@ -1895,7 +1911,7 @@ class Dep {
 
 
 
-#### 3-2-2、data 的派发更新
+#### 4-2-2、data 的派发更新
 
 上面已经完整解析了 data 的依赖收集过程（data[key] 是数组的情况除外），下面来分析一下 data 的派发更新
 
@@ -2042,9 +2058,9 @@ watcher.update 里面会分别处理 computed 的情况、同步 watcher 的情�
 
 
 
-### 3-3、异步更新
+### 4-3、异步更新
 
-#### 3-3-1、回顾一下派发更新
+#### 4-3-1、回顾一下派发更新
 
 上面的派发更新其实就是：设置值的时候被拦截 --> 调用 dep.notify() 去通知更新 --> 调用 watcher.update --> 调用 queueWatcher(this) 将 watcher 往全局队列 queue 中推。然后就是异步更新的过程了
 
@@ -2087,7 +2103,9 @@ Watcher.update = function() {
 }
 ```
 
-#### 3-3-2、queueWatcher
+
+
+#### 4-3-2、queueWatcher
 
 > vue\src\core\observer\scheduler.js
 
@@ -2139,7 +2157,9 @@ export function queueWatcher(watcher: Watcher) {
 
 queueWatcher 主要的任务就是将 watcher 放进队列 queue 中，然后调用 nextTick，nextTick 接收参数 flushSchedulerQueue 用作回调函数；异步更新的主要逻辑是在 nextTick 中
 
-#### 3-3-3、nextTick
+
+
+#### 4-3-3、nextTick
 
 > vue\src\core\util\next-tick.js
 
@@ -2182,7 +2202,7 @@ export function nextTick (cb?: Function, ctx?: Object) {
 
 
 
-#### 3-3-4、timerFunc 与 flushCallbacks
+#### 4-3-4、timerFunc 与 flushCallbacks
 
 看看 timerFunc 函数往浏览器添加任务的逻辑：
 
@@ -2255,7 +2275,7 @@ function flushCallbacks () {
 
 
 
-#### 3-3-5、最后回到 flushSchedulerQueue
+#### 4-3-5、最后回到 flushSchedulerQueue
 
 > vue\src\core\observer\scheduler.js
 
@@ -2313,7 +2333,7 @@ function flushSchedulerQueue() {
 
 
 
-#### 3-3-5、watcher.run 与 watcher.get
+#### 4-3-6、watcher.run 与 watcher.get
 
 > vue\src\core\observer\watcher.js
 
@@ -2360,7 +2380,7 @@ class Watcher {
 
 
 
-#### 3-3-6、总结异步更新
+#### 4-3-7、总结异步更新
 
 异步更新：其实就是通过 Promise 或者 MutationObserver 或者 setImmediate 或者 setTimeout或者将更新操作放到异步任务队列里面，这也是 nextTick 的原理
 
@@ -2368,13 +2388,15 @@ class Watcher {
 
 
 
-### 3-4、响应式对数组的处理
+### 4-4、响应式对数组的处理
 
 Object.defineProperty 只能检测到对象的属性变化, 对于数组的变化无法监听到，所以，在 vue2.x 中对七个数组的方法重写了，在保留原数组功能的前提下，对数组进行额外的操作处理。
 
 回头来看看当 data[key] 是数组的处理方案：
 
-#### 3-4-1、Observer 类中对数组的处理
+
+
+#### 4-4-1、Observer 类中对数组的处理
 
 在上面分析 Observer 类的时候知道，Observer 类对 data 的数据会分为两种情况，一种是非数组形式，一种是数组形式：
 
@@ -2452,7 +2474,7 @@ export function def(obj: Object, key: string, val: any, enumerable ? : boolean) 
 
 
 
-#### 3-4-2、数组的重写
+#### 4-4-2、数组的重写
 
 上面 arrayMethods 主要就是对能改变数组的其中方法进行了重写
 
@@ -2517,7 +2539,7 @@ methodsToPatch.forEach(function (method) {
 
 
 
-#### 3-4-3、总结响应式对数组的处理
+#### 4-4-3、总结响应式对数组的处理
 
 Object.defineProperty 只能劫持对象，对于数组，没办法进行劫持。vue 做的处理就是：对于能够改变数组的七种方法进行了重写，也就是说，当外部访问数组那那七种 ['push','pop','shift','unshift','splice','sort','reverse'] 方法时，进行劫持。里面会进行如下操作：
 
@@ -2527,47 +2549,7 @@ Object.defineProperty 只能劫持对象，对于数组，没办法进行劫持�
 
 
 
-### 3-5、\$set
-
-vm.\$set 原理：
-
--   如果目标是数组，直接使用数组的 splice 方法触发相应式；
--   如果目标是对象，会先判读属性是否存在、对象是否是响应式，最终如果要对属性进行响应式处理，则是通过调用 defineReactive 方法进行响应式处理（ defineReactive 方法就是 Vue 在初始化对象时，给对象属性采用 Object.defineProperty 动态添加 getter 和 setter 的功能所调用的方法）
--   最后通过 dep.notify 通知更新
-
-```
-export function set (target: Array<any> | Object, key: any, val: any): any {
-  // target 为数组
-  if (Array.isArray(target) && isValidArrayIndex(key)) {
-    // 修改数组的长度, 避免索引>数组长度导致splcie()执行有误
-    target.length = Math.max(target.length, key)
-    // 利用数组的splice变异方法触发响应式
-    target.splice(key, 1, val)
-    return val
-  }
-  // key 已经存在，直接修改属性值
-  if (key in target && !(key in Object.prototype)) {
-    target[key] = val
-    return val
-  }
-  const ob = (target: any).__ob__
-  // target 本身就不是响应式数据, 直接赋值
-  if (!ob) {
-    target[key] = val
-    return val
-  }
-  // 对属性进行响应式处理
-  defineReactive(ob.value, key, val)
-  
-  // 通知更新
-  ob.dep.notify()
-  return val
-}
-```
-
-
-
-### 3-6、computed
+### 4-5、computed
 
 ![computed](/imgs/img4.png)
 
@@ -2609,7 +2591,7 @@ export function set (target: Array<any> | Object, key: any, val: any): any {
 
 
 
-#### 3-6-1、computed 初始化
+#### 4-5-1、computed 初始化
 
 先来看看 computed 的初始化，依然是在 initState 中：
 
@@ -2729,7 +2711,7 @@ defineComputed主要做的事：将 computed 代理到 vm 实例上，并且定�
 
 
 
-#### 3-6-2、computed 的依赖收集以及缓存原理
+#### 4-5-2、computed 的依赖收集以及缓存原理
 
 接下来，看看 computed 的依赖收集过程。先回到为每一个 computed 创建 `计算watcher` 的时候
 
@@ -3018,7 +3000,7 @@ export default {
 
 
 
-#### 3-6-3、computed 的派发更新
+#### 4-5-3、computed 的派发更新
 
 派发更新的前提是计算属性依赖的 data 数据发生改变，当计算属性依赖的 data 数据发生更新时：
 - 触发 data 数据的 set，set 中执行 `dep.notify` 通知更新
@@ -3083,7 +3065,7 @@ export default {
 
 
 
-### 3-7、watch
+### 4-6、watch
 
 ![watch](/imgs/img5.png)
 
@@ -3167,7 +3149,7 @@ export default {
 
 
 
-#### 3-7-1、初始化 watch
+#### 4-6-1、初始化 watch
 
 > vue\src\core\instance\state.js
 
@@ -3209,7 +3191,7 @@ initWatch 主要就是遍历 watch 对象，得到每一个 watch，然后调用
 
 
 
-#### 3-7-1、watch 的依赖收集
+#### 4-6-2、watch 的依赖收集
 
 看看 createWatcher 函数：
 
@@ -3437,7 +3419,7 @@ export function parsePath(path: string): any {
 
 
 
-#### 3-7-2、watch 的派发更新
+#### 4-6-3、watch 的派发更新
 
 经过上面的依赖收集可以知道，其实每一个 data 的数据身上至少会有两个 watcher，['user watcher',  'render watcher', ...]，这里 user watcher 的是会在 render watcher 前面的，因为 render watcher 是在 $mount 进行挂载的时候才 new Watcher 创建，而 user watcher 是在 initState 期间就会创建，initState 先于 $mount 执行
 
@@ -3502,7 +3484,7 @@ watch 派发更新的过程:  data 数据发生改变时，触发 setter 拦截�
 
 
 
-## 4、Vue 的组件化
+## 5、Vue 的组件化
 
 -   1.加载渲染过程：父 beforeCreate -> 父 created -> 父 beforeMount -> 子 beforeCreate -> 子 created -> 子 beforeMount -> 子 mounted -> 父 mounted
 -   2.子组件更新过程：父 beforeUpdate -> 子 beforeUpdate -> 子 updated -> 父 updated
@@ -3518,7 +3500,9 @@ watch 派发更新的过程:  data 数据发生改变时，触发 setter 拦截�
 
 首先在 this.\_init 中调用 initRender 初始化，然后 initRender 中 createElement, 在 createElement 中发现是组件, 那么 createComponent
 
-### 4-1、组件的 VNode (create-element.js、create-component.js、vnode.js、extend.js)
+
+
+### 5-1、组件的 VNode (create-element.js、create-component.js、vnode.js、extend.js)
 
 ![VNode](/imgs/img1.png)
 
@@ -3565,9 +3549,11 @@ const vnode = new VNode(
 )
 ```
 
-### 4-2、组件的 patch 过程 (patch.js、create-component.js、init.js)
 
-#### 组件 patch 的整体流程(组件 VNode 渲染成真实 Dom)
+
+### 5-2、组件的 patch 过程 (patch.js、create-component.js、init.js)
+
+**组件 patch 的整体流程(组件 VNode 渲染成真实 Dom)**
 
 ![VNode](/imgs/img2.png)
 
@@ -3598,7 +3584,9 @@ export function initLifecycle (vm: Component) {
 
 -   继续在 create-component.js 中 child.$mount(hydrating ? vnode.elm : undefined, hydrating), 这个就会执行 entry-runtime-with-compiler.js 中的 Vue.prototype.$mount, 后执行 lifecycle.js 中的 mountComponent，执行 render 完成子组件的渲染，然后执行渲染 watcher(子组件的渲染 watcher)
 
-### 4-3、组件的生命周期
+
+
+### 5-3、组件的生命周期
 
 -   beforeCreate: data 数据没有初始化之前执行
 -   created: data 数据初始化之后执行
@@ -3694,9 +3682,11 @@ new Watcher(vm, updateComponent, noop, {
 -   beforeDestroy: 页面卸载之前，此时 data、method 还存在
 -   destroyed: 页面卸载之后，此时 data、method 不存在
 
-### 4-4、组件的注册
 
-#### 4-4-1、全局注册：全局注册组件就是 Vue 实例化前创建一个基于 Vue 的子类构造器，并将组件的信息加载到实例 options.components 对象中
+
+### 5-4、组件的注册
+
+#### 5-4-1、全局注册：全局注册组件就是 Vue 实例化前创建一个基于 Vue 的子类构造器，并将组件的信息加载到实例 options.components 对象中
 
 ```
 // 全局注册组件的方式
@@ -3752,7 +3742,9 @@ export function initAssetRegisters (Vue: GlobalAPI) {
 }
 ```
 
-#### 4-4-2、局部注册: 在 createElement 中, 发现是组件标签，就调用 createComponent
+
+
+#### 5-4-2、局部注册: 在 createElement 中, 发现是组件标签，就调用 createComponent
 
 **局部注册和全局注册区别**
 
@@ -3775,13 +3767,17 @@ function createComponent (...) {
 }
 ```
 
-### 4-5、Vue 异步组件
+
+
+### 5-5、Vue 异步组件
 
 -   总的来说，异步组件的实现通常是 2 次渲染，先渲染成注释节点，组件加载成功后再通过 forceRender 重新渲染，这是异步组件的核心所在。
 
 -   当在 createComponent 中发现是异步组件, 调用 resolveAsyncComponent, 这个是异步组件的核心
 
-#### 4-5-1、工厂函数
+
+
+#### 5-5-1、工厂函数
 
 -   定义异步请求成功的函数处理，定义异步请求失败的函数处理；
 -   执行组件定义的工厂函数；
@@ -3895,7 +3891,9 @@ if (Ctor === undefined) {
 
 -   执行 forceRender 触发组件的重新渲染过程时，又会再次调用 resolveAsyncComponent,这时返回值 Ctor 不再为 undefined 了，因此会正常走组件的 render,patch 过程。这时，旧的注释节点也会被取代。
 
-#### 4-5-2、Promise
+
+
+#### 5-5-2、Promise
 
 -   主要是在 res.then(resolve, reject) 这里
 
@@ -3951,7 +3949,9 @@ export function resolveAsyncComponent(
 }
 ```
 
-#### 4-5-3、高级异步组件
+
+
+#### 5-5-3、高级异步组件
 
 ```
 const AsyncComp = () => ({
@@ -4077,21 +4077,137 @@ export function resolveAsyncComponent(
 
 
 
-## 5、Vue 的一些扩展功能
+## 6、全局 API
 
-### 5-1、Vue 的事件机制 event
 
-### 5-2、Vue 的插槽
 
-#### 5-2-1、普通插槽
+### 6-1、vue.set
 
-#### 5-2-2、具名插槽
+vm.\$set 原理：
 
-#### 5-2-3、作用域插槽
+-   如果目标是数组，直接使用数组的 splice 方法触发相应式；
+-   如果目标是对象，会先判读属性是否存在、对象是否是响应式，最终如果要对属性进行响应式处理，则是通过调用 defineReactive 方法进行响应式处理（ defineReactive 方法就是 Vue 在初始化对象时，给对象属性采用 Object.defineProperty 动态添加 getter 和 setter 的功能所调用的方法）
+-   最后通过 dep.notify 通知更新
 
-### 5-3、Vue 的 v-model
+```js
+export function set (target: Array<any> | Object, key: any, val: any): any {
+  // target 为数组
+  if (Array.isArray(target) && isValidArrayIndex(key)) {
+    // 修改数组的长度, 避免索引>数组长度导致splcie()执行有误
+    target.length = Math.max(target.length, key)
+    // 利用数组的splice变异方法触发响应式
+    target.splice(key, 1, val)
+    return val
+  }
+  // key 已经存在，直接修改属性值
+  if (key in target && !(key in Object.prototype)) {
+    target[key] = val
+    return val
+  }
+  const ob = (target: any).__ob__
+  // target 本身就不是响应式数据, 直接赋值
+  if (!ob) {
+    target[key] = val
+    return val
+  }
+  // 对属性进行响应式处理
+  defineReactive(ob.value, key, val)
+  
+  // 通知更新
+  ob.dep.notify()
+  return val
+}
+```
 
-#### 5-3-1、v-model 实现机制
+
+
+### 6-2、Vue.mixin
+
+主要就是通过 mergeOptions 将 mixin 的参数合并到全局的 Vue 配置中
+
+```
+export function initMixin (Vue: GlobalAPI) {
+  Vue.mixin = function (mixin: Object) {
+    // 通过 mergeOptions 将 mixin 的参数合并到全局的 Vue 配置中
+    this.options = mergeOptions(this.options, mixin)
+    return this
+  }
+}
+```
+
+
+
+### 6-3、vue.use
+
+-   检查插件是否安装，如果安装了就不再安装
+-   如果没有没有安装，那么调用插件的 install 方法，并传入 Vue 实例
+
+要使用 Vue.use(), 要么是一个对象里面包含 install 方法，要么本身就是一个方法(自身就是 install 方法)。
+
+```
+export function initUse(Vue: GlobalAPI) {
+  // 接受一个 plugin 参数
+  Vue.use = function (plugin: Function | Object) {
+    // this 就是 Vue 本身
+    // _installedPlugins 存储了所有 plugin
+    const installedPlugins =
+      this._installedPlugins || (this._installedPlugins = []);
+    // 如果 plugin 存在，那么返回 this（即 Vue）
+    if (installedPlugins.indexOf(plugin) > -1) {
+      return this;
+    }
+
+    // additional parameters
+    const args = toArray(arguments, 1);
+    // 将Vue对象拼接到数组头部
+    args.unshift(this);
+    if (typeof plugin.install === "function") {
+      // 如果 plugin.install 存在， 直接调用 plugin.install
+      plugin.install.apply(plugin, args);
+    } else if (typeof plugin === "function") {
+      // plugin 存在，调用 plugin
+      plugin.apply(null, args);
+    }
+    // 将plugin 存储到 installedPlugins
+    installedPlugins.push(plugin);
+    // 返回 this（即 Vue）
+    return this;
+  };
+}
+```
+
+**总结：**
+
+-   首次渲染的时候，除了再 <keep-alive> 中建立缓存，设置 vnode.data.keepAlive 为 true，其他的过程和普通组件一样。
+-   缓存渲染的时候，会根据 vnode.componentInstance（首次渲染 vnode.componentInstance 为 undefined） 和 vnode.data.keepAlive 进行判断不会执行组件的 created、mounted 等钩子函数，而是对缓存的组件执行 patch 过程，最后直接把缓存的 DOM 对象直接插入到目标元素中，完成了数据更新的情况下的渲染过程。
+
+
+
+## 7、Vue 的其他重要功能
+
+### 7-1、Vue 的事件机制 event
+
+
+
+### 7-2、Vue 的插槽
+
+
+
+#### 7-2-1、普通插槽
+
+
+
+#### 7-2-2、具名插槽
+
+
+
+#### 7-2-3、作用域插槽
+
+
+
+### 7-3、Vue 的 v-model
+
+#### 7-3-1、v-model 实现机制
 
 v-model 会把它关联的响应式数据（如 message），动态地绑定到表单元素的 value 属性上，然后监听表单元素的 input 事件：当 v-model 绑定的响应数据发生变化时，表单元素的 value 值也会同步变化；当表单元素接受用户的输入时，input 事件会触发，input 的回调逻辑会把表单元素 value 最新值同步赋值给 v-model 绑定的响应式数据
 
@@ -4099,7 +4215,9 @@ v-model 会把它关联的响应式数据（如 message），动态地绑定到�
 <input type="text" :value="message" @input="(e) => { this.message = e.target.value }" >
 ```
 
-#### 5-3-2、v-model 实现原理
+
+
+#### 7-3-2、v-model 实现原理
 
 首先，在模板解析阶段，v-model 跟其他指令一样，会被解析到 el.directives
 
@@ -4310,11 +4428,13 @@ addHandler(el, event, code, null, true)
 
 -   5.然后在 patch 过程根据生成的 VNode 进行 value 绑定，事件 input 监听
 
-### 5-4、Vue 的 keep-alive
+
+
+### 7-4、Vue 的 keep-alive
 
 被 keep-alive 包裹的组件不会重新渲染
 
-#### 5-4-1、keep-alive 基本使用：
+#### 7-4-1、keep-alive 基本使用：
 
 ```
 <keep-alive exclude="c" max="5">
@@ -4329,7 +4449,9 @@ addHandler(el, event, code, null, true)
 </keep-alive>
 ```
 
-#### 5-4-2、keep-alive 首次渲染
+
+
+#### 7-4-2、keep-alive 首次渲染
 
 **初始渲染流程最关键的一步是对渲染的组件 Vnode 进行缓存，其中也包括了组件的真实节点存储**
 
@@ -4520,7 +4642,9 @@ export default {
 }
 ```
 
-#### 5-4-3、keep-alive 再次渲染
+
+
+#### 7-4-3、keep-alive 再次渲染
 
 再次渲染是由于数据发生更新，触发派发更新通知组件去重新渲染，而在重新渲染中的 patch 中，主要的是 patchVnode
 
@@ -4686,63 +4810,7 @@ export default {
 }
 ```
 
-## 6、Vue.mixin
 
-主要就是通过 mergeOptions 将 mixin 的参数合并到全局的 Vue 配置中
-
-```
-export function initMixin (Vue: GlobalAPI) {
-  Vue.mixin = function (mixin: Object) {
-    // 通过 mergeOptions 将 mixin 的参数合并到全局的 Vue 配置中
-    this.options = mergeOptions(this.options, mixin)
-    return this
-  }
-}
-```
-
-## 7、vue-use
-
--   检查插件是否安装，如果安装了就不再安装
--   如果没有没有安装，那么调用插件的 install 方法，并传入 Vue 实例
-
-要使用 Vue.use(), 要么是一个对象里面包含 install 方法，要么本身就是一个方法(自身就是 install 方法)。
-
-```
-export function initUse(Vue: GlobalAPI) {
-  // 接受一个 plugin 参数
-  Vue.use = function (plugin: Function | Object) {
-    // this 就是 Vue 本身
-    // _installedPlugins 存储了所有 plugin
-    const installedPlugins =
-      this._installedPlugins || (this._installedPlugins = []);
-    // 如果 plugin 存在，那么返回 this（即 Vue）
-    if (installedPlugins.indexOf(plugin) > -1) {
-      return this;
-    }
-
-    // additional parameters
-    const args = toArray(arguments, 1);
-    // 将Vue对象拼接到数组头部
-    args.unshift(this);
-    if (typeof plugin.install === "function") {
-      // 如果 plugin.install 存在， 直接调用 plugin.install
-      plugin.install.apply(plugin, args);
-    } else if (typeof plugin === "function") {
-      // plugin 存在，调用 plugin
-      plugin.apply(null, args);
-    }
-    // 将plugin 存储到 installedPlugins
-    installedPlugins.push(plugin);
-    // 返回 this（即 Vue）
-    return this;
-  };
-}
-```
-
-**总结：**
-
--   首次渲染的时候，除了再 <keep-alive> 中建立缓存，设置 vnode.data.keepAlive 为 true，其他的过程和普通组件一样。
--   缓存渲染的时候，会根据 vnode.componentInstance（首次渲染 vnode.componentInstance 为 undefined） 和 vnode.data.keepAlive 进行判断不会执行组件的 created、mounted 等钩子函数，而是对缓存的组件执行 patch 过程，最后直接把缓存的 DOM 对象直接插入到目标元素中，完成了数据更新的情况下的渲染过程。
 
 ## 8、vue-router
 
