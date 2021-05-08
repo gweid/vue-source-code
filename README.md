@@ -4077,7 +4077,7 @@ export function resolveAsyncComponent(
 
 
 
-## 6、全局 API
+## 6、Vue 全局 API
 
 全局 api 初始化入口：
 
@@ -4145,6 +4145,10 @@ export function initGlobalAPI (Vue: GlobalAPI) {
   initAssetRegisters(Vue)   //  component、directive、filter 挂载到 Vue
 }
 ```
+
+
+
+下面来看看一些常用的 Vue 全局 api
 
 
 
@@ -4303,7 +4307,7 @@ function del(target: Array < any > | Object, key: any) {
 先看初始化：
 
 ```js
-import { set, del } from '../observer/index'
+import { nextTick } from '../util/index'
 
 function initGlobalAPI (Vue: GlobalAPI) {
   // ...
@@ -4422,7 +4426,90 @@ export function nextTick (cb?: Function, ctx?: Object) {
 
 
 
-### 6-4、Vue.mixin
+### 6-4、vue.use
+
+Vue.use 作用：
+
+- 用于安装 Vue.js 插件
+  - 如果插件是一个对象，**必须提供 `install` 方法**
+  - 如果插件是一个函数，它会被作为 install 方法
+  - install 方法调用时，会将 Vue 作为参数传入
+
+- 该方法需要在调用 `new Vue()` 之前被调用
+
+- 当 install 方法被同一个插件多次调用，插件将只会被安装一次
+
+
+
+先来看看初始化：
+
+```js
+import { initUse } from './use'
+
+function initGlobalAPI (Vue: GlobalAPI) {
+  // ...
+    
+ initUse(Vue);
+}
+```
+
+
+
+接着看看 initUse 函数：initUse 函数会将当前 Vue 实例当做参数
+
+> vue\src\core\global-api\use.js
+
+```js
+// 用于安装 vue 插件：
+//   1、检查插件是否安装，如果安装了就不再安装
+//   2、如果没有没有安装，安装插件，执行插件的 install 方法
+export function initUse(Vue: GlobalAPI) {
+  // 接受一个 plugin 参数
+  Vue.use = function (plugin: Function | Object) {
+    // this 就是 Vue 本身
+    // _installedPlugins 存储了所有 plugin
+    // installedPlugins 与 this._installedPlugins 指向同一个数组
+    // 那么只要 installedPlugins 或者 this._installedPlugins 其中一个改变，肯定会影响另外一个
+    const installedPlugins =
+      this._installedPlugins || (this._installedPlugins = []);
+
+    // 如果 plugin 在 installedPlugins 已存在，那么返回 Vue（说明安装过，不再重复安装）
+    if (installedPlugins.indexOf(plugin) > -1) {
+      return this;
+    }
+
+    // additional parameters
+    const args = toArray(arguments, 1);
+    // 将 Vue 实例放到参数数组的首位，后面将这些参数传递给 install 方法
+    args.unshift(this);
+
+    if (typeof plugin.install === "function") {
+      // plugin 是对象形式，执行 plugin.install, args 的第一项就是 Vue
+      plugin.install.apply(plugin, args);
+    } else if (typeof plugin === "function") {
+      // plugin 是函数形式，直接将 plugin 本身当做 install 来执行
+      plugin.apply(null, args);
+    }
+
+    // 在插件列表 installedPlugins 和 vue._installedPlugins 中添加新安装的插件
+    // 因为上面说过 installedPlugins 和 vue._installedPlugins 指向同一个数组
+    installedPlugins.push(plugin);
+
+    // 返回 this（即 Vue）
+    return this;
+  };
+}
+```
+
+**vue.use 原理：**
+
+-   检查插件是否安装，如果安装了就不再安装
+-   如果没有没有安装，安装插件，执行插件的 install 方法
+-   将已安装过的插件保存到 `vue._installedPlugins` 中
+
+
+
+### 6-5、Vue.mixin
 
 主要就是通过 mergeOptions 将 mixin 的参数合并到全局的 Vue 配置中
 
@@ -4435,52 +4522,6 @@ export function initMixin (Vue: GlobalAPI) {
   }
 }
 ```
-
-
-
-### 6-5、vue.use
-
--   检查插件是否安装，如果安装了就不再安装
--   如果没有没有安装，那么调用插件的 install 方法，并传入 Vue 实例
-
-要使用 Vue.use(), 要么是一个对象里面包含 install 方法，要么本身就是一个方法(自身就是 install 方法)。
-
-```
-export function initUse(Vue: GlobalAPI) {
-  // 接受一个 plugin 参数
-  Vue.use = function (plugin: Function | Object) {
-    // this 就是 Vue 本身
-    // _installedPlugins 存储了所有 plugin
-    const installedPlugins =
-      this._installedPlugins || (this._installedPlugins = []);
-    // 如果 plugin 存在，那么返回 this（即 Vue）
-    if (installedPlugins.indexOf(plugin) > -1) {
-      return this;
-    }
-
-    // additional parameters
-    const args = toArray(arguments, 1);
-    // 将Vue对象拼接到数组头部
-    args.unshift(this);
-    if (typeof plugin.install === "function") {
-      // 如果 plugin.install 存在， 直接调用 plugin.install
-      plugin.install.apply(plugin, args);
-    } else if (typeof plugin === "function") {
-      // plugin 存在，调用 plugin
-      plugin.apply(null, args);
-    }
-    // 将plugin 存储到 installedPlugins
-    installedPlugins.push(plugin);
-    // 返回 this（即 Vue）
-    return this;
-  };
-}
-```
-
-**vue.use 原理：**
-
--   首次渲染的时候，除了再 <keep-alive> 中建立缓存，设置 vnode.data.keepAlive 为 true，其他的过程和普通组件一样。
--   缓存渲染的时候，会根据 vnode.componentInstance（首次渲染 vnode.componentInstance 为 undefined） 和 vnode.data.keepAlive 进行判断不会执行组件的 created、mounted 等钩子函数，而是对缓存的组件执行 patch 过程，最后直接把缓存的 DOM 对象直接插入到目标元素中，完成了数据更新的情况下的渲染过程。
 
 
 
@@ -5110,6 +5151,11 @@ export default {
   }
 }
 ```
+
+**总结：**
+
+-   首次渲染的时候，除了再 <keep-alive> 中建立缓存，设置 vnode.data.keepAlive 为 true，其他的过程和普通组件一样。
+-   缓存渲染的时候，会根据 vnode.componentInstance（首次渲染 vnode.componentInstance 为 undefined） 和 vnode.data.keepAlive 进行判断不会执行组件的 created、mounted 等钩子函数，而是对缓存的组件执行 patch 过程，最后直接把缓存的 DOM 对象直接插入到目标元素中，完成了数据更新的情况下的渲染过程。
 
 
 
