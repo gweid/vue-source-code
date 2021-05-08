@@ -4079,45 +4079,156 @@ export function resolveAsyncComponent(
 
 ## 6、全局 API
 
+全局 api 初始化入口：
+
+> vue\src\core\global-api\index.js
+
+```js
+// Vue.js 在整个初始化过程中，除了给它的原型 prototype 上扩展方法
+// 还会给 Vue 这个对象本身扩展全局的静态方法：
+//   默认配置：Vue.config
+//   一些工具方法：Vue.util.warn、Vue.util.extend、Vue.util.mergeOptions、Vue.util.defineReactive
+//   Vue.set、Vue.delete、Vue.nextTick
+//   响应式方法：Vue.observable
+//   Vue.options.components、Vue.options.directives、Vue.options.filters、Vue.options._base
+//   Vue.use、Vue.extend、Vue.mixin、Vue.component、Vue.directive、Vue.filter
+export function initGlobalAPI (Vue: GlobalAPI) {
+  // config
+  const configDef = {}
+  configDef.get = () => config
+  if (process.env.NODE_ENV !== 'production') {
+    configDef.set = () => {
+      warn(
+        'Do not replace the Vue.config object, set individual fields instead.'
+      )
+    }
+  }
+
+  // Vue.config
+  Object.defineProperty(Vue, 'config', configDef)
+
+  // exposed util methods.
+  // NOTE: these are not considered part of the public API - avoid relying on
+  // them unless you are aware of the risk.
+  // 一些工具方法
+  // 轻易不要使用这些工具方法，除非你很清楚这些工具方法，以及知道使用的风险
+  Vue.util = {
+    warn,
+    extend,
+    mergeOptions,
+    defineReactive
+  }
+
+  Vue.set = set
+  Vue.delete = del
+  Vue.nextTick = nextTick
+
+  // 2.6 explicit observable API
+  // 响应式方法
+  Vue.observable = <T>(obj: T): T => {
+    observe(obj)
+    return obj
+  }
+
+  // 主要将是 components、directives、filters 挂载到 Vue.options
+  Vue.options = Object.create(null)
+  ASSET_TYPES.forEach(type => {
+    Vue.options[type + 's'] = Object.create(null)
+  })
+
+  // this is used to identify the "base" constructor to extend all plain-object
+  // components with in Weex's multi-instance scenarios.
+  // 将 Vue 构造函数挂载到 Vue.options._base 上
+  Vue.options._base = Vue
+
+  // 给 Vue.options.components 添加内置组件，例如 keep-alive
+  extend(Vue.options.components, builtInComponents)
+
+  initUse(Vue)              // Vue.use
+  initMixin(Vue)            // Vue.mixin
+  initExtend(Vue)           // Vue.extend
+  initAssetRegisters(Vue)   //  component、directive、filter 挂载到 Vue
+}
+```
+
 
 
 ### 6-1、vue.set
 
-vm.\$set 原理：
-
--   如果目标是数组，直接使用数组的 splice 方法触发相应式；
--   如果目标是对象，会先判读属性是否存在、对象是否是响应式，最终如果要对属性进行响应式处理，则是通过调用 defineReactive 方法进行响应式处理（ defineReactive 方法就是 Vue 在初始化对象时，给对象属性采用 Object.defineProperty 动态添加 getter 和 setter 的功能所调用的方法）
--   最后通过 dep.notify 通知更新
+从上面的初始化可以看出：
 
 ```js
-export function set (target: Array<any> | Object, key: any, val: any): any {
-  // target 为数组
-  if (Array.isArray(target) && isValidArrayIndex(key)) {
-    // 修改数组的长度, 避免索引>数组长度导致splcie()执行有误
-    target.length = Math.max(target.length, key)
-    // 利用数组的splice变异方法触发响应式
-    target.splice(key, 1, val)
-    return val
-  }
-  // key 已经存在，直接修改属性值
-  if (key in target && !(key in Object.prototype)) {
-    target[key] = val
-    return val
-  }
-  const ob = (target: any).__ob__
-  // target 本身就不是响应式数据, 直接赋值
-  if (!ob) {
-    target[key] = val
-    return val
-  }
-  // 对属性进行响应式处理
-  defineReactive(ob.value, key, val)
-  
-  // 通知更新
-  ob.dep.notify()
-  return val
+import { set, del } from '../observer/index'
+
+function initGlobalAPI (Vue: GlobalAPI) {
+  // ...
+    
+ Vue.set = set 
 }
 ```
+
+
+
+那么来看看这个 set 函数：
+
+> vue\src\core\observer\index.js
+
+```js
+// 通过 Vue.set 或 this.$set 设置 target[key] = val
+function set(target: Array < any > | Object, key: any, val: any): any {
+  // ...
+
+  // 如果 target 是数组，利用数组的 splice 变异方法触发响应式
+  // Vue.set([1,2,3], 1, 5)
+  if (Array.isArray(target) && isValidArrayIndex(key)) {
+    // 修改数组的长度, 避免数组索引 key 大于数组长度导致 splcie() 执行有误
+    target.length = Math.max(target.length, key);
+
+    target.splice(key, 1, val);
+    return val;
+  }
+
+  // 如果 key 已经存在 target 中，更新 target[key] 的值为 val
+  if (key in target && !(key in Object.prototype)) {
+    target[key] = val;
+    return val;
+  }
+
+  // 读取一下 target.__ob__，这个主要用来判断 target 是否是响应式对象
+  const ob = (target: any).__ob__;
+
+  if (target._isVue || (ob && ob.vmCount)) {
+    process.env.NODE_ENV !== "production" &&
+      warn(
+        "Avoid adding reactive properties to a Vue instance or its root $data " +
+        "at runtime - declare it upfront in the data option."
+      );
+    return val;
+  }
+
+  // 当 target 不是响应式对象，并且对象本身不存在这个新属性 key
+  // 新属性会被设置，但是不会做响应式处理
+  if (!ob) {
+    target[key] = val;
+    return val;
+  }
+
+  // target 是响应式对象，并且对象本身不存在这个新属性 key
+  // 给对象定义新属性，通过 defineReactive 方法将新属性设置为响应式
+  // ob.dep.notify 通知更新
+  defineReactive(ob.value, key, val);
+  ob.dep.notify();
+  return val;
+}
+```
+
+vue.set 原理：
+
+-   如果目标是数组，直接使用数组的变异方法 splice 触发相应式；
+-   如果目标是对象：
+    - 如果 key 本就存在 target 中，直接 target[key]=val 更新值
+    - 如果 target 不是响应式对象，并且对象本身不存在这个新属性 key，新属性会被设置，但是不会做响应式处理
+    - 如果 target 是响应式对象，并且对象本身不存在这个新属性 key，给对象定义新属性，通过 defineReactive 方法将新属性设置为响应式；最后通过 dep.notify 通知更新
 
 
 

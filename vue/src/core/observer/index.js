@@ -256,6 +256,7 @@ export function defineReactive(
  * triggers change notification if the property doesn't
  * already exist.
  */
+// 通过 Vue.set 或 this.$set 设置 target[key] = val
 export function set(target: Array < any > | Object, key: any, val: any): any {
   if (
     process.env.NODE_ENV !== "production" &&
@@ -265,16 +266,26 @@ export function set(target: Array < any > | Object, key: any, val: any): any {
       `Cannot set reactive property on undefined, null, or primitive value: ${(target: any)}`
     );
   }
+
+  // 如果 target 是数组，利用数组的 splice 变异方法触发响应式
+  // Vue.set([1,2,3], 1, 5)
   if (Array.isArray(target) && isValidArrayIndex(key)) {
+    // 修改数组的长度, 避免数组索引 key 大于数组长度导致 splcie() 执行有误
     target.length = Math.max(target.length, key);
+
     target.splice(key, 1, val);
     return val;
   }
+
+  // 如果 key 已经存在 target 中，更新 target[key] 的值为 val
   if (key in target && !(key in Object.prototype)) {
     target[key] = val;
     return val;
   }
+
+  // 读取一下 target.__ob__，这个主要用来判断 target 是否是响应式对象
   const ob = (target: any).__ob__;
+
   if (target._isVue || (ob && ob.vmCount)) {
     process.env.NODE_ENV !== "production" &&
       warn(
@@ -283,10 +294,17 @@ export function set(target: Array < any > | Object, key: any, val: any): any {
       );
     return val;
   }
+
+  // 当 target 不是响应式对象，并且对象本身不存在这个新属性 key
+  // 新属性会被设置，但是不会做响应式处理
   if (!ob) {
     target[key] = val;
     return val;
   }
+
+  // target 是响应式对象，并且对象本身不存在这个新属性 key
+  // 给对象定义新属性，通过 defineReactive 方法将新属性设置为响应式
+  // ob.dep.notify 通知更新
   defineReactive(ob.value, key, val);
   ob.dep.notify();
   return val;
