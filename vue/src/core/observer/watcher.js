@@ -191,12 +191,12 @@ export default class Watcher {
     // lazy 为 true 代表是 computed
     if (this.lazy) {
       // 如果是 计算watcher，则将 dirty 置为 true
-      // 当页面渲染对计算属性取值时，触发 computed 的读取拦截 computedGetter 函数
+      // 当页面渲染对计算属性取值时，触发 computed 的读取拦截 getter
       // 然后执行 watcher.evaluate 重新计算取值
       this.dirty = true;
     } else if (this.sync) {
       // 是否是同步 watcher
-      // 同步执行，在使用 vm.$watch 或者 watch 选项时可以传一个 sync 选项，
+      // 同步执行，在使用 vm.$watch 或者 watch 选项时可以传一个 sync 选项
       // 当为 true 时在数据更新时该 watcher 就不走异步更新队列，直接执行 this.run 方法进行更新
       this.run();
     } else {

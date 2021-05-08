@@ -102,9 +102,11 @@ function flushSchedulerQueue() {
     }
     id = watcher.id;
     has[id] = null;
+
     // 执行 watcher 的 run 去执行相应的更新函数进行页面更新
     // watcher.run 实际上也就是调用 updateComponent 进到页面挂载
     watcher.run();
+
     // in dev build, check and stop circular updates.
     if (process.env.NODE_ENV !== "production" && has[id] != null) {
       circular[id] = (circular[id] || 0) + 1;
