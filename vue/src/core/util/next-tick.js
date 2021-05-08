@@ -106,6 +106,8 @@ if (typeof Promise !== 'undefined' && isNative(Promise)) {
 export function nextTick (cb?: Function, ctx?: Object) {
   let _resolve
   // 将回调函数 cb（flushSchedulerQueue）放进 callbacks 数组中
+  // 如果是直接通过 Vue.nextTick 或者 vm.$nextTick 调用，cb 就是调用时传的 callback
+  //   this.$nextTick(() => {})
   callbacks.push(() => {
     if (cb) {
       try {

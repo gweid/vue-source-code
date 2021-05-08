@@ -4107,9 +4107,6 @@ export function initGlobalAPI (Vue: GlobalAPI) {
   // Vue.config
   Object.defineProperty(Vue, 'config', configDef)
 
-  // exposed util methods.
-  // NOTE: these are not considered part of the public API - avoid relying on
-  // them unless you are aware of the risk.
   // 一些工具方法
   // 轻易不要使用这些工具方法，除非你很清楚这些工具方法，以及知道使用的风险
   Vue.util = {
@@ -4136,8 +4133,6 @@ export function initGlobalAPI (Vue: GlobalAPI) {
     Vue.options[type + 's'] = Object.create(null)
   })
 
-  // this is used to identify the "base" constructor to extend all plain-object
-  // components with in Weex's multi-instance scenarios.
   // 将 Vue 构造函数挂载到 Vue.options._base 上
   Vue.options._base = Vue
 
@@ -4256,14 +4251,7 @@ function initGlobalAPI (Vue: GlobalAPI) {
 ```js
 // 通过 Vue.delete 或 vm.$delete 将 target 的 key 属性删除
 function del(target: Array < any > | Object, key: any) {
-  if (
-    process.env.NODE_ENV !== "production" &&
-    (isUndef(target) || isPrimitive(target))
-  ) {
-    warn(
-      `Cannot delete reactive property on undefined, null, or primitive value: ${(target: any)}`
-    );
-  }
+  // ...
 
   // 如果 target 是数组，通过数组的变异方法 splice 删除对应对应的 key 项，并且触发响应式更新
   // Vue.delete([1,2,3], 1)
@@ -4310,7 +4298,131 @@ function del(target: Array < any > | Object, key: any) {
 
 
 
-### 6-2、Vue.mixin
+### 6-3、Vue.nextTick
+
+先看初始化：
+
+```js
+import { set, del } from '../observer/index'
+
+function initGlobalAPI (Vue: GlobalAPI) {
+  // ...
+    
+ Vue.nextTick = nextTick
+}
+```
+
+
+
+在看看 nextTick 函数：
+
+```js
+const callbacks = [] // 用于存放回调函数数组
+let pending = false
+
+// 作为 微任务 或者 宏任务 的回调函数
+// 例如：setTimeout(flushCallbacks, 0)
+function flushCallbacks () {
+  pending = false
+  // 从 callbacks 中取出所有回调回调函数，slice(0)相当于复制一份
+  const copies = callbacks.slice(0)
+  // 将 callbacks 数组置空
+  callbacks.length = 0
+  // 遍历执行每一个回调函数 flushSchedulerQueue
+  for (let i = 0; i < copies.length; i++) {
+    copies[i]()
+  }
+}
+
+// timerFunc 的逻辑特别简单：
+//  主要就是将 flushCallbacks 放进浏览器的异步任务队列里面。
+//  中间通过降级的方式处理兼容问题，优先使用 Promise，其次是 MutationObserver，然后是 setImmediate，最后才是使用 setTimeout
+//  也就是优先微任务处理，微任务不行逐步降级到宏任务处理
+let timerFunc
+
+if (typeof Promise !== 'undefined' && isNative(Promise)) {
+  // 如果支持 Promise 则优先使用 Promise
+  const p = Promise.resolve()
+  timerFunc = () => {
+    p.then(flushCallbacks)
+  }
+  isUsingMicroTask = true
+} else if (!isIE && typeof MutationObserver !== 'undefined' && (
+  isNative(MutationObserver) ||
+  // PhantomJS and iOS 7.x
+  MutationObserver.toString() === '[object MutationObserverConstructor]'
+)) {
+  // 使用 MutationObserver
+  let counter = 1
+  const observer = new MutationObserver(flushCallbacks)
+  const textNode = document.createTextNode(String(counter))
+  observer.observe(textNode, {
+    characterData: true
+  })
+  timerFunc = () => {
+    counter = (counter + 1) % 2
+    textNode.data = String(counter)
+  }
+  isUsingMicroTask = true
+} else if (typeof setImmediate !== 'undefined' && isNative(setImmediate)) {
+  // 使用 setImmediate，其实 setImmediate 已经算是宏任务了，但是性能会比 setTimeout 稍微好点
+  timerFunc = () => {
+    setImmediate(flushCallbacks)
+  }
+} else {
+  // setTimeout 是最后的选择
+  // Fallback to setTimeout.
+  timerFunc = () => {
+    setTimeout(flushCallbacks, 0)
+  }
+}
+
+// cb：回调函数 flushSchedulerQueue
+// ctx：上下文
+export function nextTick (cb?: Function, ctx?: Object) {
+  let _resolve
+  // 将回调函数 cb（flushSchedulerQueue）放进 callbacks 数组中
+  // 如果是直接通过 Vue.nextTick 或者 vm.$nextTick 调用，cb 就是调用时传的 callback
+  //   this.$nextTick(() => {})
+  callbacks.push(() => {
+    if (cb) {
+      try {
+        cb.call(ctx)
+      } catch (e) {
+        handleError(e, ctx, 'nextTick')
+      }
+    } else if (_resolve) {
+      _resolve(ctx)
+    }
+  })
+  
+  // 如果 pending 为 false，代表浏览器任务队列为空（即没有 flushCallbacks）
+  // 如果 pending 为 true，代表浏览器任务队列存在任务
+  // 在执行 flushCallbacks 的时候会再次将 pending 标记为 false
+  // 也就是说，pending 在这里的作用就是：保证在同一时刻，浏览器的任务队列中只有一个 flushCallbacks 函数
+  if (!pending) {
+    pending = true
+
+    // 执行 timerFunc 函数
+    // timerFunc 函数的主要作用就是：通过微任务或者宏任务的方式往浏览器添加任务队列
+    timerFunc()
+  }
+  // $flow-disable-line
+  if (!cb && typeof Promise !== 'undefined') {
+    return new Promise(resolve => {
+      _resolve = resolve
+    })
+  }
+}
+```
+
+**Vue.nextTick 原理：**
+
+其实 Vue.nextTick  主要做的就是将其回调函数放进浏览器异步任务队列里面，在放进异步队列的过程会通过降级的方式处理兼容问题，优先使用 Promise，其次是 MutationObserver，然后是 setImmediate，最后才是使用 setTimeout
+
+
+
+### 6-4、Vue.mixin
 
 主要就是通过 mergeOptions 将 mixin 的参数合并到全局的 Vue 配置中
 
@@ -4326,7 +4438,7 @@ export function initMixin (Vue: GlobalAPI) {
 
 
 
-### 6-3、vue.use
+### 6-5、vue.use
 
 -   检查插件是否安装，如果安装了就不再安装
 -   如果没有没有安装，那么调用插件的 install 方法，并传入 Vue 实例

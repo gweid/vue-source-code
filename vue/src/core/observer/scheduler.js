@@ -183,6 +183,7 @@ function callActivatedHooks(queue) {
 export function queueWatcher(watcher: Watcher) {
   const id = watcher.id;
   // 如果 watcher 已经存在，则会跳过，不会重复
+  // 避免一个数据改变多次重复操作 DOM 带来的性能问题
   if (has[id] == null) {
     // 缓存 watcher id，主要用来判断 watcher 有没有重复入队
     has[id] = true;
