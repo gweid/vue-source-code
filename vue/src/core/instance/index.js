@@ -31,17 +31,20 @@ function Vue (options) {
 // 定义了 Vue.prototype._init, 初始化 Vue，实际上 new Vue 就是执行的这个方法
 initMixin(Vue)
 
-// Vue.prototype.$set Vue.prototype.$watch 等
+// 定义了：
+//  Vue.prototype.$data、Vue.prototype.$props
+//  Vue.prototype.$set、Vue.prototype.$delete、Vue.prototype.$watch
 stateMixin(Vue)
 
-// 在 Vue 原型上，定义 $on, $once, $off, $emit 事件方法，并返回 vm
+// 定义了事件播报相关方法：
+//  Vue.prototype.$on, Vue.prototype.$once、Vue.prototype.$off、Vue.prototype.$emit
 eventsMixin(Vue)
 
-// 在 Vue.prototype 上定义 _update, $forceUpdate, $destroy 方法
-lifecycleMixin(Vue)   // 添加了与生命周期相关的
+// 定义了：
+//  Vue.prototype._update、Vue.prototype.$forceUpdate、Vue.prototype.$destroy
+lifecycleMixin(Vue)
 
-// 在 Vue 原型上，定义 $nextTick 方法
-// Vue原型上，定义 _render 方法
+// 定义了：Vue.prototype.$nextTick、Vue.prototype._render
 // _render方法会调用 vm.$createElement 创建虚拟 DOM，如果返回值 vnode 不是虚拟 DOM 类型，将创建一个空的虚拟 DOM
 renderMixin(Vue)
 
