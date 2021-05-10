@@ -4077,7 +4077,7 @@ export function resolveAsyncComponent(
 
 
 
-## 6、Vue 全局 API
+## 6、Vue 常用全局 API
 
 全局 api 初始化入口：
 
@@ -5166,31 +5166,33 @@ export function initAssetRegisters (Vue: GlobalAPI) {
 
 
 
-## 7、Vue 的其他重要功能
-
-### 7-1、Vue 的事件机制 event
 
 
+## 8、Vue 的其他重要功能
 
-### 7-2、Vue 的插槽
+### 8-1、Vue 的事件机制 event
 
 
 
-#### 7-2-1、普通插槽
+### 8-2、Vue 的插槽
 
 
 
-#### 7-2-2、具名插槽
+#### 8-2-1、普通插槽
 
 
 
-#### 7-2-3、作用域插槽
+#### 8-2-2、具名插槽
 
 
 
-### 7-3、Vue 的 v-model
+#### 8-2-3、作用域插槽
 
-#### 7-3-1、v-model 实现机制
+
+
+### 8-3、Vue 的 v-model
+
+#### 8-3-1、v-model 实现机制
 
 v-model 会把它关联的响应式数据（如 message），动态地绑定到表单元素的 value 属性上，然后监听表单元素的 input 事件：当 v-model 绑定的响应数据发生变化时，表单元素的 value 值也会同步变化；当表单元素接受用户的输入时，input 事件会触发，input 的回调逻辑会把表单元素 value 最新值同步赋值给 v-model 绑定的响应式数据
 
@@ -5200,7 +5202,7 @@ v-model 会把它关联的响应式数据（如 message），动态地绑定到�
 
 
 
-#### 7-3-2、v-model 实现原理
+#### 8-3-2、v-model 实现原理
 
 首先，在模板解析阶段，v-model 跟其他指令一样，会被解析到 el.directives
 
@@ -5413,11 +5415,11 @@ addHandler(el, event, code, null, true)
 
 
 
-### 7-4、Vue 的 keep-alive
+### 8-4、Vue 的 keep-alive
 
 被 keep-alive 包裹的组件不会重新渲染
 
-#### 7-4-1、keep-alive 基本使用：
+#### 8-4-1、keep-alive 基本使用：
 
 ```
 <keep-alive exclude="c" max="5">
@@ -5434,7 +5436,7 @@ addHandler(el, event, code, null, true)
 
 
 
-#### 7-4-2、keep-alive 首次渲染
+#### 8-4-2、keep-alive 首次渲染
 
 **初始渲染流程最关键的一步是对渲染的组件 Vnode 进行缓存，其中也包括了组件的真实节点存储**
 
@@ -5627,7 +5629,7 @@ export default {
 
 
 
-#### 7-4-3、keep-alive 再次渲染
+#### 8-4-3、keep-alive 再次渲染
 
 再次渲染是由于数据发生更新，触发派发更新通知组件去重新渲染，而在重新渲染中的 patch 中，主要的是 patchVnode
 
