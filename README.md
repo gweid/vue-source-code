@@ -5049,6 +5049,123 @@ function initComputed (Comp) {
 
 
 
+### 6-7、Vue.component、Vue.filter、Vue.directive
+
+**基本使用：**
+
+- Vue.component：注册全局组件
+
+  ```js
+  Vue.component('button-counter', {
+    data: function () {
+      return {
+        count: 0
+      }
+    },
+    template: '<button v-on:click="count++">You clicked me {{ count }} times.</button>'
+  })
+  ```
+
+- Vue.filter：注册全局过滤器
+
+  ```js
+  Vue.filter('my-filter', function (value) {
+    // 返回处理后的值
+  })
+  ```
+
+- Vue.directive：注册全局指令
+
+  ```js
+  Vue.directive('my-directive', {
+    bind: function () {},
+    inserted: function () {},
+    update: function () {},
+    componentUpdated: function () {},
+    unbind: function () {}
+  })
+  ```
+
+
+
+**先看初始化：**
+
+```js
+import { initAssetRegisters } from './assets'
+
+function initGlobalAPI (Vue: GlobalAPI) {
+ // ...
+
+ initAssetRegisters(Vue);
+}
+```
+
+
+
+**再看 initAssetRegisters 函数：**
+
+> vue\src\shared\constants.js
+
+```js
+export const ASSET_TYPES = [
+  'component',
+  'directive',
+  'filter'
+]
+```
+
+> vue\src\core\global-api\assets.js
+
+```js
+import { ASSET_TYPES } from 'shared/constants'
+import { isPlainObject, validateComponentName } from '../util/index'
+
+// 定义全局 api：Vue.component、Vue.filter、Vue.directive
+// 主要逻辑就是：往 Vue.options 上存放对应的配置
+// 例如：Vue.filter('myFilter', func)，结果就是 Vue.options.filters.myFilter = func
+// 最后，在 new Vue 的时候，通过 mergeOptions 将全局注册的组件合并到每个组件的配置对象中
+export function initAssetRegisters (Vue: GlobalAPI) {
+  // 创建注册方法
+  ASSET_TYPES.forEach(type => {
+    Vue[type] = function (id: string,definition: Function | Object): Function | Object | void {
+      if (!definition) {
+        return this.options[type + 's'][id]
+      } else {
+        if (type === 'component' && isPlainObject(definition)) {
+          // 组件名称设置：组件配置中有 name，使用组件配置中的 name，没有，使用 id
+          definition.name = definition.name || id
+          // 通过Vue.extend() 创建子组件，返回子类构造器
+          definition = this.options._base.extend(definition)
+        }
+
+        if (type === 'directive' && typeof definition === 'function') {
+          definition = { bind: definition, update: definition }
+        }
+
+        // this.options.compoments[id] = definition
+        // this.options.directives[id] = definition
+        // this.options.filters[id] = definition
+        // 在 new Vue 时通过 mergeOptions 将全局注册的组件合并到每个组件的配置对象中
+        this.options[type + 's'][id] = definition
+        return definition
+      }
+    }
+  })
+}
+```
+
+
+
+**Vue.component、Vue.filter、Vue.directive 原理：**
+
+- 主要逻辑就是：往 Vue.options 上存放对应的配置
+- 例如：Vue.filter('myFilter', func)，结果就是 Vue.options.filters.myFilter = func
+- 最后，在 new Vue 的时候，通过 mergeOptions 将全局注册的组件合并到每个组件的配置对象中
+
+这也就是为什么 Vue.component、Vue.filter、Vue.directive 需要在 new Vue 之前注册。
+
+
+
 ## 7、Vue 的其他重要功能
 
 ### 7-1、Vue 的事件机制 event
