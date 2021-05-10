@@ -118,6 +118,7 @@ export function mergeDataOrFn (
   }
 }
 
+// data 合并策略
 strats.data = function (
   parentVal: any,
   childVal: any,
@@ -181,6 +182,7 @@ LIFECYCLE_HOOKS.forEach(hook => {
  * a three-way merge between constructor options, instance
  * options and parent options.
  */
+// component、directive、filter 合并策略
 function mergeAssets (
   parentVal: ?Object,
   childVal: ?Object,
@@ -206,6 +208,7 @@ ASSET_TYPES.forEach(function (type) {
  * Watchers hashes should not overwrite one
  * another, so we merge them as arrays.
  */
+// watch 合并策略
 strats.watch = function (
   parentVal: ?Object,
   childVal: ?Object,
@@ -239,6 +242,7 @@ strats.watch = function (
 /**
  * Other object hashes.
  */
+// props、methods、inject、computed 合并策略
 strats.props =
 strats.methods =
 strats.inject =
@@ -257,11 +261,14 @@ strats.computed = function (
   if (childVal) extend(ret, childVal)
   return ret
 }
+
+// provide 合并策略
 strats.provide = mergeDataOrFn
 
 /**
  * Default strategy.
  */
+// 默认合并策略
 const defaultStrat = function (parentVal: any, childVal: any): any {
   return childVal === undefined
     ? parentVal
@@ -386,6 +393,8 @@ function assertObjectType (name: string, value: any, vm: ?Component) {
  * Merge two option objects into a new one.
  * Core utility used in both instantiation and inheritance.
  */
+// 合并两个对象
+// 如果子选项与父选项存在相同配置，子选项的配置会覆盖父选项配置
 export function mergeOptions (
   parent: Object,
   child: Object,
@@ -395,10 +404,12 @@ export function mergeOptions (
     checkComponents(child)
   }
 
+  // 如果子选项是函数，那么取 child.options
   if (typeof child === 'function') {
     child = child.options
   }
 
+  // 标准化 props、inject、directive 选项，方便后续程序的处理
   normalizeProps(child, vm)
   normalizeInject(child, vm)
   normalizeDirectives(child)
@@ -407,6 +418,8 @@ export function mergeOptions (
   // but only if it is a raw options object that isn't
   // the result of another mergeOptions call.
   // Only merged options has the _base property.
+  // 对于 child 继承过来的的 extends 和 mixins，分别调用 mergeOptions，合并到 parent 中
+  // 被 mergeOptions 处理过的会有 _base 属性
   if (!child._base) {
     if (child.extends) {
       parent = mergeOptions(parent, child.extends, vm)
@@ -420,16 +433,24 @@ export function mergeOptions (
 
   const options = {}
   let key
+  // 遍历父选项
   for (key in parent) {
     mergeField(key)
   }
+
+  // 遍历子选项，如果父选项不存在该配置，那么合并
   for (key in child) {
     if (!hasOwn(parent, key)) {
       mergeField(key)
     }
   }
+
+  // 合并选项，父子选项有相同选项，子选项覆盖父选项
   function mergeField (key) {
+    // 合并策略，data、生命周期、methods 等合并策略不一致
     const strat = strats[key] || defaultStrat
+    // 执行合并策略
+    // 虽然不同情况合并策略不一样，但是都遵循一条原则：如果子选项存在则优先使用子选项，否则使用父选项
     options[key] = strat(parent[key], child[key], vm, key)
   }
   return options

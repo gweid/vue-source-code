@@ -4154,7 +4154,15 @@ export function initGlobalAPI (Vue: GlobalAPI) {
 
 ### 6-1、vue.set
 
-从上面的初始化可以看出：
+**基本使用：**
+
+```js
+this.$set(object, key, val)
+```
+
+
+
+**先看初始化：**
 
 ```js
 import { set, del } from '../observer/index'
@@ -4168,7 +4176,7 @@ function initGlobalAPI (Vue: GlobalAPI) {
 
 
 
-那么来看看这个 set 函数：
+**接着看看这个 set 函数：**
 
 > vue\src\core\observer\index.js
 
@@ -4222,6 +4230,8 @@ function set(target: Array < any > | Object, key: any, val: any): any {
 }
 ```
 
+
+
 **vue.set 原理：**
 
 -   如果目标是数组，直接使用数组的变异方法 splice 触发相应式；
@@ -4234,7 +4244,15 @@ function set(target: Array < any > | Object, key: any, val: any): any {
 
 ### 6-2、Vue.delete
 
-先看初始化：
+**基本使用：**
+
+```js
+this.$delete(object, key)
+```
+
+
+
+**先看初始化：**
 
 ```js
 import { set, del } from '../observer/index'
@@ -4248,7 +4266,7 @@ function initGlobalAPI (Vue: GlobalAPI) {
 
 
 
-然后看这个 del 函数：
+**然后看这个 del 函数：**
 
 > vue\src\core\global-api\index.js
 
@@ -4293,6 +4311,8 @@ function del(target: Array < any > | Object, key: any) {
 }
 ```
 
+
+
 **Vue.delete 原理：**
 
 - target 是数组，通过数组的变异方法 splice 删除对应对应的 key 项，并且触发响应式更新
@@ -4304,7 +4324,15 @@ function del(target: Array < any > | Object, key: any) {
 
 ### 6-3、Vue.nextTick
 
-先看初始化：
+**基本使用：**
+
+```js
+this.$nextTick(() => {})
+```
+
+
+
+**先看初始化：**
 
 ```js
 import { nextTick } from '../util/index'
@@ -4318,7 +4346,7 @@ function initGlobalAPI (Vue: GlobalAPI) {
 
 
 
-在看看 nextTick 函数：
+**再看看 nextTick 函数：**
 
 ```js
 const callbacks = [] // 用于存放回调函数数组
@@ -4420,6 +4448,8 @@ export function nextTick (cb?: Function, ctx?: Object) {
 }
 ```
 
+
+
 **Vue.nextTick 原理：**
 
 其实 Vue.nextTick  主要做的就是将其回调函数放进浏览器异步任务队列里面，在放进异步队列的过程会通过降级的方式处理兼容问题，优先使用 Promise，其次是 MutationObserver，然后是 setImmediate，最后才是使用 setTimeout
@@ -4428,34 +4458,68 @@ export function nextTick (cb?: Function, ctx?: Object) {
 
 ### 6-4、vue.use
 
-Vue.use 作用：
+**Vue.use 作用：**
 
 - 用于安装 Vue.js 插件
   - 如果插件是一个对象，**必须提供 `install` 方法**
   - 如果插件是一个函数，它会被作为 install 方法
   - install 方法调用时，会将 Vue 作为参数传入
-
 - 该方法需要在调用 `new Vue()` 之前被调用
-
 - 当 install 方法被同一个插件多次调用，插件将只会被安装一次
 
 
 
-先来看看初始化：
+**基本使用：**
+
+```js
+const MyPlugin = {}
+MyPlugin.install = function (Vue, options) {
+  // 1. 添加全局方法或 property
+  Vue.myGlobalMethod = function () {
+    // 逻辑...
+  }
+  // 2. 添加全局资源
+  Vue.directive('my-directive', {
+    bind (el, binding, vnode, oldVnode) {
+      // 逻辑...
+    }
+    ...
+  })
+  // 3. 注入组件选项
+  Vue.mixin({
+    created: function () {
+      // 逻辑...
+    }
+    ...
+  })
+  // 4. 添加实例方法
+  Vue.prototype.$myMethod = function (methodOptions) {
+    // 逻辑...
+  }
+}
+
+
+// 使用 Vue.use 注册插件
+Vue.use(MyPlugin)
+```
+
+
+
+**先来看看初始化：**
 
 ```js
 import { initUse } from './use'
 
 function initGlobalAPI (Vue: GlobalAPI) {
-  // ...
-    
+ // ...
+
  initUse(Vue);
 }
 ```
 
 
 
-接着看看 initUse 函数：initUse 函数会将当前 Vue 实例当做参数
+**接着看看 initUse 函数：initUse 函数会将当前 Vue 实例当做参数**
 
 > vue\src\core\global-api\use.js
 
@@ -4501,6 +4565,8 @@ export function initUse(Vue: GlobalAPI) {
 }
 ```
 
+
+
 **vue.use 原理：**
 
 -   检查插件是否安装，如果安装了就不再安装
@@ -4511,17 +4577,322 @@ export function initUse(Vue: GlobalAPI) {
 
 ### 6-5、Vue.mixin
 
-主要就是通过 mergeOptions 将 mixin 的参数合并到全局的 Vue 配置中
+全局注册一个混入，谨慎使用，影响注册之后所有创建的每个 Vue 实例
+
+
+
+**基本使用：**
+
+```js
+Vue.mixin({
+  created: function () {
+    var myOption = this.$options.myOption
+    if (myOption) {
+      console.log(myOption)
+    }
+  }
+})
+
+new Vue({
+  myOption: 'hello!'
+})
+// 会输出 "hello!"
+```
+
+
+
+**先看看初始化：**
+
+```js
+import { initExtend } from './extend'
+
+function initGlobalAPI (Vue: GlobalAPI) {
+ // ...
+
+ initMixin(Vue);
+}
+```
+
+
+
+**接着看看 initMixin 函数：**
+
+> vue\src\core\global-api\mixin.js
 
 ```
+// 全局混入选项，影响之后所有创建的 Vue 实例
 export function initMixin (Vue: GlobalAPI) {
   Vue.mixin = function (mixin: Object) {
-    // 通过 mergeOptions 将 mixin 的参数合并到全局的 Vue 配置中
+    // 通过 mergeOptions 将 mixin 对象合并到全局的 Vue 配置 options 中
     this.options = mergeOptions(this.options, mixin)
     return this
   }
 }
 ```
+
+
+
+**mergeOptions 函数：**
+
+> vue\src\core\util\options.js
+
+```js
+// 合并两个对象
+// 如果子选项与父选项存在相同配置，子选项的配置会覆盖父选项配置
+function mergeOptions (parent: Object, child: Object, vm?: Component): Object {
+  // 如果子选项是函数，那么取 child.options
+  if (typeof child === 'function') {
+    child = child.options
+  }
+
+  // 标准化 props、inject、directive 选项，方便后续程序的处理
+  normalizeProps(child, vm)
+  normalizeInject(child, vm)
+  normalizeDirectives(child)
+
+  // 对于 child 继承过来的的 extends 和 mixins，分别调用 mergeOptions，合并到 parent 中
+  // 被 mergeOptions 处理过的会有 _base 属性
+  if (!child._base) {
+    if (child.extends) {
+      parent = mergeOptions(parent, child.extends, vm)
+    }
+    if (child.mixins) {
+      for (let i = 0, l = child.mixins.length; i < l; i++) {
+        parent = mergeOptions(parent, child.mixins[i], vm)
+      }
+    }
+  }
+
+  const options = {}
+  let key
+  // 遍历父选项
+  for (key in parent) {
+    mergeField(key)
+  }
+
+  // 遍历子选项，如果父选项不存在该配置，那么合并
+  for (key in child) {
+    if (!hasOwn(parent, key)) {
+      mergeField(key)
+    }
+  }
+
+  // 合并选项，父子选项有相同选项，子选项覆盖父选项
+  function mergeField (key) {
+    // 合并策略，data、生命周期、methods 等合并策略不一致
+    const strat = strats[key] || defaultStrat
+    // 执行合并策略
+    // 虽然不同情况合并策略不一样，但是都遵循一条原则：如果子选项存在则优先使用子选项，否则使用父选项
+    options[key] = strat(parent[key], child[key], vm, key)
+  }
+
+  return options
+}
+```
+
+
+
+**不同的合并策略：**
+
+```js
+const strats = config.optionMergeStrategies
+
+function mergeData (to: Object, from: ?Object): Object {
+  if (!from) return to
+  let key, toVal, fromVal
+
+  const keys = hasSymbol
+    ? Reflect.ownKeys(from)
+    : Object.keys(from)
+
+  for (let i = 0; i < keys.length; i++) {
+    key = keys[i]
+    // in case the object is already observed...
+    if (key === '__ob__') continue
+    toVal = to[key]
+    fromVal = from[key]
+    if (!hasOwn(to, key)) {
+      set(to, key, fromVal)
+    } else if (
+      toVal !== fromVal &&
+      isPlainObject(toVal) &&
+      isPlainObject(fromVal)
+    ) {
+      mergeData(toVal, fromVal)
+    }
+  }
+  return to
+}
+
+export function mergeDataOrFn (
+  parentVal: any,
+  childVal: any,
+  vm?: Component
+): ?Function {
+  if (!vm) {
+    if (!childVal) {
+      return parentVal
+    }
+    if (!parentVal) {
+      return childVal
+    }
+    return function mergedDataFn () {
+      return mergeData(
+        typeof childVal === 'function' ? childVal.call(this, this) : childVal,
+        typeof parentVal === 'function' ? parentVal.call(this, this) : parentVal
+      )
+    }
+  } else {
+    return function mergedInstanceDataFn () {
+      // instance merge
+      const instanceData = typeof childVal === 'function'
+        ? childVal.call(vm, vm)
+        : childVal
+      const defaultData = typeof parentVal === 'function'
+        ? parentVal.call(vm, vm)
+        : parentVal
+      if (instanceData) {
+        return mergeData(instanceData, defaultData)
+      } else {
+        return defaultData
+      }
+    }
+  }
+}
+
+// data 合并策略
+strats.data = function (
+  parentVal: any,
+  childVal: any,
+  vm?: Component
+): ?Function {
+  if (!vm) {
+    if (childVal && typeof childVal !== 'function') {
+
+      return parentVal
+    }
+    return mergeDataOrFn(parentVal, childVal)
+  }
+
+  return mergeDataOrFn(parentVal, childVal, vm)
+}
+
+// 生命周期合并策略
+function mergeHook (
+  parentVal: ?Array<Function>,
+  childVal: ?Function | ?Array<Function>
+): ?Array<Function> {
+  const res = childVal
+    ? parentVal
+      ? parentVal.concat(childVal)
+      : Array.isArray(childVal)
+        ? childVal
+        : [childVal]
+    : parentVal
+  return res
+    ? dedupeHooks(res)
+    : res
+}
+
+function dedupeHooks (hooks) {
+  const res = []
+  for (let i = 0; i < hooks.length; i++) {
+    if (res.indexOf(hooks[i]) === -1) {
+      res.push(hooks[i])
+    }
+  }
+  return res
+}
+LIFECYCLE_HOOKS.forEach(hook => {
+  strats[hook] = mergeHook
+})
+
+// component、directive、filter 合并策略
+function mergeAssets (
+  parentVal: ?Object,
+  childVal: ?Object,
+  vm?: Component,
+  key: string
+): Object {
+  const res = Object.create(parentVal || null)
+  if (childVal) {
+    process.env.NODE_ENV !== 'production' && assertObjectType(key, childVal, vm)
+    return extend(res, childVal)
+  } else {
+    return res
+  }
+}
+ASSET_TYPES.forEach(function (type) {
+  strats[type + 's'] = mergeAssets
+})
+
+// watch 合并策略
+strats.watch = function (
+  parentVal: ?Object,
+  childVal: ?Object,
+  vm?: Component,
+  key: string
+): ?Object {
+  // work around Firefox's Object.prototype.watch...
+  if (parentVal === nativeWatch) parentVal = undefined
+  if (childVal === nativeWatch) childVal = undefined
+  /* istanbul ignore if */
+  if (!childVal) return Object.create(parentVal || null)
+  if (process.env.NODE_ENV !== 'production') {
+    assertObjectType(key, childVal, vm)
+  }
+  if (!parentVal) return childVal
+  const ret = {}
+  extend(ret, parentVal)
+  for (const key in childVal) {
+    let parent = ret[key]
+    const child = childVal[key]
+    if (parent && !Array.isArray(parent)) {
+      parent = [parent]
+    }
+    ret[key] = parent
+      ? parent.concat(child)
+      : Array.isArray(child) ? child : [child]
+  }
+  return ret
+}
+
+// props、methods、inject、computed 合并策略
+strats.props =
+strats.methods =
+strats.inject =
+strats.computed = function (
+  parentVal: ?Object,
+  childVal: ?Object,
+  vm?: Component,
+  key: string
+): ?Object {
+  if (childVal && process.env.NODE_ENV !== 'production') {
+    assertObjectType(key, childVal, vm)
+  }
+  if (!parentVal) return childVal
+  const ret = Object.create(null)
+  extend(ret, parentVal)
+  if (childVal) extend(ret, childVal)
+  return ret
+}
+
+// provide 合并策略
+strats.provide = mergeDataOrFn
+
+// 默认合并策略
+const defaultStrat = function (parentVal: any, childVal: any): any {
+  return childVal === undefined
+    ? parentVal
+    : childVal
+}
+```
+
+
+
+**Vue.mixins 原理：**
+
+Vue.mixins 的原理很简单，会根据不同情况（data、methods、生命周期等）使用不同的合并策略，但是这些合并策略基本都遵循一条原则：如果子选项与父选项存在相同配置，子选项的配置会覆盖父选项配置
 
 
 

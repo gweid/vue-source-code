@@ -80,6 +80,6 @@ export function initGlobalAPI (Vue: GlobalAPI) {
 
   initUse(Vue)              // Vue.use
   initMixin(Vue)            // Vue.mixin
-  initExtend(Vue)           // Vue.extend
+  initExtend(Vue)           // Vue.extend 
   initAssetRegisters(Vue)   //  component、directive、filter 挂载到 Vue
 }
