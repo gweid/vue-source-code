@@ -472,6 +472,8 @@ export function stateMixin(Vue: Class < Component > ) {
       warn(`$props is readonly.`, this)
     }
   }
+  // 实现实例方法：Vue.prototype.$data 和 Vue.prototype.$props
+  // 实际上就是进行了劫持，当通过 vm.$data 或者 vm.$props 访问，劫持返回的是 Vue._data 和 Vue._props
   Object.defineProperty(Vue.prototype, '$data', dataDef)
   Object.defineProperty(Vue.prototype, '$props', propsDef)
 

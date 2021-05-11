@@ -4162,7 +4162,7 @@ export function initGlobalAPI (Vue: GlobalAPI) {
 **基本使用：**
 
 ```js
-this.$set(object, key, val)
+Vue.set(object, key, val)
 ```
 
 
@@ -4252,7 +4252,7 @@ function set(target: Array < any > | Object, key: any, val: any): any {
 **基本使用：**
 
 ```js
-this.$delete(object, key)
+Vue.delete(object, key)
 ```
 
 
@@ -4332,7 +4332,7 @@ function del(target: Array < any > | Object, key: any) {
 **基本使用：**
 
 ```js
-this.$nextTick(() => {})
+Vue.nextTick(() => {})
 ```
 
 
@@ -5224,6 +5224,210 @@ renderMixin(Vue)
 
 
 下面来看看一些常用的实例方法
+
+
+
+### 7-1、vm.$data、vm.$props
+
+vm.$data、vm.$props 的实现很简单，就是使用 Object.defineProperty 劫持了对这两个的访问，当访问到这两者，返回的是 Vue.\_data 和 Vue.\_props
+
+> vue\src\core\instance\state.js
+
+```js
+function stateMixin(Vue: Class < Component > ) {
+  // ...
+
+  const dataDef = {}
+  dataDef.get = function () {
+    return this._data
+  }
+  const propsDef = {}
+  propsDef.get = function () {
+    return this._props
+  }
+
+  // 实现实例方法：Vue.prototype.$data 和 Vue.prototype.$props
+  // 实际上就是进行了劫持，当通过 vm.$data 或者 vm.$props 访问，劫持返回的是 Vue._data 和 Vue._props
+  Object.defineProperty(Vue.prototype, '$data', dataDef)
+  Object.defineProperty(Vue.prototype, '$props', propsDef)
+}
+```
+
+
+
+### 7-2、vm.$set、vm.$delete
+
+与全局方法基本一致，区别只是实例方法定义在 Vue.prototype
+
+
+
+**初始化入口：**
+
+> vue\src\core\instance\index.js
+
+```js
+stateMixin(Vue)
+```
+
+
+
+> vue\src\core\instance\state.js
+
+```js
+import { set, del } from '../observer/index'
+
+function stateMixin(Vue: Class < Component > ) {
+  // ...
+
+  Vue.prototype.$set = set
+  Vue.prototype.$delete = del
+}
+```
+
+
+
+### 7-3、vm.$watch
+
+详细可以查看 watch 响应式原理
+
+
+
+### 7-4、vm.$on、vm.$emit、vm.$off、vm.$once
+
+这些主要是与事件播报相关的实例方法
+
+
+
+**初始化入口：**
+
+> vue\src\core\instance\index.js
+
+```js
+// 定义了事件播报相关方法：
+//  Vue.prototype.$on, Vue.prototype.$once、Vue.prototype.$off、Vue.prototype.$emit
+eventsMixin(Vue)
+```
+
+
+
+**eventsMixin 函数：**
+
+> vue\src\core\instance\events.js
+
+```js
+// 定义事件播报相关函数
+function eventsMixin (Vue: Class<Component>) {
+  // $on 用来监听事件
+  Vue.prototype.$on = function (event: string | Array<string>, fn: Function): Component {
+    const vm: Component = this
+    if (Array.isArray(event)) {
+      // 如果 event 是由多个事件名组成的数组，那么遍历这个 event 数组，逐个调用 vm.$on
+      for (let i = 0, l = event.length; i < l; i++) {
+        vm.$on(event[i], fn)
+      }
+    } else {
+      // 将事件及回调函数以键值对形式存储，例如：vm._events = { event: [fn] }
+      (vm._events[event] || (vm._events[event] = [])).push(fn)
+
+      // optimize hook:event cost by using a boolean flag marked at registration
+      // instead of a hash lookup
+      if (hookRE.test(event)) {
+        vm._hasHookEvent = true
+      }
+    }
+    return vm
+  }
+
+
+  // $emit 方法用来触发事件，并将之前 $on 存储在 vm._events 的对应事件回调拿出来执行
+  Vue.prototype.$emit = function (event: string): Component {
+    const vm: Component = this
+
+    // ...
+
+    // 从 vm._events 拿到事件 event 对应的回调函数数组
+    let cbs = vm._events[event]
+    // 如果 cbs 存在
+    if (cbs) {
+      cbs = cbs.length > 1 ? toArray(cbs) : cbs
+      // 获取到 emit 传进来的参数
+      const args = toArray(arguments, 1)
+      const info = `event handler for "${event}"`
+      // 遍历事件数组中的回调函数，并逐一执行
+      for (let i = 0, l = cbs.length; i < l; i++) {
+        invokeWithErrorHandling(cbs[i], vm, args, vm, info)
+      }
+    }
+
+    return vm
+  }
+
+
+  // $off 用来解除事件监听
+  Vue.prototype.$off = function (event?: string | Array<string>, fn?: Function): Component {
+    const vm: Component = this
+
+    // 如果 $off 没有传递任何参数，将 vm._events 属性清空，即 vm._events = {}
+    // 也就是移除所有监听
+    if (!arguments.length) {
+      vm._events = Object.create(null)
+      return vm
+    }
+
+    // 如果event 是数组，event=[event1, ...]，遍历，逐个调用 vm.$off
+    if (Array.isArray(event)) {
+      for (let i = 0, l = event.length; i < l; i++) {
+        vm.$off(event[i], fn)
+      }
+      return vm
+    }
+
+    // specific event
+    // 找到制定事件数组
+    const cbs = vm._events[event]
+    if (!cbs) {
+      return vm
+    }
+    // 如果没有指定事件的回调函数，则移除该事件的所有回调函数
+    if (!fn) {
+      vm._events[event] = null
+      return vm
+    }
+
+    // 移除指定事件的指定回调函数
+    let cb
+    let i = cbs.length
+    while (i--) {
+      cb = cbs[i]
+      if (cb === fn || cb.fn === fn) {
+        cbs.splice(i, 1)
+        break
+      }
+    }
+    return vm
+  }
+
+
+  // $once 用来监听事件，但是只会触发一次，触发后将会移除监听事件
+  Vue.prototype.$once = function (event: string, fn: Function): Component {
+    const vm: Component = this
+    // 对 fn 做一层包装，先解除绑定再执行 fn 回调
+    function on () {
+      vm.$off(event, on)
+      fn.apply(vm, arguments)
+    }
+    on.fn = fn
+    vm.$on(event, on)
+    return vm
+  }
+}
+```
+
+
+
+这是 vue 提供的最基本的`发布-订阅模式`，通过 $on 监听事件，通过 $emit 触发事件，执行回调，通过 $off 移除事件监听
+
+
 
 
 

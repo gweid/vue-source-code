@@ -16,6 +16,9 @@
     <button @click="changeTest">改变test</button>
     <p>{{formatPrice}}</p>
     <button @click="changePrice">改变price</button>
+    <br>
+    <p>-------------------------------------</p>
+    <button @click="caseClick">实例方法</button>
   </div>
 
   <script src="../dist/vue.js"></script>
@@ -54,6 +57,10 @@
         },
         changePrice() {
           this.price = 20
+        },
+        // 实例方法
+        caseClick() {
+          console.log(this.$data)
         }
       },
       watch: {

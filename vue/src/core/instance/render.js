@@ -63,11 +63,12 @@ export function renderMixin (Vue: Class<Component>) {
   // install runtime convenience helpers
   installRenderHelpers(Vue.prototype)
 
+  // 为 vm 实例添加 vm.$nextTick
   Vue.prototype.$nextTick = function (fn: Function) {
     return nextTick(fn, this)
   }
 
-  // 这属于一个私有方法，主要是把实例渲染成一个虚拟 Node
+  // 里面主要通过执行 render 函数，把实例渲染成一个 VNode
   Vue.prototype._render = function (): VNode {
     const vm: Component = this
     const { render, _parentVnode } = vm.$options
@@ -82,6 +83,7 @@ export function renderMixin (Vue: Class<Component>) {
 
     // set parent vnode. this allows render functions to have access
     // to the data on the placeholder node.
+    // 设置父 VNode
     vm.$vnode = _parentVnode
     // render self
     let vnode
@@ -91,14 +93,17 @@ export function renderMixin (Vue: Class<Component>) {
       // when parent component is patched.
       currentRenderingInstance = vm
 
-      // vm.$createElement 在 initRender 中赋值
-      // vm._renderProxy 在 init 中处理 vm._renderProxy = vm
+      // 执行 render 函数，生成 VNode
+      //  vm.$createElement：在 initRender 中赋值
+      //  vm._renderProxy：在 init 中处理 vm._renderProxy = vm
       vnode = render.call(vm._renderProxy, vm.$createElement)
     } catch (e) {
       handleError(e, vm, `render`)
       // return error render result,
       // or previous vnode to prevent render error causing blank component
       /* istanbul ignore else */
+      // 如果执行 render 函数时出错了
+      // 开发环境渲染错误信息，生产环境返回之前的 vnode，以防止渲染错误导致组件空白
       if (process.env.NODE_ENV !== 'production' && vm.$options.renderError) {
         try {
           vnode = vm.$options.renderError.call(vm._renderProxy, vm.$createElement, e)
@@ -112,10 +117,12 @@ export function renderMixin (Vue: Class<Component>) {
     } finally {
       currentRenderingInstance = null
     }
-    // if the returned array contains only a single node, allow it
+
+    // 返回的 vnode 是一个数组，并且数组长度为1，那么直接拍平数组
     if (Array.isArray(vnode) && vnode.length === 1) {
       vnode = vnode[0]
     }
+
     // return empty vnode in case the render function errored out
     if (!(vnode instanceof VNode)) {
       if (process.env.NODE_ENV !== 'production' && Array.isArray(vnode)) {
