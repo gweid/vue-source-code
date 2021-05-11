@@ -78,7 +78,7 @@ Vue.prototype.$mount = function (
       }
     
       // compileToFunctions 执行编译的函数（将 template 转化为 render）
-      // compileToFunctions 方法会返回render函数方法，render 方法会保存到 vm.$options 下面
+      // compileToFunctions 方法会返回 render 函数方法，render 方法会保存到 vm.$options 中
       const { render, staticRenderFns } = compileToFunctions(template, {
         outputSourceRange: process.env.NODE_ENV !== 'production',
         shouldDecodeNewlines,

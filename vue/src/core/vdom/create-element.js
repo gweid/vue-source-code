@@ -35,11 +35,14 @@ export function createElement (
   alwaysNormalize: boolean
 ): VNode | Array<VNode> {
   // 主要是判断 data 是否存在，不存在把后面的参数往前移
+  // 主要就是为了兼容不传 data
   if (Array.isArray(data) || isPrimitive(data)) {
     normalizationType = children
     children = data
     data = undefined
   }
+
+  // 如果 render 函数是用户手写
   if (isTrue(alwaysNormalize)) {
     normalizationType = ALWAYS_NORMALIZE
   }
@@ -48,11 +51,11 @@ export function createElement (
 
 /**
  * 这个是真正创建 VNode 的函数
- * context  VNode 的上下文环境
- * tag  标签
- * data  VNode 数据
- * children  VNode 的子节点
- * normalizationType  子节点规范的类型
+ *  context  VNode 的上下文环境，也就是 vm 实例
+ *  tag  标签
+ *  data  VNode 数据
+ *  children  VNode 的子节点
+ *  normalizationType  用来区分 render 函数手写还是编译返回
  */
 export function _createElement (
   context: Component,
@@ -100,16 +103,20 @@ export function _createElement (
     children.length = 0
   }
   if (normalizationType === ALWAYS_NORMALIZE) {
+    // 如果是手写 render 函数
     children = normalizeChildren(children)
   } else if (normalizationType === SIMPLE_NORMALIZE) {
+    // render 函数通过编译返回
     children = simpleNormalizeChildren(children)
   }
   let vnode, ns
   if (typeof tag === 'string') {
-    // 如果是标签
+    // 如果 tab 是字符串类型
     let Ctor
     ns = (context.$vnode && context.$vnode.ns) || config.getTagNamespace(tag)
+
     if (config.isReservedTag(tag)) {
+      // 如果是符合 html 规范的标签
       // platform built-in elements
       if (process.env.NODE_ENV !== 'production' && isDef(data) && isDef(data.nativeOn)) {
         warn(
@@ -122,8 +129,8 @@ export function _createElement (
         undefined, undefined, context
       )
     } else if ((!data || !data.pre) && isDef(Ctor = resolveAsset(context.$options, 'components', tag))) {
-      // 如果是组件
-      // component
+      // 去 vm 的 components 上查找是否有这个标签的定义
+      // 查找到，说明是组件，调用 createComponent 创建组件
       vnode = createComponent(Ctor, data, context, children, tag)
     } else {
       // unknown or unlisted namespaced elements
@@ -135,6 +142,7 @@ export function _createElement (
       )
     }
   } else {
+    // 如果 tab 不是字符串类型，代表是组件
     // direct component options / constructor
     vnode = createComponent(tag, data, context, children)
   }

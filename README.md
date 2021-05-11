@@ -268,7 +268,7 @@ export function initMixin (Vue: Class<Component>) {
 
 ### 2-1、\$mount 的定义
 
-目前分在 web 平台，所以定义 $mount 的地方有两个
+这里主要分析 web 平台，所以定义 $mount 的地方有两个
 
 - src/platform/web/runtime/index.js
 
@@ -298,11 +298,6 @@ Vue.prototype.$mount = function (
 
 
 #### 2-1-2、重新定义 Vue.prototype.\$mount
-
--   先是缓存了原型上的 \$mount 方法（原型的 $mount 就是 `src/platform/web/runtime/index.js` 这里定义的），再重新定义该方法
--   获取挂载元素，并且挂载元素不能为根节点 html、body 之类的，因为会覆盖
--   判断需不需要编译，因为渲染有的是通过 template 的，有的是通过手写 render 函数，template 的需要编译，调用compileToFunctions方法，返回 render 函数
--   最后调用缓存的 mount，缓存的 mount 中会执行 mountComponent
 
 > src/platform/web/entry-runtime-with-compiler.js
 
@@ -339,12 +334,13 @@ Vue.prototype.$mount = function (el, hydrating) {
          ...
        }
     }
-    
+
     if(template) {
       // compileToFunctions 执行编译的函数（将 template 转化为 render）
       // compileToFunctions 方法会返回render函数方法，render 方法会保存到 vm.$options 下面
       const { render, staticRenderFns } = compileToFunctions(template, {...})
 
+	  // 将 render 函数保存到 vm.options 中
       options.render = render
       options.staticRenderFns = staticRenderFns
     }
@@ -354,24 +350,44 @@ Vue.prototype.$mount = function (el, hydrating) {
 }
 ```
 
-> 对于调用 compileToFunctions 转换 template 为 render 函数的编译过程，这里暂时先不展开，后面再详细说明编译流程
+- 先是缓存了原型上的 \$mount 方法（原型的 $mount 就是 `src/platform/web/runtime/index.js` 这里定义的），再重新定义该方法
+
+- 获取挂载元素，并且挂载元素不能为根节点 html、body 之类的，因为会覆盖
+
+- 判断需不需要编译：
+
+  - 组件通过 template 模板创建，需要编译，调用 compileToFunctions 方法进行模板编译，返回 render 函数，并将 render 函数保存到 vm.options 中
+
+  - 当 render 函数是用户手写传入，不需要编译，例如：
+
+    ```js
+    Vue.component('anchored-heading', {
+      data() {
+        return {
+          blogTitle: '标题'
+        }
+      }
+      render: function (createElement) {
+        return createElement('h1', this.blogTitle)
+      }
+    })
+    ```
+
+- 最后调用缓存的 mount，缓存的 mount 中会执行 mountComponent
+
+
+
+对于调用 compileToFunctions 转换 template 为 render 函数的编译过程，这里暂时先不展开，后面再详细说明编译流程
 
 
 
 ### 2-2、执行 \$mount
 
-\$mount 主要是执行了 mountComponent，主要的作用：
-
-- 定义 updateComponent 方法，在 watcher 回调时调用
-- updateComponent 中：实例化一个渲染 Watcher，在实例化Watcher 的过程会调用 updateComponent 函数：
-  - updateComponent  中先调用 vm.\_render 方法先生成 VNode
-  - 然后 vm.\_update 转化为真实的 DOM
-
-**Watcher 在这里起到两个作用，一个是初始化的时候会执行回调函数，另一个是当 vm 实例中的监测的数据发生变化的时候执行回调函数**
+上面说的调用缓存的 mount，实际就是执行了 `src/platform/web/runtime/index.js` 里面定义的 $mount ，这里面会执行 mountComponent
 
 > vue\src\core\instance\lifecycle.js
 
-```
+```js
 function mountComponent(vm, el, hydrating) {
   // 首先将 el 做缓存 
   vm.$el = el
@@ -398,8 +414,28 @@ function mountComponent(vm, el, hydrating) {
   //   1、初始化的时候会执行回调函数updateComponent(首次渲染) 
   //   2、当 vm 实例中的监测的数据发生变化的时候执行回调函数updateComponent(响应式)
   new Watcher(vm, updateComponent, noop, {...}, true /* isRenderWatcher */)
+
+
+  // vm.$vnode 表示 Vue 实例的父虚拟 node，为 null 则表示 当前是根 Vue 实例
+  // 设置 vm._isMounted 为 true，表示该实例已经挂载
+  // 最后调用 mounted 生命周期钩子函数
+  if (vm.$vnode == null) {
+    vm._isMounted = true
+    callHook(vm, 'mounted')
+  }
+  return vm
 }
 ```
+
+mountComponent 主要的作用：
+
+- 定义 updateComponent 方法，在 watcher 回调时调用
+- 实例化一个渲染 Watcher，在实例化Watcher 的过程会调用 updateComponent 函数：
+  - updateComponent  中先调用 vm.\_render 方法先生成 VNode，然后 vm.\_update 转化为真实的 DOM
+
+**Watcher 在这里起到两个作用，一个是初始化的时候会执行回调函数，另一个是当 vm 实例中的监测的数据发生变化的时候执行回调函数**
+
+
 
 看看与首次渲染相关的 Watcher 
 
@@ -436,10 +472,10 @@ export default class Watcher {
 
 - 定义 updateComponent 方法，在 watcher 回调时调用
 
-- new Watcher 创建渲染 watcher，这个 watcher 在这里有2个作用：
+- new Watcher 创建 `渲染watcher`，这个 watcher 在这里有2个作用：
 
-  - 初始化的时候会执行回调函数updateComponent(首次渲染) 
-  - 当 vm 实例中的监测的数据发生变化的时候执行回调函数updateComponent(响应式)
+  - 初始化的时候会执行回调函数 updateComponent(首次渲染) 
+  - 当 vm 实例中的监测的数据发生变化的时候执行回调函数 updateComponent 更新(响应式)
 
 - 执行 updateComponent 方法
 
@@ -447,25 +483,283 @@ export default class Watcher {
 
   2. vm._update 将虚拟 DOM 转换为真实 DOM
 
-- 挂载 mount 钩子
+- 挂载 mount 生命周期钩子
 
 
 
-### 2-3、updateComponent 渲染 DOM 流程
+### 2-3、updateComponent
 
-在渲染 DOM 的过程，Vue 使用了虚拟 DOM 的概念，这使得 Vue 中对 DOM 的操作大多都在虚拟 DOM 中，通过对比将要改动的部分，通知更新到真实的 DOM。虚拟 DOM 其实是一个 js 对象，操作 js 的性能开销比直接操作浏览器 DOM 的低很多，并且虚拟 DOM 会把多个 DOM 的操作合并，减少真实 DOM 的回流重绘次数，这很好的解决了频繁操作 DOM 所带来的性能问题。
+> vue\src\core\instance\lifecycle.js
 
-
-
-#### 2-3-1、首先是 VNode 构造器
-
-构造器定义了 tag：标签、data：数据、children：子节点、elm：node 节点等
-
+```js
+updateComponent = function () {
+  // vm._render 函数渲染成虚拟 DOM， vm._update 将虚拟 DOM 渲染成真实的 DOM
+  vm._update(vm._render(), hydrating);
+};
 ```
-// vdom/vnode.js
 
-export default class VNode {
-  ...
+updateComponent 非常重要，里面有两步：
+
+- vm._render() 生成 VNode
+- vm._update 将 VNode 转换为真实 DOM
+
+
+
+下面就来分析这个过程。
+
+
+
+### 2-4、vm.\_render 生成 VNode
+
+基本流程：
+
+![vm._render](/imgs/img8.png)
+
+
+
+#### 2-4-1、vm.\_render 的定义
+
+首先，明确在什么时候定义了 `vm._render` 函数：主要是在初始化为 Vue 构造函数扩展方法的时候，通过 `renderMixin` 往 Vue.prototype 上挂载了 `_render` 函数
+
+> vue\src\core\instance\index.js
+
+```js
+import { renderMixin } from './render'
+
+function Vue (options) {
+  // ...
+
+  this._init(options)
+}
+
+renderMixin(Vue)
+```
+
+> vue\src\core\instance\render.js
+
+```js
+function renderMixin (Vue: Class<Component>) {
+  // ...
+    
+  Vue.prototype._render = function (): VNode {
+    const vm: Component = this
+    const { render, _parentVnode } = vm.$options
+    
+    try {
+      // 执行 render 函数，生成 VNode
+      //  vm.$createElement：在 initRender 中赋值
+      //  vm._renderProxy：在 init 中处理 vm._renderProxy = vm
+      vnode = render.call(vm._renderProxy, vm.$createElement)
+
+    } catch (e) {/.../}
+
+    // ...
+
+    vnode.parent = _parentVnode
+  }
+}
+```
+
+可以看到，` Vue.prototype._render` 中，实际还是从 `vm.$options` 中取出 `render` 函数并执行，返回结果就是 VNode
+
+
+
+#### 2-4-2、vm.options 中的 render 函数
+
+render 函数什么时候被放到 vm.options 中的呢？这里有两种情况：
+
+- 如果组件通过 template 创建，那么 render 函数是 compileToFunctions  编译 template 返回，并被保存到了 vm.options 中
+
+  > vue\src\platforms\web\entry-runtime-with-compiler.js
+
+  ```js
+  Vue.prototype.$mount = function () {
+    // ...
+  
+    // compileToFunctions 执行编译的函数（将 template 转化为 render）
+    if (template) {
+      const { render, staticRenderFns } = compileToFunctions(template, {
+        outputSourceRange: process.env.NODE_ENV !== 'production',
+        shouldDecodeNewlines,
+        shouldDecodeNewlinesForHref,
+        delimiters: options.delimiters,
+        comments: options.comments
+      }, this)
+  
+      // render 方法保存到 options 中
+      options.render = render
+    }
+  }
+  ```
+
+- 用户手动调用 render 函数创建组件，例如：
+
+  ```js
+  Vue.component('anchored-heading', {
+    data() {
+      return {
+        blogTitle: '标题'
+      }
+    },
+    render: function (createElement) {
+      return createElement('h1', this.blogTitle)
+    }
+  })
+  ```
+
+
+
+对于 compileToFunctions  编译 template 返回 render 函数的过程后面在编译的时候再说，这里先通过用户手动调用 render 函数创建组件，把渲染流程分析完。
+
+
+
+#### 2-4-3、vm.$createElement
+
+由上面可知，手动调用 render 函数创建组件的时候，需要拿到参数 `createElement`，而实际上，也是通过 `createElement` 这个函数去创建 VNode；
+
+```js
+render: function (createElement) {
+  return createElement('h1', this.blogTitle)
+}
+```
+
+这个 `createElement` 实际上是 `vm.$createElement`
+
+```js
+vnode = render.call(vm._renderProxy, vm.$createElement)
+```
+
+
+
+那么 `vm.$createElement` 是在什么时候被定义的呢？在 new Vue 的时候，就调用 this.\_init，这里面会调用 `initRender` 函数，`vm.$createElement` 就是在这里面被定义
+
+> vue\src\core\instance\init.js
+
+```js
+import { initRender } from './render'
+
+Vue.prototype._init = function (options?: Object) {
+  // ...
+    
+  initRender(vm)
+}
+```
+
+> vue\src\core\instance\render.js
+
+```js
+import { createElement } from '../vdom/create-element'
+
+function initRender (vm: Component) {
+  // ...
+    
+  // vm.$createElement 是手写 render 函数时调用的方法
+  vm.$createElement = (a, b, c, d) => createElement(vm, a, b, c, d, true)
+}
+```
+
+可以看到，`vm.$createElement` 是执行 `createElement(vm, a, b, c, d, true)` 后返回，下面来看看 `createElement` 干了什么
+
+
+
+#### 2-4-4、createElement 函数
+
+> vue\src\core\vdom\create-element.js
+
+```js
+// createElement 是对 _createElement 的封装，在 createElement 中先对参数做处理
+export function createElement (
+  context: Component,
+  tag: any,
+  data: any,
+  children: any,
+  normalizationType: any,
+  alwaysNormalize: boolean
+): VNode | Array<VNode> {
+  // 主要是判断 data 是否存在，不存在把后面的参数往前移
+  // 主要就是为了兼容不传 data
+  if (Array.isArray(data) || isPrimitive(data)) {
+    normalizationType = children
+    children = data
+    data = undefined
+  }
+
+  // 如果 render 函数是用户手写
+  if (isTrue(alwaysNormalize)) {
+    normalizationType = ALWAYS_NORMALIZE
+  }
+  return _createElement(context, tag, data, children, normalizationType)
+}
+```
+
+
+
+#### 2-4-5、_createElement 函数
+
+上面的 createElement 中对参数进行了处理，但是实际上真正创建 VNode 是在 _createElement 函数中：
+
+> vue\src\core\vdom\create-element.js
+
+```js
+/**
+ * 这个是真正创建 VNode 的函数
+ *  context  VNode 的上下文环境，也就是 vm 实例
+ *  tag  标签
+ *  data  VNode 数据
+ *  children  VNode 的子节点
+ *  normalizationType  用来区分 render 函数手写还是编译返回
+ */
+export function _createElement (
+  context: Component,
+  tag?: string | Class<Component> | Function | Object,
+  data?: VNodeData,
+  children?: any,
+  normalizationType?: number
+): VNode | Array<VNode> {
+  // ...
+  
+  if (typeof tag === 'string') {
+    // 如果 tab 是字符串类型
+    let Ctor
+    ns = (context.$vnode && context.$vnode.ns) || config.getTagNamespace(tag)
+
+    if (config.isReservedTag(tag)) {
+      // 如果是符合 html 规范的标签
+      // ...
+      vnode = new VNode(
+        config.parsePlatformTagName(tag), data, children,
+        undefined, undefined, context
+      )
+
+    } else if ((!data || !data.pre) && isDef(Ctor = resolveAsset(context.$options, 'components', tag))) {
+      // 去 vm 的 components 上查找是否有这个标签的定义
+      // 查找到，说明是组件，调用 createComponent 创建组件
+      vnode = createComponent(Ctor, data, context, children, tag)
+    } else {
+
+      vnode = new VNode(
+        tag, data, children,
+        undefined, undefined, context
+      )
+    }
+  } else {
+    // 如果 tab 不是字符串类型，代表是组件
+    vnode = createComponent(tag, data, context, children)
+  }
+}
+```
+
+可以看到，在 `_createElement` 中，通过 `new VNode` 创建 VNode
+
+
+
+#### 2-4-6、VNode 类
+
+> vue\src\core\vdom\vnode.js
+
+```js
+class VNode {
+  // ...
 
   constructor (
     tag?: string,
@@ -476,185 +770,53 @@ export default class VNode {
     context?: Component,
     componentOptions?: VNodeComponentOptions,
     asyncFactory?: Function
-  ) {}
-}
-```
+  ) {
+    this.tag = tag // 标签属性
+    this.data = data // 渲染成真实DOM后，节点上到class attr style 事件等...
+    this.children = children // 子节点
+    this.text = text // 文本
+    this.elm = elm // 对应着真实的 dom 节点
+    this.ns = undefined //当前节点的 namespace（命名空间）
+    this.context = context // 该 VNode 对应实例
+    this.fnContext = undefined // 函数化组件上下文
+    this.fnOptions = undefined // 函数化组件配置项
+    this.fnScopeId = undefined // 函数化组件 ScopeId
+    this.key = data && data.key // 数据的 key，在 diff 的过程中可以提高性能，例如：v-for 的 key
+    this.componentOptions = componentOptions // 通过vue组件生成的vnode对象，若是普通dom生成的vnode，则此值为空
+    this.componentInstance = undefined // 当前组件实例
+    this.parent = undefined // vnode组件的占位符节点
+    this.raw = false // 是否为原生 HTML 标签或只是普通文本
+    this.isStatic = false // 是否静态节点
+    this.isRootInsert = true // 是否作为根节点插入
+    this.isComment = false // 是否是注释节点
+    this.isCloned = false // 是否是克隆节点
+    this.isOnce = false // 是否是v-noce节点
+    this.asyncFactory = asyncFactory // 异步工厂方法
+    this.asyncMeta = undefined //  异步meta
+    this.isAsyncPlaceholder = false // 是否为异步占位符
+  }
 
-
-
-#### 2-3-2、vm.\_render 生成虚拟 DOM
-
-![vm._render](/imgs/img8.png)
-
-在 \$mount 挂载的时候会执行 mountComponent, 这个的核心之一是 vm.\_render 生成虚拟 DOM
-
-```
-Vue.prototype.$mount = function(el, hydrating) {
-    ···
-    return mountComponent(this, el)
-}
-
-function mountComponent() {
-    ···
-    updateComponent = function () {
-        vm._update(vm._render(), hydrating);
-    };
-}
-```
-
-**执行流程：（\_createElement -> createElement -> \$createElement -> render -> \_render）**
-
-1、\_render: 在最开始为 Vue 拓展方法的时候有一个 renderMixin, renderMixin 为 Vue 的原型拓展了 \_render, \_render 函数的核心是 render.call(vm.\_renderProxy, vm.\$createElement)
-
-```
-// Vue 本质： 实际就是一个 Function 实现的类
-function Vue (options) {
-  ...
-
-  this._init(options)
-}
-
-renderMixin(Vue)
-
-// render.js
-export function renderMixin (Vue: Class<Component>) {
-
-  // 把实例渲染成一个虚拟 Node
-  Vue.prototype._render = function (): VNode {
-    const { render, _parentVnode } = vm.$options
-
-    try {
-      // vm.$createElement 在 initRender 中赋值
-      // vm._renderProxy 在 init 中处理 vm._renderProxy = vm
-      vnode = render.call(vm._renderProxy, vm.$createElement)
-    } catch (e) {
-      ...
-    } finally {
-      ...
-    }
-    ...
-    return vnode
+  // DEPRECATED: alias for componentInstance for backwards compat.
+  // 已弃用：向后兼容组件实例的别名
+  get child (): Component | void {
+    return this.componentInstance
   }
 }
 ```
 
-2、render：这里的 render 是来自 vm.\$options
+可以看到，VNode 最多可以接受 8 个参数。实例化后的对象有 23 个属性作为在 `vue` 内部一个节点的描述，大部分属性默认是 `false` 或 `undefined`，而通过这些属性**有效的值**就可以组装出不同的描述；通过描述可以确定将它创建为一个怎样的真实`Dom`。
 
-```
-// render.js
-export function renderMixin (Vue: Class<Component>) {
+一般来讲，VNode 可以具体分为以下几类：
 
-  // 把实例渲染成一个虚拟 Node
-  Vue.prototype._render = function (): VNode {
-    const { render, _parentVnode } = vm.$options
-
-    try {
-      // vm.$createElement 在 initRender 中赋值
-      // vm._renderProxy 在 init 中处理 vm._renderProxy = vm
-      vnode = render.call(vm._renderProxy, vm.$createElement)
-    } catch (e) {
-      ...
-    } finally {
-      ...
-    }
-    ...
-    return vnode
-  }
-}
-
-// 实际使用
-new Vue({
-    el: '#app',
-    render: function() {}
-})
-```
-
-3、vm.\$createElement：Vue 初始化 \_init 的时候，会调用 initRender(vm), vm.\$createElement 在这里定义
-
-```
-// init.js
-export function initMixin (Vue: Class<Component>) {
-  Vue.prototype._init = function (options?: Object) {
-    ...
-    initRender(vm) // 初始化渲染
-    ...
-  }
-}
-
-// render.js
-export function initRender (vm: Component) {
-  ...
-
-  // vm._c 是template内部编译成render函数时调用的方法
-  vm._c = (a, b, c, d) => createElement(vm, a, b, c, d, false)
-  // vm.$createElement是手写render函数时调用的方法
-  vm.$createElement = (a, b, c, d) => createElement(vm, a, b, c, d, true)
-
-  ...
-}
-```
-
-4、createElement：在 initRender 中的 vm.\$createElement 由 createElement 创建 vm.\$createElement = (a, b, c, d) => createElement(vm, a, b, c, d, true)
-
--   createElement 是对 \_createElement 的封装，在 createElement 中先对参数做处理
-
-```
-// create-element.js
-export function createElement (
-  context: Component, // vm 实例
-  tag: any, // 标签
-  data: any, // 节点相关数据，属性
-  children: any, // 子节点
-  normalizationType: any,
-  alwaysNormalize: boolean // 区分内部编译生成的render还是手写render
-): VNode | Array<VNode> {
-  // 主要是判断 data 是否存在，不存在把后面的参数往前移
-  if (Array.isArray(data) || isPrimitive(data)) {
-    normalizationType = children
-    children = data
-    data = undefined
-  }
-  // 根据是alwaysNormalize 区分是内部编译使用的，还是用户手写render使用的
-  if (isTrue(alwaysNormalize)) {
-    normalizationType = ALWAYS_NORMALIZE
-  }
-  return _createElement(context, tag, data, children, normalizationType)
-}
-```
-
-5、\_createElement: 这里是真正创建 VNode 的地方
-
-```
-export function _createElement (
-  context: Component, // VNode 的上下文环境
-  tag?: string | Class<Component> | Function | Object, // 标签
-  data?: VNodeData, // VNode 数据
-  children?: any, // VNode 的子节点
-  normalizationType?: number // 子节点规范的类型
-): VNode | Array<VNode> {
-  ...
-
-  if (typeof tag === 'string') {
-    // 如果是标签
-    if (config.isReservedTag(tag)) {
-      // new 一个 VNode 构造器创建 VNode
-      vnode = new VNode(
-        config.parsePlatformTagName(tag), data, children,
-        undefined, undefined, context
-      )
-    }
-    ...
-  }
-
-  ...
-
-  return vnode
-}
-```
+- TextVNode：文本节点
+- ElementVNode：普通元素节点
+- ComponentVNode：组件节点
+- EmptyVNode：没有内容的注释节点
+- CloneVNode：克隆节点
 
 
 
-#### 2-3-3、vm.\_update 渲染真实 DOM
+### 2-5、vm.\_update 渲染真实 DOM
 
 -   主要作用：把生成的 VNode 转化为真实的 DOM
 -   调用时机: 有两个，一个是发生在初次渲染阶段，这个时候没有旧的虚拟 dom；另一个发生数据更新阶段，存在新的虚拟 dom 和旧的虚拟 dom

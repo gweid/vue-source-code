@@ -86,7 +86,7 @@ export function initMixin (Vue: Class<Component>) {
     // 在 beforeCreate 生命周期中只能访问上面三个操作相关的内容
     // 当前周期中是没有数据的，所以在此期间不要做数据操作
     callHook(vm, 'beforeCreate')
-    
+
     // 初始化组件的 inject 注入配置项（处理注入祖辈传递下来的数据）
     // inject 是需要和 provide 配合使用的
     // 父组件通过 provide 提供数据，其他组价可以使用 inject 注入数据
