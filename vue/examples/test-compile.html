@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vue源码试</title>
+</head>
+<body>
+  <!-- 注释 -->
+  <div id="app">
+    <div @click="changeMsg">{{msg}}</div>
+    <div>
+      <p>静态节点</p>
+      <span>没有关闭标签
+    </div>
+    <hr />
+  </div>
+
+  <script src="../dist/vue.js"></script>
+  <script>
+
+    new Vue({
+      el: '#app',
+      // template: '<div>模板字符串 <p>没有关闭<span></p></div>',
+      data: {
+        msg: 'Hello Vue'
+      },
+      methods: {
+        changeMsg() {
+          console.log(this.msg)
+        }
+      }
+    })
+  </script>
+</body>
+</html>

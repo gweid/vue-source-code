@@ -21,11 +21,13 @@ function createFunction (code, errors) {
 // 编译的入口
 export function createCompileToFunctionFn (compile: Function): Function {
   const cache = Object.create(null)
-
+  
+  // 主要就是执行编译函数 compile 得到编译结果
+  // 处理编译结果的 render 代码串，得到可以执行的 render 函数
   return function compileToFunctions (
-    template: string,
-    options?: CompilerOptions,
-    vm?: Component
+    template: string, // template 字符串模版
+    options?: CompilerOptions, // 编译选项
+    vm?: Component // vm 实例
   ): CompiledFunctionResult {
     options = extend({}, options)
     const warn = options.warn || baseWarn
@@ -51,6 +53,7 @@ export function createCompileToFunctionFn (compile: Function): Function {
 
     // check cache
     // 编译是耗时的，通过 key 做一些缓存
+    // 如果有缓存，直接跳过编译，从上一次缓存中读取编译结果
     const key = options.delimiters
       ? String(options.delimiters) + template
       : template
@@ -59,7 +62,7 @@ export function createCompileToFunctionFn (compile: Function): Function {
     }
 
     // compile
-    // 执行编译过程
+    // 执行编译函数 compile 得到编译结果
     const compiled = compile(template, options)
 
     // check compilation errors/tips
@@ -93,7 +96,8 @@ export function createCompileToFunctionFn (compile: Function): Function {
     // turn code into functions
     const res = {}
     const fnGenErrors = []
-    // 将编译的结果转化为 render 函数
+
+    // 将编译结果中的 render 字符串代码转换为可执行的 render 函数
     res.render = createFunction(compiled.render, fnGenErrors)
     res.staticRenderFns = compiled.staticRenderFns.map(code => {
       return createFunction(code, fnGenErrors)
@@ -113,6 +117,7 @@ export function createCompileToFunctionFn (compile: Function): Function {
       }
     }
 
+    // 缓存编译结果，并返回
     return (cache[key] = res)
   }
 }

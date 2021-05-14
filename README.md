@@ -63,7 +63,7 @@
 
 
 
-**先是整体流程图：**
+## 整体流程图：
 
 ![vue入口到构造函数整体流程](/imgs/img19.png)
 
@@ -595,16 +595,62 @@ render 函数什么时候被放到 vm.options 中的呢？这里有两种情况�
 - 用户手动调用 render 函数创建组件，例如：
 
   ```js
-  Vue.component('anchored-heading', {
-    data() {
+  Vue.component('custom-element', {
+      data () {
+          return {
+              show: true
+          }
+      },
+      methods: {
+          clickHandler: function(){
+              console.log('click');
+          }
+      },
+      render: function (createElement) {
+          return createElement(
+              'div',
+              {
+                  class: {
+                      show: this.show
+                  },
+                  attrs: {
+                      id: 'wrapper'
+                  },
+                  on: {
+                      click: this.handleClick
+                  }
+              }, 
+              [
+                  createElement('h1', 'Hello Vue!'),
+                  createElement('p', 'Hello world!')
+              ]
+          )
+      }
+  })
+  
+  
+  // 上面手动 render 创建的方式等价于
+  <template>
+    <div id="wrapper" :class="{show: show}" @click="clickHandler">
+      <h1>Hello Vue!</h1>
+      <p>Hello world!</p>
+    </div>
+  </template>
+  <script>
+  export default {
+    name: 'custom-element',
+    data(){
       return {
-        blogTitle: '标题'
+        show: true
       }
     },
-    render: function (createElement) {
-      return createElement('h1', this.blogTitle)
+    methods: {
+      clickHandler: function(){
+        console.log('click');
+      }
     }
-  })
+  }
+  </script>
   ```
 
 
@@ -623,7 +669,7 @@ render: function (createElement) {
 }
 ```
 
-这个 `createElement` 实际上是 `vm.$createElement`
+这个 `createElement` 实际上是执行 render 的时候传进来的参数 `vm.$createElement`
 
 ```js
 vnode = render.call(vm._renderProxy, vm.$createElement)
@@ -1342,22 +1388,15 @@ function updateChildren(parentElm, oldCh, newCh) {
 
 ## 3、编译 compiler
 
-
-
-### 3-1、模板编译 compiler
-
--   1、parse
-    -   使用正则解释 template 中的 Vue 指令(v-xxx)变量等，形成 AST 语法树
--   2、optimize
-    -   标记一些静态节点，用于优化，在 diff 比较的时候略过。
--   3、generate
-    -   把 parse 生成的 AST 语法树转换为渲染函数 render function
+编译过程主要做的就是：将 HTML 模板解析为 AST 节点树，通过 AST 节点树生成 render 函数。
 
 
 
-#### 3-3-1、编译的入口
+### 3-1、编译的入口
 
-在 entry-runtime-with-compiler.js 中的 \$mount 过程，如果发现没有 render 函数，那么会启动编译流程把模板编译成 render 函数, 而 compileToFunctions 就是编译的入口
+在 $mount 的时候，会调用 compileToFunctions 对 template 模板进行编译
+
+> vue\src\platforms\web\entry-runtime-with-compiler.js
 
 ```
 const mount = Vue.prototype.$mount
@@ -1365,116 +1404,561 @@ const mount = Vue.prototype.$mount
 Vue.prototype.$mount = function (){
   ...
 
-  if (template) {
-    const { render, staticRenderFns } = compileToFunctions(template, {
-      outputSourceRange: process.env.NODE_ENV !== 'production',
-      shouldDecodeNewlines,
-      shouldDecodeNewlinesForHref,
-      delimiters: options.delimiters,
-      comments: options.comments
-    }, this)
+  // 如果有 render 函数，直接执行 mount.call(this, el, hydrating)
+  // 没有 render，代表的是 template 模式，就编译 template，转化为 render 函数，再调用 mount
+  if (!options.render) {
+    // 没有 render 函数
+    let template = options.template
+
+	// 获取到 template 模板
+    if (template) {
+      // 如果创建的时候有传 template，以 template 为准，没传，就取 el
+      if (typeof template === 'string') {
+        // 如果 template 是 '#xxx'，那么根据 id 选择器获取 template 内容
+        if (template.charAt(0) === '#') {
+          // template 是一个 id 选择器，则获取该元素的 innerHtml 作为模版
+          // { template: '#app' }
+          template = idToTemplate(template)
+          /* istanbul ignore if */
+          if (process.env.NODE_ENV !== 'production' && !template) {
+            warn(
+              `Template element not found or is empty: ${options.template}`,
+              this
+            )
+          }
+        }
+      } else if (template.nodeType) {
+        // 如果 tempalte 是一个正常的元素，那么通过 template.innerHTML 得到 template
+        template = template.innerHTML
+      } else {
+        if (process.env.NODE_ENV !== 'production') {
+          warn('invalid template option:' + template, this)
+        }
+        return this
+      }
+    } else if (el) {
+      // 如果没有传入 template 模板，则默认以 el 元素所属的根节点作为基础模板
+      // new Vue({ el: '#app' })
+      template = getOuterHTML(el)
+    }
+
+    // 模板准备就绪，进入编译阶段
+    if (template) {
+      /* istanbul ignore if */
+      if (process.env.NODE_ENV !== 'production' && config.performance && mark) {
+        mark('compile')
+      }
+
+      // compileToFunctions 执行编译的函数（将 template 转化为 render）
+      // compileToFunctions 方法会返回 render 函数方法，render 方法会保存到 vm.$options 中
+      const { render, staticRenderFns } = compileToFunctions(template, {
+        outputSourceRange: process.env.NODE_ENV !== 'production',
+        shouldDecodeNewlines,
+        shouldDecodeNewlinesForHref,
+        delimiters: options.delimiters,
+        comments: options.comments
+      }, this)
+
+      // render 方法保存到 options 中
+      options.render = render
+      options.staticRenderFns = staticRenderFns
+
+      /* istanbul ignore if */
+      if (process.env.NODE_ENV !== 'production' && config.performance && mark) {
+        mark('compile end')
+        measure(`vue ${this._name} compile`, 'compile', 'compile end')
+      }
+    }
   }
+
   // 调用原先原型上的 $mount 方法挂载, 此时实际也是调用重新定义的 mount，这样做主要是为了复用
   return mount.call(this, el, hydrating)
 }
 ```
 
-compileToFunctions 在 platfroms/web/compiler/index 由 compiler/index 的 createCompiler 执行后得到
+可以看到，主要流程：
 
-```
-import { createCompiler } from 'compiler/index'
+- 判断 vm.options 中有没有 render 函数，没有，代表是通过 template 模板创建，那么需要进行编译
 
-const { compile, compileToFunctions } = createCompiler(baseOptions)
+- 获取到 template 模板，这里会根据不同 template 创建形式获取模板，基本就是四种：
 
-export { compile, compileToFunctions }
-```
+  - 第一种：有传 template，并且 template 是 `#xxx` 的形式
 
-createCompiler 又是由 create-compiler.js 的 createCompilerCreator 得到
+    ```js
+    <div id="app">
+      <div>test1</div>
+      <script type="x-template" id="test">
+        <p>test</p>
+      </script>
+    </div>
+    
+    new Vue({
+      el: '#app',
+      template: '#test'
+    })
+    ```
 
-```
-export const createCompiler = createCompilerCreator(function baseCompile (){})
-```
+  - 第二种：有传 template，并且 template 是字符串模板
 
-createCompilerCreator: const { compile, compileToFunctions } = createCompiler(baseOptions) 可以看出，compile 是 createCompilerCreator 中的 createCompiler 的 compile， 而 compileToFunctions 由 to-function.js 的 createCompileToFunctionFn 得到
+    ```js
+    new Vue({
+      el: '#app',
+      template: '<div>模板字符串</div>'
+    })
+    ```
 
-```
-export function createCompilerCreator (baseCompile: Function): Function {
-  return function createCompiler (baseOptions: CompilerOptions) {
+  - 第三种：有传 template，并且 template 是 dom 形式
 
-    function compile () {}
+    ```js
+    <div id="app">
+      <div>test1</div>
+      <span id="test"><div class="test2">test2</div></span>
+    </div>
+    
+    new Vue({
+      el: '#app',
+      template: document.querySelector('#test')
+    })
+    ```
 
-    ...
+  - 第四种：没有传 template，默认以 el 元素所属的根节点作为基础模板
 
-    return {
-      compile,
-      compileToFunctions: createCompileToFunctionFn(compile)
+    ```js
+    new Vue({
+      el: '#app'
+    })
+    ```
+
+- compileToFunctions 编译 template 模板，返回 render 函数
+
+
+
+#### 3-1-1、创建 compileToFunctions 的过程
+
+compileToFunctions 函数是通过一系列的高阶函数生成的：
+
+1. > vue\src\platforms\web\compiler\index.js
+
+   ```js
+   import { baseOptions } from './options'
+   import { createCompiler } from 'compiler/index'
+   
+   const { compile, compileToFunctions } = createCompiler(baseOptions)
+   ```
+
+   可以看到，compileToFunctions 是经过执行 createCompiler 函数返回的结果 
+
+2. > vue\src\compiler\index.js
+
+   ```js
+   import { createCompilerCreator } from './create-compiler'
+   
+   export const createCompiler = createCompilerCreator(function baseCompile () {
+     // ...
+   })
+   ```
+
+   可以看到，createCompiler 又是由执行 createCompilerCreator 得到
+
+3. 再看看 createCompilerCreator 执行会 返回 createCompiler
+
+   > vue\src\compiler\create-compiler.js
+
+   ```js
+   import { createCompileToFunctionFn } from './to-function'
+   
+   export function createCompilerCreator (baseCompile: Function): Function {
+     return function createCompiler (baseOptions: CompilerOptions) {
+       function compile (template: string,options?: CompilerOptions): CompiledResult {
+         // ...
+       }
+   
+       return {
+         compile,
+         compileToFunctions: createCompileToFunctionFn(compile)
+       }
+     }
+   }
+   ```
+
+   而执行这个返回的 createCompiler 可以得到一个对象：
+
+   ```js
+   {
+     compile,
+     compileToFunctions: createCompileToFunctionFn(compile)
+   }
+   ```
+
+   所以，可以发现，compileToFunctions 实际上是由 createCompileToFunctionFn 函数创建。
+
+4. 最后，看看 createCompileToFunctionFn 函数
+
+   > vue\src\compiler\to-function.js
+
+   ```js
+   export function createCompileToFunctionFn (compile: Function): Function {
+     const cache = Object.create(null)
+   
+     return function compileToFunctions () {
+       // ...
+     }
+   }
+   ```
+
+   简单明了，就是返回了一个 compileToFunctions 函数
+
+
+
+所以，创建 compileToFunctions 绕了一大个圈子，主要顺序是：createCompilerCreator -> createCompiler -> createCompileToFunctionFn -> compileToFunctions
+
+
+
+接下来，从执行 compileToFunctions 开始，进入编译流程
+
+
+
+### 3-2、compileToFunctions 
+
+> vue\src\compiler\to-function.js
+
+```js
+// 主要就是执行编译函数 compile 得到编译结果
+// 处理编译结果的 render 代码串，得到可以执行的 render 函数
+function compileToFunctions (
+    template: string, // template 字符串模版
+    options?: CompilerOptions, // 编译选项
+    vm?: Component // vm 实例
+  ): CompiledFunctionResult {
+    options = extend({}, options)
+    const warn = options.warn || baseWarn
+    delete options.warn
+ 
+    // ...
+
+    // check cache
+    // 编译是耗时的，通过 key 做一些缓存
+    // 如果有缓存，直接跳过编译，从上一次缓存中读取编译结果
+    const key = options.delimiters
+      ? String(options.delimiters) + template
+      : template
+    if (cache[key]) {
+      return cache[key]
     }
+
+    // compile
+    // 执行编译函数 compile 得到编译结果
+    const compiled = compile(template, options)
+
+    // ...
+
+    // turn code into functions
+    const res = {}
+    const fnGenErrors = []
+
+    // 将编译结果中的 render 字符串代码转换为可执行的 render 函数
+    res.render = createFunction(compiled.render, fnGenErrors)
+    res.staticRenderFns = compiled.staticRenderFns.map(code => {
+      return createFunction(code, fnGenErrors)
+    })
+
+    // ...
+
+    // 缓存编译结果，并返回
+    return (cache[key] = res)
   }
 }
 ```
 
-**得到，编译的入口是 to-function.js 的 createCompileToFunctionFn**
+可以看出，compileToFunctions 中重要的逻辑是：
 
-to-function.js 的 createCompileToFunctionFn 执行编译的是 compile，这个由参数传进来 compileToFunctions: createCompileToFunctionFn(compile)
+- 执行编译函数 compile 得到编译结果
+- 将编译结果的 render 代码串转换为可执行的 render 函数，并保存到 res 中
+- 缓存 res，并返回（如果下次编译时发现有缓存，直接从缓存读取）
 
-而 compile 函数执行的编译函数 baseCompile 也是由参数传进来
 
-```
-// create-compiler.js
-export function createCompilerCreator (baseCompile: Function): Function {
-  return function createCompiler (baseOptions: CompilerOptions) {
-    function compile () {
 
-      // baseCompile 传进来的函数，真正执行编译三步 parse、optimize、generate
-      const compiled = baseCompile(template.trim(), finalOptions)
+### 3-3、compile
+
+createCompilerCreator -> createCompiler -> createCompileToFunctionFn -> compileToFunctions -> compile 
+
+
+
+> vue\src\compiler\create-compiler.js
+
+```js
+/**
+ * 编译函数，主要做了：
+ *   合并 finalOptions（即baseOptions）和 options，得到一份最终的编译配置
+ *   调用 baseCompile 得到编译结果（真正编译的核心是在 baseCompile 中）
+ * @param {*} template 模板 template 字符串
+ * @param {*} options 编译配置
+ * @returns 
+*/
+function compile (template: string, options?: CompilerOptions): CompiledResult {
+    // 基于 baseOptions 创建 finalOptions
+    const finalOptions = Object.create(baseOptions)
+    const errors = []
+    const tips = []
+
+    let warn = (msg, range, tip) => {
+        (tip ? tips : errors).push(msg)
     }
 
-    return {
-      compile,
-      compileToFunctions: createCompileToFunctionFn(compile)
+    // 如果有 options，那么 options 与 finalOptions 合并
+    if (options) {
+        // ...
+
+        // merge custom modules
+        // 合并自定义模块
+        if (options.modules) {
+            finalOptions.modules =
+                (baseOptions.modules || []).concat(options.modules)
+        }
+
+        // merge custom directives
+        // 合并自定义指令
+        if (options.directives) {
+            finalOptions.directives = extend(
+                Object.create(baseOptions.directives || null),
+                options.directives
+            )
+        }
+
+        // copy other options
+        // options 的其他配置拷贝 finalOptions
+        for (const key in options) {
+            if (key !== 'modules' && key !== 'directives') {
+                finalOptions[key] = options[key]
+            }
+        }
     }
-  }
+
+    finalOptions.warn = warn
+
+    // 执行 baseCompile，真正执行编译三步 parse、optimize、generate
+    const compiled = baseCompile(template.trim(), finalOptions)
+
+    if (process.env.NODE_ENV !== 'production') {
+        detectErrors(compiled.ast, warn)
+    }
+
+    // 将编译期间的 error 和 tip，挂载到编译结果上
+    compiled.errors = errors
+    compiled.tips = tips
+
+    // 将编译结果返回
+    return compiled
 }
 ```
 
-baseCompile 中执行编译的三步 parse、optimize、generate
+compile 函数做了两件重要的事情：
 
+- 合并 finalOptions（即baseOptions）和 options，得到一份最终的编译配置
+- 调用 baseCompile 得到编译结果（真正编译的核心是在 baseCompile 中）
+
+
+
+来看看 baseOptions
+
+> vue\src\platforms\web\compiler\options.js
+
+```js
+export const baseOptions: CompilerOptions = {
+  expectHTML: true,
+  modules, // 处理 class、style、v-model
+  directives, // 处理指令
+  isPreTag, // 是否是 pre 标签 【什么是 pre 标签：https://www.runoob.com/tags/tag-pre.html】
+  isUnaryTag, // 是否自闭合标签
+  mustUseProp, // 规定了一些应该使用 props 进行绑定的属性
+  canBeLeftOpenTag, // 可以只写开始标签的标签，结束标签浏览器会自动补全
+  isReservedTag, // 是否是保留标签（html + svg）
+  getTagNamespace, // 获取标签的命名空间
+  staticKeys: genStaticKeys(modules)
+}
 ```
-// compiler/index.js
-export const createCompiler = createCompilerCreator(function baseCompile (
-  template: string,
-  options: CompilerOptions
-): CompiledResult {
-  // parse 过程，转换为 ast 树
+
+
+
+### 3-4、baseCompile（编译的核心）
+
+createCompilerCreator -> createCompiler -> createCompileToFunctionFn -> compileToFunctions -> compile -> baseCompile
+
+
+
+在 baseCompile 前做的所有的事情，只是为了构建某个平台特有的编译选项（options），比如 web 平台，而真正的编译核心是 baseCompile 函数，这个函数里面进行编译三步曲 ：
+
+- parse：将 html 模版解析成 ast
+- optimize：对 ast 树进行静态标签标记
+- generate：将 ast 生成 render 代码串，后面通过 createFunction 将 render 代码串生成 render 函数
+
+> vue\src\compiler\index.js
+
+```js
+function baseCompile (template: string, options: CompilerOptions): CompiledResult {
+
+  // parse 过程：将 html 转换为 ast 树
+  // 每个节点的 ast 树都设置了元素的所有信息：标签信息、属性信息、插槽信息、父节点、子节点等
   const ast = parse(template.trim(), options)
-  // optimize 标记静态节点等优化
+
+  // optimize：遍历 ast，当遇到静态节点打上静态节点标记，然后进一步标记出静态根节点
+  // 这样在后续更新中就可以跳过这些静态节点了
+  // 标记静态根节点：在生成渲染函数阶段，生成静态根节点的渲染函数
   if (options.optimize !== false) {
     optimize(ast, options)
   }
-  // generate:
+
+  // generate: 将 ast 生成 render 代码串、staticRenderFns 静态根节点代码串
+  // 比如：
+  //  <div id="app">
+  //    <div>{{msg}}</div>
+  //    <div>
+  //      <p>静态节点</p>
+  //    </div>
+  //  </div>
+  // 经过编译后的 code 是：
+  //   code = {
+  //     render: 'with(this){return _c('div',{attrs:{\"id\":\"app\"}},[_c('div',[_v(_s(msg))]),_v(\" \"),_m(0)])}',
+  //     staticRenderFns: ['with(this){return _c('div',[_c('p',[_v(\"静态节点\")])])}']
+  //   }
   const code = generate(ast, options)
+
+  // 将 ast、render 代码串、staticRenderFns 静态根节点代码串
   return {
     ast,
     render: code.render,
     staticRenderFns: code.staticRenderFns
   }
 })
-
 ```
 
-**总结：实际上进行的编译三部曲是通过 baseCompile 这个参数函数中的 parse、optimize、generate 执行**
+这里建议通过 debugger 调试，看看 parse 后的 ast、优化静态节点后的 ast、还有转换后的 code 长什么样。
 
 
 
-#### 3-3-2、parse：使用正则解释 template 编译成 AST 语法树
+### 3-5、parse（template=>ast）
+
+parse 的过程就是将 template 模板转换为 ast 的过程。
 
 
 
-#### 3-3-3、optimize：标记一些静态节点，用于优化，在 diff 比较的时候略过
+#### 3-5-1、parse 函数概览
+
+parse 过程是一个非常复杂的过程，现在先来大概看看 parse 函数做了什么：
+
+> vue\src\compiler\parser\index.js
+
+```js
+/**
+ * 将 template 字符串模板转换为 ast
+ * @param {*} template template 字符串模板
+ * @param {*} options 编译配置
+ * @returns 
+ */
+export function parse (template: string, options: CompilerOptions): ASTElement | void {
+  warn = options.warn || baseWarn
+
+  // 是否 pre 标签（no 是一个直接返回 false 的函数）
+  platformIsPreTag = options.isPreTag || no
+  // 是否必须要使用 props 进行绑定的属性
+  platformMustUseProp = options.mustUseProp || no
+  // 获取命名空间
+  platformGetTagNamespace = options.getTagNamespace || no
+  // 是否是保留标签（html + svg）
+  const isReservedTag = options.isReservedTag || no
+  // 是否是组件
+  maybeComponent = (el: ASTElement) => !!el.component || !isReservedTag(el.tag)
+
+  // 
+  transforms = pluckModuleFunction(options.modules, 'transformNode')
+  preTransforms = pluckModuleFunction(options.modules, 'preTransformNode')
+  postTransforms = pluckModuleFunction(options.modules, 'postTransformNode')
+
+  delimiters = options.delimiters
+
+  const stack = []
+  const preserveWhitespace = options.preserveWhitespace !== false
+  const whitespaceOption = options.whitespace
+  // 根节点，处理后的节点都会按照层级挂载到 root 下，最后将 root 返回
+  let root
+  // 当前元素的父元素
+  let currentParent
+  let inVPre = false
+  let inPre = false
+  let warned = false
+
+  function warnOnce (msg, range) {/.../}
+
+  function closeElement (element) {/.../}
+
+  function trimEndingWhitespace (el) {/.../}
+
+  function checkRootConstraints (el) {/.../}
+
+  // 解析所有标签，处理标签以及标签上的属性
+  parseHTML(template, {
+    warn,
+    expectHTML: options.expectHTML,
+    isUnaryTag: options.isUnaryTag,
+    canBeLeftOpenTag: options.canBeLeftOpenTag,
+    shouldDecodeNewlines: options.shouldDecodeNewlines,
+    shouldDecodeNewlinesForHref: options.shouldDecodeNewlinesForHref,
+    shouldKeepComment: options.comments,
+    outputSourceRange: options.outputSourceRange,
+
+    start (tag, attrs, unary, start, end) {/.../},
+    end (tag, start, end) {/.../},
+    chars (text: string, start: number, end: number) {/.../},
+    comment (text: string, start, end) {/.../}
+  })
+
+  // 将生成的 ast 对象返回
+  return root
+}
+```
+
+可以看出，整个 template => ast 的过程都在 parse 中完成了：
+
+- parseHTML 之前，主要处理了一些 options 配置以及定义了一些函数（这里暂时不关心这些函数干了什么，后面用到再解析）
+- 真正解析 template 的是 parseHTML，parseHTML接受 template 模板字符串以及 parseHTMLOptions 对象作为参数，这个 parseHTMLOptions  对象里面主要是一些**从 options 中取到的编译配置**及**定义了一些函数**，用于在解析 template 的时候使用
+- 最后，将解析好的 ast 对象 root 返回
 
 
 
-#### 3-3-4、generate：把 parse 生成的 AST 语法树转换为渲染函数 render function
+#### 3-5-2、parseHTML
+
+parseHTML：解析所有标签，处理标签以及标签上的属性
+
+> vue\src\compiler\parser\html-parser.js
+
+```js
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

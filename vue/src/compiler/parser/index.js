@@ -74,20 +74,26 @@ export function createASTElement (
 }
 
 /**
- * Convert HTML string to AST.
+ * 将 template 字符串模板转换为 ast
+ * @param {*} template template 字符串模板
+ * @param {*} options 编译配置
+ * @returns 
  */
-export function parse (
-  template: string,
-  options: CompilerOptions
-): ASTElement | void {
+export function parse (template: string, options: CompilerOptions): ASTElement | void {
   warn = options.warn || baseWarn
 
+  // 是否 pre 标签（no 是一个直接返回 false 的函数）
   platformIsPreTag = options.isPreTag || no
+  // 是否必须要使用 props 进行绑定的属性
   platformMustUseProp = options.mustUseProp || no
+  // 获取命名空间
   platformGetTagNamespace = options.getTagNamespace || no
+  // 是否是保留标签（html + svg）
   const isReservedTag = options.isReservedTag || no
+  // 是否是组件
   maybeComponent = (el: ASTElement) => !!el.component || !isReservedTag(el.tag)
 
+  // 
   transforms = pluckModuleFunction(options.modules, 'transformNode')
   preTransforms = pluckModuleFunction(options.modules, 'preTransformNode')
   postTransforms = pluckModuleFunction(options.modules, 'postTransformNode')
@@ -97,7 +103,9 @@ export function parse (
   const stack = []
   const preserveWhitespace = options.preserveWhitespace !== false
   const whitespaceOption = options.whitespace
+  // 根节点，处理后的节点都会按照层级挂载到 root 下，最后将 root 返回
   let root
+  // 当前元素的父元素
   let currentParent
   let inVPre = false
   let inPre = false
@@ -201,6 +209,7 @@ export function parse (
     }
   }
 
+  // 解析所有标签，处理标签以及标签上的属性
   parseHTML(template, {
     warn,
     expectHTML: options.expectHTML,
@@ -210,6 +219,7 @@ export function parse (
     shouldDecodeNewlinesForHref: options.shouldDecodeNewlinesForHref,
     shouldKeepComment: options.comments,
     outputSourceRange: options.outputSourceRange,
+
     start (tag, attrs, unary, start, end) {
       // check namespace.
       // inherit parent ns if there is one
@@ -379,23 +389,33 @@ export function parse (
         }
       }
     },
+
+    // 主要用来处理注释节点
     comment (text: string, start, end) {
       // adding anyting as a sibling to the root node is forbidden
       // comments should still be allowed, but ignored
+      // 禁止将任何内容作为 root 同级进行添加，注释节点除外，但是会被忽略
+      // currentParent 是父元素，父元素存在，代表注释与 root 不同级
+      // 父元素不存在，代表代表注释与 root 同级，忽略
       if (currentParent) {
         const child: ASTText = {
-          type: 3,
-          text,
-          isComment: true
+          type: 3, // 节点类型
+          text, // 注释内容
+          isComment: true // isComment=true 代表是注释节点
         }
         if (process.env.NODE_ENV !== 'production' && options.outputSourceRange) {
+          // 记录注释节点的开始和结束位置索引
           child.start = start
           child.end = end
         }
+
+        // 将当前注释节点放到父元素的 children 中
         currentParent.children.push(child)
       }
     }
   })
+
+  // 将生成的 ast 对象返回
   return root
 }
 

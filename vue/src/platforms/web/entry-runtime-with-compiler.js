@@ -46,10 +46,14 @@ Vue.prototype.$mount = function (
     // 没有 render 函数
     let template = options.template
 
+    // 获取到 template 模板
     if (template) {
-      // 如果 template 是 '#xxx'，那么根据 id 选择器获取 template 内容
+      // 如果创建的时候有传 template，以 template 为准，没传，就取 el
       if (typeof template === 'string') {
+        // 如果 template 是 '#xxx'，那么根据 id 选择器获取 template 内容
         if (template.charAt(0) === '#') {
+          // template 是一个 id 选择器，则获取该元素的 innerHtml 作为模版
+          // { template: '#app' }
           template = idToTemplate(template)
           /* istanbul ignore if */
           if (process.env.NODE_ENV !== 'production' && !template) {
@@ -60,17 +64,22 @@ Vue.prototype.$mount = function (
           }
         }
       } else if (template.nodeType) {
-        // 如果 tempalte 是一个 nodeType，那么通过 template.innerHTML 得到 template
+        // 如果 tempalte 是一个正常的元素，那么通过 template.innerHTML 得到 template
         template = template.innerHTML
       } else {
+        // 其他类型为非法传入
         if (process.env.NODE_ENV !== 'production') {
           warn('invalid template option:' + template, this)
         }
         return this
       }
     } else if (el) {
+      // 如果没有传入 template 模板，则默认以 el 元素所属的根节点作为基础模板
+      // new Vue({ el: '#app' })
       template = getOuterHTML(el)
     }
+
+    // 模板准备就绪，进入编译阶段
     if (template) {
       /* istanbul ignore if */
       if (process.env.NODE_ENV !== 'production' && config.performance && mark) {
