@@ -18,7 +18,7 @@ export const createCompiler = createCompilerCreator(function baseCompile (
   const ast = parse(template.trim(), options)
 
   // optimize：遍历 ast，当遇到静态节点打上静态节点标记，然后进一步标记出静态根节点
-  // 这样在后续更新中就可以跳过这些静态节点了
+  // 这样在后续更新进行 dom diff 比对的时候就可以跳过这些静态节点
   // 标记静态根节点：在生成渲染函数阶段，生成静态根节点的渲染函数
   if (options.optimize !== false) {
     optimize(ast, options)
