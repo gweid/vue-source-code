@@ -69,7 +69,7 @@ export function parseHTML (html, options) {
   while (html) {
     last = html
     // Make sure we're not in a plaintext content element like script/style
-    // 确保不是在 <script> 或者 <style> 标签中
+    // 确保 这个标签 不是 <script>、<style>、<textarea> 中的文本，例如 <textarea>div</textarea>
     if (!lastTag || !isPlainTextElement(lastTag)) {
       // 找 "<" 字符的索引
       let textEnd = html.indexOf('<')
@@ -150,38 +150,63 @@ export function parseHTML (html, options) {
       }
 
       let text, rest, next
+      // 找到 '<' 符号，但是并不符合上面几种情况，可能是 '<文本' 这些，就认为它是一段纯文本
+      // 继续从 html 字符串中找到下一个 <，直到 <xx 是上述几种情况的标签，则结束
+      // 整个过程中一直在调整 textEnd 的值，作为 html 中下一个有效标签的开始位置
       if (textEnd >= 0) {
+        // 截取 html 字符串 textEnd 后面的部分
         rest = html.slice(textEnd)
+
+        // 这个 while 循环就是处理 <xx 之后的纯文本情况
+        // 截取文本内容，并找到有效标签的开始位置（textEnd）
+        // endTag: 结束标签正则
+        // startTagOpen: 开始标签正则
+        // comment: 注释标签
+        // conditionalComment: 条件注释标签
         while (
           !endTag.test(rest) &&
           !startTagOpen.test(rest) &&
           !comment.test(rest) &&
           !conditionalComment.test(rest)
         ) {
-          // < in plain text, be forgiving and treat it as text
+          // 在这些纯文本中查找下一个 <
           next = rest.indexOf('<', 1)
+          // 没找到，结束循环
           if (next < 0) break
+          // 找到了 <，索引位置为 textEnd
           textEnd += next
+          // 截取 html 字符串 textEnd 之后的内容，继续循环判断之后的字符串是否符合上面三几种情况
           rest = html.slice(textEnd)
         }
+        // 遍历结束，有两种情况
+        //  '<' 之后就是一段纯文本，没有有效标签
+        //  '<' 之后找到了有效标签，有效标签的开始位置索引是 textEnd，索引之前的是文本，截取文本
         text = html.substring(0, textEnd)
       }
 
+      // 如果 textEnd 小于 0，那么代表 html 字符串中没找到 '<'
+      // 那么说明 html 就是一段文本
       if (textEnd < 0) {
         text = html
       }
 
+      // 将 文本内容从 html 字符串上截取掉
       if (text) {
         advance(text.length)
       }
 
+      // 调用 parseHTMLOptions.chars 处理文本
       if (options.chars && text) {
         options.chars(text, index - text.length, index)
       }
     } else {
+      // 处理 script、style、textarea 标签中的文本和结束标签
       let endTagLength = 0
+      // 将标签转换为小写
       const stackedTag = lastTag.toLowerCase()
       const reStackedTag = reCache[stackedTag] || (reCache[stackedTag] = new RegExp('([\\s\\S]*?)(</' + stackedTag + '[^>]*>)', 'i'))
+
+      // 匹配并处理开始标签和结束标签之间的所有文本，比如 <script>xx</script>
       const rest = html.replace(reStackedTag, function (all, text, endTag) {
         endTagLength = endTag.length
         if (!isPlainTextElement(stackedTag) && stackedTag !== 'noscript') {
@@ -192,6 +217,8 @@ export function parseHTML (html, options) {
         if (shouldIgnoreFirstNewline(stackedTag, text)) {
           text = text.slice(1)
         }
+
+        // 使用 parseHTMLOptions.chars 处理标签之间的所有文本  <script>xxaacc</script>
         if (options.chars) {
           options.chars(text)
         }
@@ -199,6 +226,7 @@ export function parseHTML (html, options) {
       })
       index += html.length - rest.length
       html = rest
+      // 处理 script、style、textarea 的结束标签
       parseEndTag(stackedTag, index - endTagLength, index)
     }
 
@@ -221,7 +249,8 @@ export function parseHTML (html, options) {
     html = html.substring(n)
   }
 
-  // 解析开始标签
+  // 解析开始标签，返回 match 对象
+  // match = { tagName: '', attrs: [[xxx], ...], start: xx, end: xx }
   function parseStartTag () {
     // 比如刚开始的标签 <div id="app">，start=['<div', 'div']
     const start = html.match(startTagOpen)
@@ -253,7 +282,6 @@ export function parseHTML (html, options) {
         // 调整 html 字符串（将处理过的标签截掉）和 index 位置
         advance(end[0].length)
         match.end = index
-
         // 最后将 match 对象返回，包括标签名、属性和标签开始索引
         return match
       }
@@ -261,8 +289,7 @@ export function parseHTML (html, options) {
   }
 
   /**
-   * 进一步处理 match 对象
-   *  
+   * 进一步处理开始标签返回的 match 对象
    * @param {*} match 
    */
   function handleStartTag (match) {
@@ -301,22 +328,13 @@ export function parseHTML (html, options) {
       }
     }
 
-    // 如果不是一元标签，那么讲这些标签放进 stack 数组，例如 <div>、<p> 之类的
-    // 
+    // 如果不是一元标签（自闭合标签），那么将这些标签放进 stack 数组，例如 <div>、<p> 之类的
     if (!unary) {
       stack.push({ tag: tagName, lowerCasedTag: tagName.toLowerCase(), attrs: attrs, start: match.start, end: match.end })
       lastTag = tagName
     }
 
-    /**
-   * 调用 parseHTMLOptions 的 start 方法，主要做了以下 6 件事情:
-   *   1、创建 AST 对象
-   *   2、处理存在 v-model 指令的 input 标签，分别处理 input 为 checkbox、radio、其它的情况
-   *   3、处理标签上的众多指令，比如 v-pre、v-for、v-if、v-once
-   *   4、如果根节点 root 不存在则设置当前元素为根节点
-   *   5、如果当前元素为非自闭合标签则将自己 push 到 stack 数组，并记录 currentParent，在接下来处理子元素时用来告诉子元素自己的父节点是谁
-   *   6、如果当前元素为自闭合标签，则表示该标签要处理结束了，让自己和父元素产生关系，以及设置自己的子元素
-   */
+    // 调用 parseHTMLOptions 的 start 处理开始标签
     if (options.start) {
       options.start(tagName, attrs, unary, match.start, match.end)
     }
@@ -324,7 +342,8 @@ export function parseHTML (html, options) {
 
   /**
    * 处理结束标签：
-   *  处理 stack 数组，从 stack 中找到当前结束标签对应的开始标签，然后调用 parseHTMLOptions 的 end 函数处理结束标签
+   *  处理 stack 数组，从 stack 中找到当前结束标签对应的开始标签，如果找到的开始标签位置不对说明有标签没有闭合，发出警告
+   *  调用 parseHTMLOptions 的 end 函数处理结束标签
    *  处理完结束标签之后调整 stack 数组，保证在正常情况下 stack 数组中的最后一个是下一个结束标签对应的开始标签
    * @param {*} tagName 结束标签名，例如：div
    * @param {*} start 结束标签的开始索引

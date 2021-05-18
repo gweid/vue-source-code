@@ -1,6 +1,36 @@
 # Vue 源码阅读
 
-当前阅读的 vue 版本 2.6.11
+当前阅读的 vue 版本 2.6.11。基本源码目录结构：
+
+```js
+Vue
+├── benchmarks                  性能、基准测试
+├── dist                        构建打包的输出目录
+├── examples                    案例代码
+├── flow                        类型声明，vue2 使用的是 flow
+├── packages                    一些其他包，、
+│   ├── vue-server-renderer     服务端渲染
+│   ├── vue-template-compiler   配合 vue-loader 使用的
+│   ├── weex-template-compiler  weex 相关
+│   └── weex-vue-framework      weex 相关
+├── scripts                     配置文件，例如 rollup 打包相关的
+├── src                         vue 核心源码目录
+│   ├── compiler                编译相关
+│   ├── core                    运行时的核心包
+│   │   ├── components          全局组件，比如 keep-alive
+│   │   ├── config.js           默认配置项
+│   │   ├── global-api          全局 api，比如：Vue.filter、Vue.component 等
+│   │   ├── instance            Vue 实例相关的，比如 Vue 构造函数就在这个目录下
+│   │   ├── observer            响应式原理相关
+│   │   ├── util                工具方法
+│   │   └── vdom                虚拟 DOM 相关，比如 VNode 类、patch 过程的 diff
+│   ├── platforms               平台相关的编译器代码
+│   │   ├── web                 web 平台
+│   │   └── weex                weex 平台
+│   ├── server                  服务端渲染相关
+├── test                        单元测试
+├── types                       TS 类型声明
+```
 
 
 
@@ -1392,6 +1422,10 @@ function updateChildren(parentElm, oldCh, newCh) {
 
 
 
+在 example 目录下新建 test-compile.html 用于调试 compile 过程
+
+
+
 ### 3-1、编译的入口
 
 在 $mount 的时候，会调用 compileToFunctions 对 template 模板进行编译
@@ -1932,33 +1966,901 @@ parseHTML：解析所有标签，处理标签以及标签上的属性
 > vue\src\compiler\parser\html-parser.js
 
 ```js
+function parseHTML (html, options) {
+  const stack = []
+  const expectHTML = options.expectHTML
+  // 是否是自闭合标签
+  const isUnaryTag = options.isUnaryTag || no
+  // 是否可以只有开始标签
+  const canBeLeftOpenTag = options.canBeLeftOpenTag || no
+  // 记录当前在原始 html 字符串中的开始位置索引，一开始为0
+  let index = 0
+  let last, lastTag
+  while (html) {
+    last = html
+    // Make sure we're not in a plaintext content element like script/style
+    // 确保 这个标签 不是 <script>、<style>、<textarea> 中的文本，例如 <textarea>div</textarea>
+    if (!lastTag || !isPlainTextElement(lastTag)) {
+      // 找 "<" 字符的索引
+      let textEnd = html.indexOf('<')
+      // textEnd === 0 ，代表模板的第一个字符是 "<"，分下面几种情况：
+      // 每处理完一种情况，就会中断这一轮（continue）循环
+      // 并且利用函数 advance 重置 html 字符串，将处理过的标签截掉，下一次循环处理剩余的 html 字符串
+      if (textEnd === 0) {
+        // 如果是注释标签  <!--xx-->
+        // const comment = /^<!\--/
+        if (comment.test(html)) {
+          // 找到注释文字结束位置索引
+          // 注意，这里是注释文字的结束位置索引，不是注释标签的，注释标签的结束索引需要在这个基础上加3
+          const commentEnd = html.indexOf('-->')
+
+          if (commentEnd >= 0) {
+            // 如果需要保留注释
+            if (options.shouldKeepComment) {
+              // 调用 parseHTMLOptions 的 comment 函数，得到注释内容、注释节点开始索引和结束索引
+              options.comment(html.substring(4, commentEnd), index, index + commentEnd + 3)
+            }
+            // 调整 html 字符串（将处理过的标签截掉）和 index 位置
+            advance(commentEnd + 3)
+            // 中断这一轮循环
+            continue
+          }
+        }
+
+        // http://en.wikipedia.org/wiki/Conditional_comment#Downlevel-revealed_conditional_comment
+        // 如果是条件注释标签：<!--[if IE]>
+        // const conditionalComment = /^<!\[/
+        if (conditionalComment.test(html)) {
+          // 找到条件注释标签结束位置索引
+          const conditionalEnd = html.indexOf(']>')
+
+          if (conditionalEnd >= 0) {
+            // 调整 html 字符串（将处理过的标签截掉）和 index 位置
+            advance(conditionalEnd + 2)
+            // 中断这一轮循环
+            continue
+          }
+        }
+
+        // 如果是 Doctype 标签：<!DOCTYPE html>
+        // const doctype = /^<!DOCTYPE [^>]+>/i
+        const doctypeMatch = html.match(doctype)
+        if (doctypeMatch) {
+          advance(doctypeMatch[0].length)
+          continue
+        }
+
+        // 接下来是处理结束标签和开始标签，这才是 parseHTML 核心部分，上面的是处理一些边界
+
+        // 处理结束标签，例如：</div>、</p> 等
+        const endTagMatch = html.match(endTag) // 结果类似 ['</div>', 'div']
+        if (endTagMatch) {
+          const curIndex = index
+
+          // 调整 html 字符串（将处理过的标签截掉）和 index 位置
+          advance(endTagMatch[0].length)
+
+          // 调用 parseEndTag 处理结束标签
+          // endTagMatch=['</div>', 'div']，那么 endTagMatch[1]=div
+          parseEndTag(endTagMatch[1], curIndex, index)
+          continue
+        }
+
+        // 处理开始标签：
+        const startTagMatch = parseStartTag()
+        if (startTagMatch) {
+          // 拿到经过 parseStartTag 解析后的 match 对象，进一步处理
+          // 这里面调用 parseHTMLOptions.start 真正进行标签解析
+          handleStartTag(startTagMatch)
+          if (shouldIgnoreFirstNewline(startTagMatch.tagName, html)) {
+            advance(1)
+          }
+          continue
+        }
+      }
+
+      let text, rest, next
+      // 找到 '<' 符号，但是并不符合上面几种情况，可能是 '<文本' 这些，就认为它是一段纯文本
+      // 继续从 html 字符串中找到下一个 <，直到 <xx 是上述几种情况的标签，则结束
+      // 整个过程中一直在调整 textEnd 的值，作为 html 中下一个有效标签的开始位置
+      if (textEnd >= 0) {
+        // 截取 html 字符串 textEnd 后面的部分
+        rest = html.slice(textEnd)
+
+        // 这个 while 循环就是处理 <xx 之后的纯文本情况
+        // 截取文本内容，并找到有效标签的开始位置（textEnd）
+        // endTag: 结束标签正则
+        // startTagOpen: 开始标签正则
+        // comment: 注释标签
+        // conditionalComment: 条件注释标签
+        while (
+          !endTag.test(rest) &&
+          !startTagOpen.test(rest) &&
+          !comment.test(rest) &&
+          !conditionalComment.test(rest)
+        ) {
+          // 在这些纯文本中查找下一个 <
+          next = rest.indexOf('<', 1)
+          // 没找到，结束循环
+          if (next < 0) break
+          // 找到了 <，索引位置为 textEnd
+          textEnd += next
+          // 截取 html 字符串 textEnd 之后的内容，继续循环判断之后的字符串是否符合上面三几种情况
+          rest = html.slice(textEnd)
+        }
+        // 遍历结束，有两种情况
+        //  '<' 之后就是一段纯文本，没有有效标签
+        //  '<' 之后找到了有效标签，有效标签的开始位置索引是 textEnd，索引之前的是文本，截取文本
+        text = html.substring(0, textEnd)
+      }
+
+      // 如果 textEnd 小于 0，那么代表 html 字符串中没找到 '<'
+      // 那么说明 html 就是一段文本
+      if (textEnd < 0) {
+        text = html
+      }
+
+      // 将 文本内容从 html 字符串上截取掉
+      if (text) {
+        advance(text.length)
+      }
+
+      // 调用 parseHTMLOptions.chars 处理文本
+      if (options.chars && text) {
+        options.chars(text, index - text.length, index)
+      }
+    } else {
+      // 处理 script、style、textarea 标签中的文本和结束标签
+      let endTagLength = 0
+      // 将标签转换为小写
+      const stackedTag = lastTag.toLowerCase()
+      const reStackedTag = reCache[stackedTag] || (reCache[stackedTag] = new RegExp('([\\s\\S]*?)(</' + stackedTag + '[^>]*>)', 'i'))
+
+      // 匹配并处理开始标签和结束标签之间的所有文本，比如 <script>xx</script>
+      const rest = html.replace(reStackedTag, function (all, text, endTag) {
+        endTagLength = endTag.length
+        if (!isPlainTextElement(stackedTag) && stackedTag !== 'noscript') {
+          text = text
+            .replace(/<!\--([\s\S]*?)-->/g, '$1') // #7298
+            .replace(/<!\[CDATA\[([\s\S]*?)]]>/g, '$1')
+        }
+        if (shouldIgnoreFirstNewline(stackedTag, text)) {
+          text = text.slice(1)
+        }
+
+        // 使用 parseHTMLOptions.chars 处理标签之间的所有文本  <script>xxaacc</script>
+        if (options.chars) {
+          options.chars(text)
+        }
+        return ''
+      })
+      index += html.length - rest.length
+      html = rest
+      // 处理 script、style、textarea 的结束标签
+      parseEndTag(stackedTag, index - endTagLength, index)
+    }
+
+    if (html === last) {
+      options.chars && options.chars(html)
+      if (process.env.NODE_ENV !== 'production' && !stack.length && options.warn) {
+        options.warn(`Mal-formatted tag at end of template: "${html}"`, { start: index + html.length })
+      }
+      break
+    }
+  }
+}
+```
+
+上面这个是 parseHTML 主体函数，主要做的就是：
+
+- 用正则表达式匹配出开始标签、结束标签、文本、注释等内容
+- 在匹配出这些内容后，结合各自对应的回调函数进行处理，生成 AST 节点
+
+基本流程就是：while 循环解析 template，用正则做匹配，根据匹配情况做不同的处理，直到整个 template 解析完
+
+
+
+parseHTML 里面还有几个辅助函数：用于解析不同情况的标签：
+
+##### advance
+
+> vue\src\compiler\parser\html-parser.js
+
+```js
+// 主要用来重置 html，html 为从索引 n 位置开始的向后的所有字符，通过 substring 截取
+// 并使用 index 记录下一次处理 html 字符的开始位置
+function advance (n) {
+  index += n
+  html = html.substring(n)
+}
+```
+
+
+
+##### parseStartTag
+
+> vue\src\compiler\parser\html-parser.js
+
+```js
+// 解析开始标签，返回 match 对象
+// match = { tagName: '', attrs: [[xxx], ...], start: xx, end: xx }
+function parseStartTag() {
+  // 比如刚开始的标签 <div id="app">，start=['<div', 'div']
+  const start = html.match(startTagOpen)
+  if (start) {
+    const match = {
+      tagName: start[1], // 标签名
+      attrs: [], // 属性
+      start: index // 标签的开始索引
+    }
+
+    // 调整 html 字符串（将处理过的标签截掉）和 index 位置
+    advance(start[0].length)
+
+    let end, attr
+    // 处理 开始标签 内的各个属性，并将这些属性放到 match.attrs 数组中
+    // 例如：<div id="app"> 里面的 id="app"
+    while (!(end = html.match(startTagClose)) && (attr = html.match(dynamicArgAttribute) || html.match(attribute))) {
+      attr.start = index
+
+      // 调整 html 字符串（将处理过的标签截掉）和 index 位置
+      advance(attr[0].length)
+      attr.end = index
+      match.attrs.push(attr)
+    }
+    // 开始标签的结束符，例如：'>' 或者 '/>'
+    if (end) {
+      match.unarySlash = end[1]
+
+      // 调整 html 字符串（将处理过的标签截掉）和 index 位置
+      advance(end[0].length)
+      match.end = index
+      // 最后将 match 对象返回，包括标签名、属性和标签开始索引
+      return match
+    }
+  }
+}
+```
+
+解析开始标签，将开始标签的标签名、标签上的属性、开始索引、结束索引组成 match 对象返回，比如：`<div id="app">` 被解析后的 match 是：
+
+![](/imgs/img22.png)
+
+
+
+##### handleStartTag
+
+> vue\src\compiler\parser\html-parser.js
+
+```js
+/**
+ * 进一步处理开始标签返回的 match 对象
+ * @param {*} match 
+ */
+function handleStartTag (match) {
+  const tagName = match.tagName // 标签名
+  const unarySlash = match.unarySlash
+
+  if (expectHTML) {
+    if (lastTag === 'p' && isNonPhrasingTag(tagName)) {
+      parseEndTag(lastTag)
+    }
+    if (canBeLeftOpenTag(tagName) && lastTag === tagName) {
+      parseEndTag(tagName)
+    }
+  }
+
+  // 是否一元标签，例如 <hr />
+  const unary = isUnaryTag(tagName) || !!unarySlash
+
+  const l = match.attrs.length
+  const attrs = new Array(l)
+  // 遍历处理 attrs，得到更完整的描述信息:
+  // arrts = [{ name: 'xx', value: 'xx', start: xx, end: xx }, ...]
+  for (let i = 0; i < l; i++) {
+    const args = match.attrs[i]
+    const value = args[3] || args[4] || args[5] || ''
+    const shouldDecodeNewlines = tagName === 'a' && args[1] === 'href'
+      ? options.shouldDecodeNewlinesForHref
+      : options.shouldDecodeNewlines
+    attrs[i] = {
+      name: args[1],
+      value: decodeAttr(value, shouldDecodeNewlines)
+    }
+    if (process.env.NODE_ENV !== 'production' && options.outputSourceRange) {
+      attrs[i].start = args.start + args[0].match(/^\s*/).length
+      attrs[i].end = args.end
+    }
+  }
+
+  // 如果不是一元标签（自闭合标签），那么将这些标签放进 stack 数组，例如 <div>、<p> 之类的
+  if (!unary) {
+    stack.push({ tag: tagName, lowerCasedTag: tagName.toLowerCase(), attrs: attrs, start: match.start, end: match.end })
+    lastTag = tagName
+  }
+
+  // 调用 parseHTMLOptions 的 start 处理开始标签
+  if (options.start) {
+    options.start(tagName, attrs, unary, match.start, match.end)
+  }
+}
+```
+
+handleStartTag 的主要逻辑：
+
+- 进一步处理 parseStartTag 返回的开始标签的 match 对象
+- 将继续处理过的开始标签对象放进 stack 数组（主要是为处理结束标签的时候，可以找到对应的开始标签）
+- parseHTMLOptions 的 start 方法处理开始标签
+
+
+
+##### parseEndTag
+
+> vue\src\compiler\parser\html-parser.js
+
+```js
+/**
+ * 解析结束标签：
+ *  处理 stack 数组，从 stack 中找到当前结束标签对应的开始标签，如果找到的开始标签位置不对说明有标签没有闭合，发出警告
+ *  调用 parseHTMLOptions 的 end 函数处理结束标签
+ *  处理完结束标签之后调整 stack 数组，保证在正常情况下 stack 数组中的最后一个是下一个结束标签对应的开始标签
+ * @param {*} tagName 结束标签名，例如：div
+ * @param {*} start 结束标签的开始索引
+ * @param {*} end 结束标签的结束索引
+ */
+function parseEndTag (tagName, start, end) {
+  let pos, lowerCasedTagName
+  if (start == null) start = index
+  if (end == null) end = index
+
+  // Find the closest opened tag of the same type
+  // 倒序遍历 stack 数组，找到第一个和当前结束标签相同的标签，该标签就是结束标签对应的开始标签
+  // 没有异常情况下，stack 数组中的最后一个元素就是当前结束标签的开始标签
+  if (tagName) {
+    lowerCasedTagName = tagName.toLowerCase()
+    for (pos = stack.length - 1; pos >= 0; pos--) {
+      if (stack[pos].lowerCasedTag === lowerCasedTagName) {
+        break
+      }
+    }
+  } else {
+    // If no tag name is provided, clean shop
+    pos = 0
+  }
+
+  if (pos >= 0) {
+    // Close all the open elements, up the stack
+    // 假设 stack = ['div', 'p', 'span']，当前处理的结束标签 tagName='p'
+    // 那么匹配到的索引是 1，并不是最后一位，代表 span 没有关闭标签，那么发出警告
+    for (let i = stack.length - 1; i >= pos; i--) {
+      if (process.env.NODE_ENV !== 'production' &&
+        (i > pos || !tagName) &&
+        options.warn
+      ) {
+        options.warn(
+          `tag <${stack[i].tag}> has no matching end tag.`,
+          { start: stack[i].start, end: stack[i].end }
+        )
+      }
+
+      // 调用 parseHTMLOptions 的 end 函数处理结束标签
+      if (options.end) {
+        options.end(stack[i].tag, start, end)
+      }
+    }
+
+    // Remove the open elements from the stack
+    // 从 stack 中移除处理过的标签，保证数组的最后一个是下一个结束标签对应的开始标签
+    stack.length = pos
+    // 记录 stack 中未处理的最后一个开始标签
+    lastTag = pos && stack[pos - 1].tag
+  } else if (lowerCasedTagName === 'br') {
+    // 处理 <br /> 标签
+    if (options.start) {
+      options.start(tagName, [], true, start, end)
+    }
+  } else if (lowerCasedTagName === 'p') {
+    if (options.start) {
+      // 处理 <p> 标签
+      options.start(tagName, [], false, start, end)
+    }
+    if (options.end) {
+      // 处理 </p> 标签
+      options.end(tagName, start, end)
+    }
+  }
+}
 ```
 
 
 
 
 
+#### 3-5-3、parseHTML 的 options 中的回调函数
+
+上面一直说 parseHTMLOptions ，它是什么呢？回头来看看调用 parseHTML 的时候：
+
+> vue\src\compiler\parser\index.js
+
+```js
+parseHTML(template, {
+  warn,
+  expectHTML: options.expectHTML,
+  isUnaryTag: options.isUnaryTag,
+  canBeLeftOpenTag: options.canBeLeftOpenTag,
+  shouldDecodeNewlines: options.shouldDecodeNewlines,
+  shouldDecodeNewlinesForHref: options.shouldDecodeNewlinesForHref,
+  shouldKeepComment: options.comments,
+  outputSourceRange: options.outputSourceRange,
+
+  start (tag, attrs, unary, start, end) {/.../},
+  end (tag, start, end) {/.../},
+  chars (text: string, start: number, end: number) {/.../},
+  comment (text: string, start, end) {/.../}
+})
+```
+
+> vue\src\compiler\parser\html-parser.js
+
+```js
+function parseHTML (html, options) {
+  // ...
+
+  // 调用 parseHTMLOptions 的 comment 函数，得到注释内容、注释节点开始索引和结束索引
+  options.comment(html.substring(4, commentEnd), index, index + commentEnd + 3)
+
+  // ...
+}
+```
+
+所以 parseHTMLOptions 实际上就是调用 parseHTML 是传进来的 options 对象，最重要的就是里面的 start、end、chars、comment 这四个回调函数：
 
 
 
+##### start
+
+> vue\src\compiler\parser\index.js
+
+```js
+/**
+ * 真正将开始标签转换成 ast 的方法：
+ * @param {*} tag 标签名
+ * @param {*} attrs [{ name: 'id', value: 'app', start: 5, end: 13 }, ...] 形式的属性数组
+ * @param {*} unary 是否自闭合标签，类似 <hr />
+ * @param {*} start 开始索引
+ * @param {*} end 结束索引
+ */
+start(tag, attrs, unary, start, end) {
+  // check namespace.
+  // inherit parent ns if there is one
+  // 检查命名空间，如果存在，则继承父命名空间
+  const ns = (currentParent && currentParent.ns) || platformGetTagNamespace(tag)
+
+  // handle IE svg bug
+  /* istanbul ignore if */
+  if (isIE && ns === 'svg') {
+    attrs = guardIESVGBug(attrs)
+  }
+
+  // 通过 createASTElement 创建当前标签的 AST 对象
+  let element: ASTElement = createASTElement(tag, attrs, currentParent)
+
+  // 如果命名空间存在，设置命名空间
+  if (ns) {
+    element.ns = ns
+  }
+
+  // ...
+
+  if (isForbiddenTag(element) && !isServerRendering()) {
+    // 非服务端渲染，在 ast 对象 element 标记 forbidden 为 true
+    element.forbidden = true
+    // ...
+  }
+
+  // apply pre-transforms
+  /**
+   * 为 element 对象分别执行 class、style、model 模块中的 preTransforms 方法
+   * 在 web 平台只有 model 模块有 preTransforms
+   * 用来处理存在 v-model 的 input 标签，但没处理 v-model 属性
+   * 分别处理了 input 的 type 为 checkbox、radio 及 其它的情况
+   */
+  for (let i = 0; i < preTransforms.length; i++) {
+    element = preTransforms[i](element, options) || element
+  }
+
+  // ast 对象 element 是否存在 v-pre 指令，存在则设置 inVPre = true
+  if (!inVPre) {
+    processPre(element)
+    if (element.pre) {
+      inVPre = true
+    }
+  }
+
+  // 如果是 pre 标签，设置 inPre = true，注意这里与上面 v-pre 的区别，这里是 inPre，上面是 inVPre
+  if (platformIsPreTag(element.tag)) {
+    inPre = true
+  }
+
+  if (inVPre) {
+    // 代表标签上存在 v-pre 指令
+    // 这样的节点只会渲染一次，将节点上的属性都设置到 el.attrs 数组对象中，作为静态属性，数据更新时不会渲染这部分内容
+    processRawAttrs(element)
+  } else if (!element.processed) {
+    // 处理 v-for 指令
+    // 例如: <div v-for="item in list">
+    // 解析后得到：element.for="list"、element.alias="item"
+    processFor(element)
+
+    // 处理 v-if、v-else-if、v-else
+    // 例如，<div v-if="msg">，处理后得到 element.if="msg"
+    processIf(element)
+
+    //  处理 v-once 指令，element.once=true
+    processOnce(element)
+  }
+
+  // 如果根元素不存在，那么将当前元素设置为根元素
+  if (!root) {
+    root = element
+    if (process.env.NODE_ENV !== 'production') {
+      checkRootConstraints(root)
+    }
+  }
+
+  if (!unary) {
+    // 不是自闭合标签，用 currentParent 记录当前标签
+    // 处理下一个元素时，可以知道自己的父元素是谁
+    // 因为 ast 是一个树状结构，最终子元素是要挂在父元素的 children 上的
+    currentParent = element
+
+    // 将当前元素 ast 存到 stack 数组，将来处理到当前元素的闭合标签时再拿出来
+    // 注意这里的 stack 数组，在调用 options.start 方法之前也发生过一次 push 操作
+    // 那个 stack 数组与这个 stack 不是同一个
+    stack.push(element)
+  } else {
+    // 如果当前元素为自闭合标签，例如 <hr />
+    //   如果元素没有被处理过，即 el.processed 为 false，则调用 processElement 方法处理节点上的众多属性
+    //   让自己和父元素产生关系，将自己放到父元素的 children 数组中，并设置自己的 parent 属性为 currentParent
+    //   设置自己的子元素，将自己所有非插槽的子元素放到自己的 children 数组中
+    closeElement(element)
+  }
+}
+```
+
+这个是真正将开始标签转化为 ast 的地方，主要做的事：
+
+ *  创建 AST 对象
+ *  处理存在 v-model 指令的 input 标签，分别处理 input 的 type 为 checkbox、radio、其它的情况
+ *  处理标签上的一些指令，比如 v-pre、v-for、v-if、v-once
+ *  如果根节点 root 不存在则设置当前元素为根节点
+ *  如果当前元素为非自闭合标签则将自己 push 到 stack 数组，并记录 currentParent，在接下来处理子元素时用来告诉子元素自己的父节点是谁
+ *  如果当前元素为自闭合标签，则表示该标签要处理结束了，让自己和父元素产生关系，以及设置自己的子元素
 
 
 
+##### end
+
+> vue\src\compiler\parser\index.js
+
+```js
+/**
+ * 处理结束标签
+ * @param {*} tag 结束标签名
+ * @param {*} start 结束标签开始位置索引
+ * @param {*} end 结束标签结束位置索引
+ */
+end(tag, start, end) {
+  // 取出 stack 中最后一个 开始标签 ast 对象
+  // 这个 开始标签 ast 对象 对应的就是当前结束元素的开始标签
+  const element = stack[stack.length - 1]
+  // pop stack
+  stack.length -= 1
+  currentParent = stack[stack.length - 1]
+  if (process.env.NODE_ENV !== 'production' && options.outputSourceRange) {
+    element.end = end
+  }
+
+  // 处理这个标签（包含开始结束）的 ast
+  //  如果元素没有被处理过，则调用 processElement 方法处理节点上的众多属性
+  //  让自己和父元素产生关系，将自己放到父元素的 children 数组中，并设置自己的 parent 属性为 currentParent
+  //  设置自己的子元素，将自己所有非插槽的子元素放到自己的 children 数组中
+  closeElement(element)
+}
+```
 
 
 
+##### chars
+
+> vue\src\compiler\parser\index.js
+
+```js
+/**
+* 处理文本：
+*  基于文本生成 ast，并且将这个 ast 放到父元素的 children 上
+* @param {*} text // 文本内容
+* @param {*} start // 文本开始位置索引
+* @param {*} end // 文本结束位置索引
+* @returns 
+*/
+chars(text: string, start: number, end: number) {
+  // currentParent 不存在，代表这段文本没有父元素，报错
+  if (!currentParent) {
+    // ...
+  }
+    
+  // ...
+
+  // 获取父元素的 children
+  const children = currentParent.children
+
+  // 对 text 进行一些处理，例如 trim 删除前后空格
+  if (inPre || text.trim()) {
+    text = isTextTag(currentParent) ? text : decodeHTMLCached(text)
+  } else if (!children.length) {
+    // remove the whitespace-only node right after an opening tag
+    text = ''
+  } else if (whitespaceOption) {
+    if (whitespaceOption === 'condense') {
+      // in condense mode, remove the whitespace node if it contains
+      // line break, otherwise condense to a single space
+      text = lineBreakRE.test(text) ? '' : ' '
+    } else {
+      text = ' '
+    }
+  } else {
+    text = preserveWhitespace ? ' ' : ''
+  }
+
+  // 经过处理后，text 还存在，将 text 转换成 AST 对象 child
+  if (text) {
+    if (!inPre && whitespaceOption === 'condense') {
+      // condense consecutive whitespaces into single space
+      text = text.replace(whitespaceRE, ' ')
+    }
+    let res
+    let child: ?ASTNode
+    if (!inVPre && text !== ' ' && (res = parseText(text, delimiters))) {
+      child = {
+        type: 2,
+        expression: res.expression,
+        tokens: res.tokens,
+        text
+      }
+    } else if (text !== ' ' || !children.length || children[children.length - 1].text !== ' ') {
+      child = {
+        type: 3,
+        text
+      }
+    }
+
+    // 如果 AST 对象 child 存在，将其加入到父元素的 children 中
+    if (child) {
+      if (process.env.NODE_ENV !== 'production' && options.outputSourceRange) {
+        child.start = start
+        child.end = end
+      }
+      children.push(child)
+    }
+  }
+}
+```
 
 
 
+##### comment
+
+> vue\src\compiler\parser\index.js
+
+```js
+// 处理注释节点
+comment (text: string, start, end) {
+  // adding anyting as a sibling to the root node is forbidden
+  // comments should still be allowed, but ignored
+  // 禁止将任何内容作为 root 同级进行添加，注释节点除外，但是会被忽略
+  // currentParent 是父元素，父元素存在，代表注释与 root 不同级
+  // 父元素不存在，代表代表注释与 root 同级，忽略
+  if (currentParent) {
+    // 创建注释节点 ast
+    const child: ASTText = {
+      type: 3, // 节点类型
+      text, // 注释内容
+      isComment: true // isComment=true 代表是注释节点
+    }
+    if (process.env.NODE_ENV !== 'production' && options.outputSourceRange) {
+      // 记录注释节点的开始和结束位置索引
+      child.start = start
+      child.end = end
+    }
+
+    // 将当前注释节点 ast 放到父元素的 children 中
+    currentParent.children.push(child)
+  }
+}
+```
 
 
 
+#### 3-5-4、createASTElement
+
+> vue\src\compiler\parser\index.js
+
+```js
+/**
+ * 为指定标签元素创建 ast 对象
+ * @param {*} tag 元素标签
+ * @param {*} attrs // attrs 属性数组，[{ name: 'id', value: 'app', start, end }, ...]
+ * @param {*} parent 父元素 ast
+ * @returns 
+ */
+export function createASTElement (
+  tag: string,
+  attrs: Array<ASTAttr>,
+  parent: ASTElement | void
+): ASTElement {
+  return {
+    type: 1, // 节点类型
+    tag, // 标签名
+    attrsList: attrs, // 标签属性数组 [{ name: 'id', value: 'app', start, end }, ...]
+    attrsMap: makeAttrsMap(attrs), // 将属性数组转换为属性对象形式，{ id: 'app' }
+    rawAttrsMap: {}, // 原始属性对象
+    parent, // 父元素 ast
+    children: [] // 子元素数组
+  }
+}
+```
+
+主要用来给指定标签元素创建 ast 对象，例如开始标签转换为 ast
 
 
 
+#### 3-5-5、closeElement
+
+> vue\src\compiler\parser\index.js
+
+```js
+function closeElement (element) {
+  trimEndingWhitespace(element)
+  // 当前元素不在 pre 节点内，并且没有被处理过
+  if (!inVPre && !element.processed) {
+    // 分别调用不同方法处理元素节点的 key、ref、插槽、自闭合的 slot 标签、动态组件、class、style、v-bind、v-on、其它指令和一些原生属性
+    element = processElement(element, options)
+  }
+
+  // tree management
+  // 处理根节点上有 v-if、v-else-if、v-else 的情况
+  // 如果根节点有 v-if，那么必须要有一个具有 v-else-if、v-else 的同级节点，防止根元素不存在
+  if (!stack.length && element !== root) {
+    // allow root elements with v-if, v-else-if and v-else
+    if (root.if && (element.elseif || element.else)) {
+      if (process.env.NODE_ENV !== 'production') {
+        checkRootConstraints(element)
+      }
+      addIfCondition(root, {
+        exp: element.elseif,
+        block: element
+      })
+    } else if (process.env.NODE_ENV !== 'production') {
+      warnOnce(
+        `Component template should contain exactly one root element. ` +
+        `If you are using v-if on multiple elements, ` +
+        `use v-else-if to chain them instead.`,
+        { start: element.start }
+      )
+    }
+  }
+
+  // 让自己与父元素产生联系
+  // 将自己放到父元素的 children 数组中，然后设置自己的 parent 属性为 currentParent
+  if (currentParent && !element.forbidden) {
+    if (element.elseif || element.else) {
+      processIfConditions(element, currentParent)
+    } else {
+      if (element.slotScope) {
+        // scoped slot
+        // keep it in the children list so that v-else(-if) conditions can
+        // find it as the prev node.
+        const name = element.slotTarget || '"default"'
+        ;(currentParent.scopedSlots || (currentParent.scopedSlots = {}))[name] = element
+      }
+      currentParent.children.push(element)
+      element.parent = currentParent
+    }
+  }
+
+  // final children cleanup
+  // filter out scoped slots
+  // 设置自己的子元素
+  // 将自己的所有非插槽的子元素设置到 element.children 数组中
+  element.children = element.children.filter(c => !(c: any).slotScope)
+  // remove trailing whitespace node again
+  trimEndingWhitespace(element)
+
+  // check pre state
+  if (element.pre) {
+    inVPre = false
+  }
+  if (platformIsPreTag(element.tag)) {
+    inPre = false
+  }
+
+  // apply post-transforms
+  for (let i = 0; i < postTransforms.length; i++) {
+    postTransforms[i](element, options)
+  }
+}
+```
+
+closeElement 主要做的事：
+
+- 如果元素没有被处理过，调用 processElement 方法处理节点上的众多属性
+  - processElement 会分别调用不同方法处理元素节点的 key、ref、插槽、自闭合的 slot 标签、动态组件、class、style、v-bind、v-on、其它指令以及一些原生属性
+- 让自己与父元素产生联系，将自己放到父元素的 children 数组中，并设置自己的 parent 属性为 currentParent
+- 设置自己的子元素，将自己所有非插槽的子元素放到自己的 children 数组中
 
 
 
+#### 3-5-6、processElement 
+
+> vue\src\compiler\parser\index.js
+
+```js
+/**
+ * 调用不同的函数处理元素节点的 key、ref、插槽、自闭合的 slot 标签、动态组件、class、style、v-bind、v-on、其它指令和一些原生属性
+ * 如果标签上有相应属性被处理，例如标签上有 key、ref、:class 这三个属性
+ * 那么处理过后，会给 ast 添加上 key、ref、bindingClass 这三个属性
+ * @param {*} element ast
+ * @param {*} options 
+ * @returns 
+ */
+export function processElement (
+  element: ASTElement,
+  options: CompilerOptions
+) {
+  // 处理 key，得到 element.key = xxx
+  processKey(element)
+
+  // determine whether this is a plain element after
+  // removing structural attributes
+  // 确定 element 是否为一个普通元素
+  element.plain = (
+    !element.key &&
+    !element.scopedSlots &&
+    !element.attrsList.length
+  )
+
+  // 处理 ref，得到 element.ref = xxx, element.refInFor = boolean
+  processRef(element)
+
+  // 处理作为插槽传递给组件的内容
+  // 得到插槽名称、是否为动态插槽、作用域插槽的值，以及插槽中的所有子元素，子元素放到插槽对象的 children 属性中
+  processSlotContent(element)
+  processSlotOutlet(element)
+
+  // 处理动态组件，<component :is="compoName">，得到 element.component = compName
+  // 标记是否存在内联模版，element.inlineTemplate = boolean
+  processComponent(element)
+
+  // 为 ast 分别执行 class、style、model 模块中的 transformNode 方法，具体在：src\platforms\web\compiler\modules
+  // 不过 web 平台只有 class、style 模块有 transformNode 方法，分别用来处理 class 属性和 style 属性
+  // 得到 element.staticStyle 存放静态 style 属性的值、 element.styleBinding 存放动态 style 属性的值
+  // element.staticClass 存放静态 class 属性的值、element.classBinding 存放动态 class 属性的值
+  for (let i = 0; i < transforms.length; i++) {
+    element = transforms[i](element, options) || element
+  }
+
+  /**
+   * 处理 v-bind、v-on、其他指令（例如 v-model 归入其他指令）
+   * v-bind 指令变成：el.dynamicAttrs = [{ name, value, start, end, dynamic }, ...]，
+   *                或者是使用 props 的属性，变成了 el.props = [{ name, value, start, end, dynamic }, ...]
+   * v-on 指令变成：el.events = { eventName: { value, start, end, dynamic },  }
+   * 其它指令：el.directives = [{name, rawName, value, arg, isDynamicArg, modifier, start, end }, ...]
+   */
+  processAttrs(element)
+  return element
+}
+```
 
 
 
@@ -6113,7 +7015,7 @@ v-model 会把它关联的响应式数据（如 message），动态地绑定到�
 
 #### 8-3-2、v-model 实现原理
 
-首先，在模板解析阶段，v-model 跟其他指令一样，会被解析到 el.directives
+首先，在模板解析阶段，v-model 跟其他指令一样，会被解析到 el.directives（这里的 el 是 ast 对象）
 
 ```
 // compiler/parse/index.js

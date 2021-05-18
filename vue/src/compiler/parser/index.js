@@ -57,19 +57,26 @@ let platformMustUseProp
 let platformGetTagNamespace
 let maybeComponent
 
+/**
+ * 为指定标签元素创建 ast 对象
+ * @param {*} tag 元素标签
+ * @param {*} attrs // attrs 属性数组，[{ name: 'id', value: 'app', start, end }, ...]
+ * @param {*} parent 父元素 ast
+ * @returns 
+ */
 export function createASTElement (
   tag: string,
   attrs: Array<ASTAttr>,
   parent: ASTElement | void
 ): ASTElement {
   return {
-    type: 1,
-    tag,
-    attrsList: attrs,
-    attrsMap: makeAttrsMap(attrs),
-    rawAttrsMap: {},
-    parent,
-    children: []
+    type: 1, // 节点类型
+    tag, // 标签名
+    attrsList: attrs, // 标签属性数组 [{ name: 'id', value: 'app', start, end }, ...]
+    attrsMap: makeAttrsMap(attrs), // 将属性数组转换为属性对象形式，{ id: 'app' }
+    rawAttrsMap: {}, // 原始属性对象
+    parent, // 父元素 ast
+    children: [] // 子元素数组
   }
 }
 
@@ -93,11 +100,10 @@ export function parse (template: string, options: CompilerOptions): ASTElement |
   // 是否是组件
   maybeComponent = (el: ASTElement) => !!el.component || !isReservedTag(el.tag)
 
-  // 
+  // 负责处理元素节点上的 class、style、v-model
   transforms = pluckModuleFunction(options.modules, 'transformNode')
   preTransforms = pluckModuleFunction(options.modules, 'preTransformNode')
   postTransforms = pluckModuleFunction(options.modules, 'postTransformNode')
-
   delimiters = options.delimiters
 
   const stack = []
@@ -118,12 +124,20 @@ export function parse (template: string, options: CompilerOptions): ASTElement |
     }
   }
 
+  //  如果元素没有被处理过，调用 processElement 方法处理节点上的众多属性
+  //  让自己与父元素联系，将自己放到父元素的 children 数组中，并设置自己的 parent 属性为 currentParent
+  //  设置自己的子元素，将自己所有非插槽的子元素放到自己的 children 数组中
   function closeElement (element) {
     trimEndingWhitespace(element)
+    // 当前元素不在 pre 节点内，并且没有被处理过
     if (!inVPre && !element.processed) {
+      // 分别调用不同方法处理元素节点的 key、ref、插槽、自闭合的 slot 标签、动态组件、class、style、v-bind、v-on、其它指令和一些原生属性
       element = processElement(element, options)
     }
+
     // tree management
+    // 处理根节点上有 v-if、v-else-if、v-else 的情况
+    // 如果根节点有 v-if，那么必须要有一个具有 v-else-if、v-else 的同级节点，防止根元素不存在
     if (!stack.length && element !== root) {
       // allow root elements with v-if, v-else-if and v-else
       if (root.if && (element.elseif || element.else)) {
@@ -143,6 +157,9 @@ export function parse (template: string, options: CompilerOptions): ASTElement |
         )
       }
     }
+
+    // 让自己与父元素联系
+    // 将自己放到父元素的 children 数组中，然后设置自己的 parent 属性为 currentParent
     if (currentParent && !element.forbidden) {
       if (element.elseif || element.else) {
         processIfConditions(element, currentParent)
@@ -161,6 +178,8 @@ export function parse (template: string, options: CompilerOptions): ASTElement |
 
     // final children cleanup
     // filter out scoped slots
+    // 设置自己的子元素
+    // 将自己的所有非插槽的子元素设置到 element.children 数组中
     element.children = element.children.filter(c => !(c: any).slotScope)
     // remove trailing whitespace node again
     trimEndingWhitespace(element)
@@ -172,6 +191,7 @@ export function parse (template: string, options: CompilerOptions): ASTElement |
     if (platformIsPreTag(element.tag)) {
       inPre = false
     }
+
     // apply post-transforms
     for (let i = 0; i < postTransforms.length; i++) {
       postTransforms[i](element, options)
@@ -220,9 +240,24 @@ export function parse (template: string, options: CompilerOptions): ASTElement |
     shouldKeepComment: options.comments,
     outputSourceRange: options.outputSourceRange,
 
+    /**
+     * 真正将开始标签转换成 ast 的方法：
+     *  创建 AST 对象
+     *  处理存在 v-model 指令的 input 标签，分别处理 input 的 type 为 checkbox、radio、其它的情况
+     *  处理标签上的一些指令，比如 v-pre、v-for、v-if、v-once
+     *  如果根节点 root 不存在则设置当前元素为根节点
+     *  如果当前元素为非自闭合标签则将自己 push 到 stack 数组，并记录 currentParent，在接下来处理子元素时用来告诉子元素自己的父节点是谁
+     *  如果当前元素为自闭合标签，则表示该标签要处理结束了，让自己和父元素产生关系，以及设置自己的子元素
+     * @param {*} tag 标签名
+     * @param {*} attrs [{ name: 'id', value: 'app', start: 5, end: 13 }, ...] 形式的属性数组
+     * @param {*} unary 是否自闭合标签，类似 <hr />
+     * @param {*} start 开始索引
+     * @param {*} end 结束索引
+     */
     start (tag, attrs, unary, start, end) {
       // check namespace.
       // inherit parent ns if there is one
+      // 检查命名空间，如果存在，则继承父命名空间
       const ns = (currentParent && currentParent.ns) || platformGetTagNamespace(tag)
 
       // handle IE svg bug
@@ -231,12 +266,16 @@ export function parse (template: string, options: CompilerOptions): ASTElement |
         attrs = guardIESVGBug(attrs)
       }
 
+      // 通过 createASTElement 创建当前标签的 AST 对象
       let element: ASTElement = createASTElement(tag, attrs, currentParent)
+
+      // 如果命名空间存在，设置命名空间
       if (ns) {
         element.ns = ns
       }
 
       if (process.env.NODE_ENV !== 'production') {
+        // 非生产模式下，在 ast 对象 element 上记录一下标签开始和结束位置 start、end
         if (options.outputSourceRange) {
           element.start = start
           element.end = end
@@ -260,6 +299,7 @@ export function parse (template: string, options: CompilerOptions): ASTElement |
       }
 
       if (isForbiddenTag(element) && !isServerRendering()) {
+        // 非服务端渲染，在 ast 对象 element 标记 forbidden 为 true
         element.forbidden = true
         process.env.NODE_ENV !== 'production' && warn(
           'Templates should only be responsible for mapping the state to the ' +
@@ -270,28 +310,48 @@ export function parse (template: string, options: CompilerOptions): ASTElement |
       }
 
       // apply pre-transforms
+      /**
+       * 为 element 对象分别执行 class、style、model 模块中的 preTransforms 方法
+       * 在 web 平台只有 model 模块有 preTransforms
+       * 用来处理存在 v-model 的 input 标签，但没处理 v-model 属性
+       * 分别处理了 input 的 type 为 checkbox、radio 及 其它的情况
+       */
       for (let i = 0; i < preTransforms.length; i++) {
         element = preTransforms[i](element, options) || element
       }
 
+      // ast 对象 element 是否存在 v-pre 指令，存在则设置 inVPre = true
       if (!inVPre) {
         processPre(element)
         if (element.pre) {
           inVPre = true
         }
       }
+
+      // 如果是 pre 标签，设置 inPre = true，注意这里与上面 v-pre 的区别，这里是 inPre，上面是 inVPre
       if (platformIsPreTag(element.tag)) {
         inPre = true
       }
+
       if (inVPre) {
+        // 代表标签上存在 v-pre 指令
+        // 这样的节点只会渲染一次，将节点上的属性都设置到 el.attrs 数组对象中，作为静态属性，数据更新时不会渲染这部分内容
         processRawAttrs(element)
       } else if (!element.processed) {
-        // structural directives
+        // 处理 v-for 指令
+        // 例如: <div v-for="item in list">
+        // 解析后得到：element.for="list"、element.alias="item"
         processFor(element)
+
+        // 处理 v-if、v-else-if、v-else
+        // 例如，<div v-if="msg">，处理后得到 element.if="msg"
         processIf(element)
+
+        //  处理 v-once 指令，element.once=true
         processOnce(element)
       }
 
+      // 如果根元素不存在，那么将当前元素设置为根元素
       if (!root) {
         root = element
         if (process.env.NODE_ENV !== 'production') {
@@ -300,14 +360,33 @@ export function parse (template: string, options: CompilerOptions): ASTElement |
       }
 
       if (!unary) {
+        // 不是自闭合标签，用 currentParent 记录当前标签
+        // 处理下一个元素时，可以知道自己的父元素是谁
+        // 因为 ast 是一个树状结构，最终子元素是要挂在父元素的 children 上的
         currentParent = element
+
+        // 将当前元素 ast 存到 stack 数组，将来处理到当前元素的闭合标签时再拿出来
+        // 注意这里的 stack 数组，在调用 options.start 方法之前也发生过一次 push 操作
+        // 那个 stack 数组与这个 stack 不是同一个
         stack.push(element)
       } else {
+        // 如果当前元素为自闭合标签，例如 <hr />
+        //   如果元素没有被处理过，即 el.processed 为 false，则调用 processElement 方法处理节点上的众多属性
+        //   让自己和父元素产生关系，将自己放到父元素的 children 数组中，并设置自己的 parent 属性为 currentParent
+        //   设置自己的子元素，将自己所有非插槽的子元素放到自己的 children 数组中
         closeElement(element)
       }
     },
 
+    /**
+     * 处理结束标签
+     * @param {*} tag 结束标签名
+     * @param {*} start 结束标签开始位置索引
+     * @param {*} end 结束标签结束位置索引
+     */
     end (tag, start, end) {
+      // 取出 stack 中最后一个 开始标签 ast 对象
+      // 这个 开始标签 ast 对象 对应的就是当前结束元素的开始标签
       const element = stack[stack.length - 1]
       // pop stack
       stack.length -= 1
@@ -315,10 +394,24 @@ export function parse (template: string, options: CompilerOptions): ASTElement |
       if (process.env.NODE_ENV !== 'production' && options.outputSourceRange) {
         element.end = end
       }
+
+      // 处理这个标签（包含开始结束）的 ast
+      //  如果元素没有被处理过，则调用 processElement 方法处理节点上的众多属性
+      //  让自己和父元素产生关系，将自己放到父元素的 children 数组中，并设置自己的 parent 属性为 currentParent
+      //  设置自己的子元素，将自己所有非插槽的子元素放到自己的 children 数组中
       closeElement(element)
     },
 
+    /**
+     * 处理文本：
+     *  基于文本生成 ast，并且将这个 ast 放到父元素的 children 上
+     * @param {*} text // 文本内容
+     * @param {*} start // 文本开始位置索引
+     * @param {*} end // 文本结束位置索引
+     * @returns 
+     */
     chars (text: string, start: number, end: number) {
+      // currentParent 不存在，代表这段文本没有父元素，报错
       if (!currentParent) {
         if (process.env.NODE_ENV !== 'production') {
           if (text === template) {
@@ -335,6 +428,7 @@ export function parse (template: string, options: CompilerOptions): ASTElement |
         }
         return
       }
+
       // IE textarea placeholder bug
       /* istanbul ignore if */
       if (isIE &&
@@ -343,7 +437,11 @@ export function parse (template: string, options: CompilerOptions): ASTElement |
       ) {
         return
       }
+
+      // 获取父元素的 children
       const children = currentParent.children
+
+      // 对 text 进行一些处理，例如 trim 删除前后空格
       if (inPre || text.trim()) {
         text = isTextTag(currentParent) ? text : decodeHTMLCached(text)
       } else if (!children.length) {
@@ -360,6 +458,8 @@ export function parse (template: string, options: CompilerOptions): ASTElement |
       } else {
         text = preserveWhitespace ? ' ' : ''
       }
+
+      // 经过处理后，text 还存在，将 text 转换成 AST 对象 child
       if (text) {
         if (!inPre && whitespaceOption === 'condense') {
           // condense consecutive whitespaces into single space
@@ -380,6 +480,8 @@ export function parse (template: string, options: CompilerOptions): ASTElement |
             text
           }
         }
+
+        // 如果 AST 对象 child 存在，将其加入到父元素的 children 中
         if (child) {
           if (process.env.NODE_ENV !== 'production' && options.outputSourceRange) {
             child.start = start
@@ -390,7 +492,7 @@ export function parse (template: string, options: CompilerOptions): ASTElement |
       }
     },
 
-    // 主要用来处理注释节点
+    // 处理注释节点
     comment (text: string, start, end) {
       // adding anyting as a sibling to the root node is forbidden
       // comments should still be allowed, but ignored
@@ -398,6 +500,7 @@ export function parse (template: string, options: CompilerOptions): ASTElement |
       // currentParent 是父元素，父元素存在，代表注释与 root 不同级
       // 父元素不存在，代表代表注释与 root 同级，忽略
       if (currentParent) {
+        // 创建注释节点 ast
         const child: ASTText = {
           type: 3, // 节点类型
           text, // 注释内容
@@ -409,7 +512,7 @@ export function parse (template: string, options: CompilerOptions): ASTElement |
           child.end = end
         }
 
-        // 将当前注释节点放到父元素的 children 中
+        // 将当前注释节点 ast 放到父元素的 children 中
         currentParent.children.push(child)
       }
     }
@@ -446,27 +549,57 @@ function processRawAttrs (el) {
   }
 }
 
+/**
+ * 调用不同的函数处理元素节点的 key、ref、插槽、自闭合的 slot 标签、动态组件、class、style、v-bind、v-on、其它指令和一些原生属性
+ * 如果标签上有相应属性被处理，例如标签上有 key、ref、:class 这三个属性
+ * 那么处理过后，会给 ast 添加上 key、ref、bindingClass 这三个属性
+ * @param {*} element ast
+ * @param {*} options 
+ * @returns 
+ */
 export function processElement (
   element: ASTElement,
   options: CompilerOptions
 ) {
+  // 处理 key，得到 element.key = xxx
   processKey(element)
 
   // determine whether this is a plain element after
   // removing structural attributes
+  // 确定 element 是否为一个普通元素
   element.plain = (
     !element.key &&
     !element.scopedSlots &&
     !element.attrsList.length
   )
 
+  // 处理 ref，得到 element.ref = xxx, element.refInFor = boolean
   processRef(element)
+
+  // 处理作为插槽传递给组件的内容
+  // 得到插槽名称、是否为动态插槽、作用域插槽的值，以及插槽中的所有子元素，子元素放到插槽对象的 children 属性中
   processSlotContent(element)
   processSlotOutlet(element)
+
+  // 处理动态组件，<component :is="compoName">，得到 element.component = compName
+  // 标记是否存在内联模版，element.inlineTemplate = boolean
   processComponent(element)
+
+  // 为 ast 对象分别执行 class、style、model 模块中的 transformNode 方法，具体在：vue\src\platforms\web\compiler\modules 下
+  // 不过 web 平台只有 class、style 模块有 transformNode 方法，分别用来处理 class 属性和 style 属性
+  // 得到 element.staticStyle 存放静态 style 属性的值、 element.styleBinding 存放动态 style 属性的值
+  // element.staticClass 存放静态 class 属性的值、element.classBinding 存放动态 class 属性的值
   for (let i = 0; i < transforms.length; i++) {
     element = transforms[i](element, options) || element
   }
+
+  /**
+   * 处理 v-bind、v-on、其他指令（例如 v-model 归入其他指令）
+   * v-bind 指令变成：el.dynamicAttrs = [{ name, value, start, end, dynamic }, ...]，
+   *                或者是使用 props 的属性，变成了 el.props = [{ name, value, start, end, dynamic }, ...]
+   * v-on 指令变成：el.events = { eventName: { value, start, end, dynamic },  }
+   * 其它指令：el.directives = [{name, rawName, value, arg, isDynamicArg, modifier, start, end }, ...]
+   */
   processAttrs(element)
   return element
 }
@@ -782,7 +915,7 @@ function processAttrs (el) {
     name = rawName = list[i].name
     value = list[i].value
     if (dirRE.test(name)) {
-      // 匹配 v- 或者 @ 开头的指令
+      // 匹配 [v-, @, :, #, .] 开头的指令
       // mark element as dynamic
       el.hasBindings = true
       // modifiers
@@ -794,7 +927,7 @@ function processAttrs (el) {
       } else if (modifiers) {
         name = name.replace(modifierRE, '')
       }
-      if (bindRE.test(name)) { // v-bind
+      if (bindRE.test(name)) { // v-bind、:(v-bind的简写)
         name = name.replace(bindRE, '')
         value = parseFilters(value)
         isDynamic = dynamicArgRE.test(name)
@@ -862,13 +995,13 @@ function processAttrs (el) {
         } else {
           addAttr(el, name, value, list[i], isDynamic)
         }
-      } else if (onRE.test(name)) { // v-on
+      } else if (onRE.test(name)) { // v-on、@(v-on的简写)
         name = name.replace(onRE, '') // 拿到真正的事件click
         isDynamic = dynamicArgRE.test(name) // 动态事件绑定
         if (isDynamic) {
           name = name.slice(1, -1)
         }
-        // 通过addHandler方法，为AST树添加事件相关的属性
+        // 通过 addHandler 方法，为 AST 树添加事件相关的属性
         addHandler(el, name, value, modifiers, false, warn, list[i], isDynamic)
       } else { // normal directives
         // 其他指令
@@ -885,7 +1018,7 @@ function processAttrs (el) {
           }
         }
         addDirective(el, name, rawName, value, arg, isDynamic, modifiers, list[i])
-        // 对 v-model 进行处理
+
         if (process.env.NODE_ENV !== 'production' && name === 'model') {
           checkForAliasModel(el, value)
         }
