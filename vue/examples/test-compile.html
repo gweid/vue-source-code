@@ -9,7 +9,14 @@
 <body>
   <!-- 注释 -->
   <div id="app">
+    <template>
+      <div>啊哈哈哈</div>
+      <div>
+        <p>{{msg}}</p>
+      </div>
+    </template>
     <input type="text" v-model="msg" @change="changeMsg" @input="changeMsg">
+    <input v-model="msg">
     <div @click="changeMsg">{{msg}}</div>
     <div>
       <p>静态节点</p>
@@ -18,6 +25,7 @@
     <textarea>文本域</textarea>
     <p v-pre>v-pre</p>
     <div v-if="msg">v-if</div>
+    <div v-else>v-else</div>
     <div v-for="item in list" :key="item">1111</div>
   </div>
 
@@ -29,7 +37,7 @@
       // template: '<div>模板字符串 <p>没有关闭<span></p></div>',
       data: {
         msg: 'Hello Vue',
-        list: ['1a', '2a']
+        list: ['1a', '2a'],
       },
       methods: {
         changeMsg() {

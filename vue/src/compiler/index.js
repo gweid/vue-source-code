@@ -42,7 +42,7 @@ export const createCompiler = createCompilerCreator(function baseCompile (
   // 将 ast、render 代码串、staticRenderFns 静态根节点代码串
   return {
     ast,
-    render: code.render,
-    staticRenderFns: code.staticRenderFns
+    render: code.render, // 动态节点渲染函数
+    staticRenderFns: code.staticRenderFns // 静态节点渲染函数
   }
 })

@@ -3108,6 +3108,495 @@ vue 的编译中，标记静态节点分为两步：
 
 
 
+### 3-7、generate 将 ast 转换为渲染函数代码串
+
+vue2.x 生成的渲染函数可以利用网站查看： https://template-explorer.vuejs.org/
+
+![](/imgs/img23.png)
+
+
+
+#### 3-7-1、入口
+
+> vue\src\compiler\index.js
+
+```js
+function baseCompile (template: string,options: CompilerOptions): CompiledResult {
+
+  // parse 过程：将 html 转换为 ast 树
+  // 每个节点的 ast 树都设置了元素的所有信息：标签信息、属性信息、插槽信息、父节点、子节点等
+  const ast = parse(template.trim(), options)
+
+  // optimize：遍历 ast，当遇到静态节点打上静态节点标记，然后进一步标记出静态根节点
+  // 这样在后续更新进行 dom diff 比对的时候就可以跳过这些静态节点
+  // 标记静态根节点：在生成渲染函数阶段，生成静态根节点的渲染函数
+  if (options.optimize !== false) {
+    optimize(ast, options)
+  }
+
+  // generate: 将 ast 生成 render 代码串、staticRenderFns 静态根节点代码串
+  const code = generate(ast, options)
+
+  // 将 ast、render 代码串、staticRenderFns 静态根节点代码串
+  return {
+    ast,
+    render: code.render, // 动态节点渲染函数
+    staticRenderFns: code.staticRenderFns // 静态节点渲染函数
+  }
+}
+```
+
+可以发现，将 ast 生成 render 代码串主要调用了 generate 函数，将处理后的 ast 还有编译配置 options 当做参数。
+
+
+
+#### 3-7-2、generate 
+
+> vue\src\compiler\codegen\index.js
+
+```js
+// 将 ast 转换为 render 代码串
+// 例如：
+// <div id="app"><p>{{msg}}</p></div> 转换为：
+// {
+//   render: 'with(this){return _c('div', { attr: {id: 'app'}}, [_c('p', [_v(_s(msg))])])}',
+//   staticRenderFns: state.staticRenderFns
+// }
+export function generate (
+  ast: ASTElement | void,
+  options: CompilerOptions
+): CodegenResult {
+  // 实例化 CodegenState，里面会初始化一些东西，例如 staticRenderFns
+  const state = new CodegenState(options)
+
+  // 生成字符串格式的代码串，例如：'_c(tag, data, children, normalizationType)'
+  //   tag: 标签名
+  //   data: 例如 { id: 'app' }
+  //   children: 所有子节点的的字符串代码
+  //   normalizationType: 节点的规范化类型
+  // 比如生成了：'_c('div', { attr: {id: 'app'}}, [_c('p', [_v(_s(msg))])])'
+  // code 并不一定就是 _c，也有可能是其它的，比如整个组件都是静态的，那么就是 _m(0)
+  const code = ast ? genElement(ast, state) : '_c("div")'
+  return {
+    render: `with(this){return ${code}}`,
+    staticRenderFns: state.staticRenderFns
+  }
+}
+```
+
+
+
+#### 3-7-3、genElement
+
+> vue\src\compiler\codegen\index.js
+
+```js
+// getElement 函数会根据不同指令类型处理不同的分支
+function genElement (el: ASTElement, state: CodegenState): string {
+  if (el.parent) {
+    el.pre = el.pre || el.parent.pre
+  }
+
+  if (el.staticRoot && !el.staticProcessed) {
+    // 处理静态根节点，将静态节点的渲染函数放到 staticRenderFns 数组中
+    // 返回一个可执行函数 _m(index, true or '')，index 是渲染函数在 staticRenderFns 数组中的下标
+    return genStatic(el, state)
+  } else if (el.once && !el.onceProcessed) {
+    // 处理 v-once 的情况
+    return genOnce(el, state)
+  } else if (el.for && !el.forProcessed) {
+    // 处理 v-for，得到：
+    // `_l(exp, function(alias, iterator1, iterator2){return _c(tag, data, children)})`
+    return genFor(el, state)
+  } else if (el.if && !el.ifProcessed) {
+    // 处理 v-if，得到一个三元表达式，例如：
+    // <p v-if="show"></p> <p v-else></p>
+    // 得到 (_vm.show) ? _c('p') : _c('p')
+    return genIf(el, state)
+  } else if (el.tag === 'template' && !el.slotTarget && !state.pre) {
+    // 当前节点是 template 标签，并且不是插槽也没有 v-pre，生成所有子节点的渲染函数
+    // 得到的是一个数组：[_c(tag, data, children, normalizationType), ...]
+    // <template>
+    //   <p><p></p></p>
+    // </template>
+    return genChildren(el, state) || 'void 0'
+  } else if (el.tag === 'slot') {
+    // 处理插槽，得到：_t(slotName, children, attrs, bind)
+    return genSlot(el, state)
+  } else {
+    // component or element
+    // 处理动态组件和普通元素（自定义组件、原生标签）
+    let code
+    // 组件
+    if (el.component) {
+      // 处理动态组件，得到：_c(compName, data, children)
+      code = genComponent(el.component, el, state)
+    } else {
+      // 
+      let data
+      if (!el.plain || (el.pre && state.maybeComponent(el))) {
+        // 处理节点上的众多属性，不包括 v-if、v-for 这些上面处理过的
+        // 会处理 id、class、@click 等等属性，最后生成的类似：
+        // data = { key: xxx, attrs: { id: aaa }, ... }
+        data = genData(el, state)
+      }
+
+      // 处理子节点，得到所有子节点字符串格式的代码组成的数组
+      // 例如: [_c(tag, data, children, normalizationType), ...] 
+      const children = el.inlineTemplate ? null : genChildren(el, state, true)
+
+      // 得到最终的字符串格式的代码，类似：'_c(tag, data, children)'
+      code = `_c('${el.tag}'${
+        data ? `,${data}` : '' // data
+      }${
+        children ? `,${children}` : '' // children
+      })`
+    }
+
+    return code
+  }
+}
+```
+
+
+
+#### 3-7-4、genStatic
+
+用来处理静态节点
+
+> vue\src\compiler\codegen\index.js
+
+```js
+/**
+ * 生成静态节点的渲染函数字符串
+ *  将当前静态节点的渲染函数放到 staticRenderFns 数组中
+ *  返回一个可执行函数 _m(index, true or '')，index 是渲染函数字符串在 staticRenderFns 数组中下标
+ */
+function genStatic (el: ASTElement, state: CodegenState): string {
+  // 用于标记当前节点已经被处理过了
+  el.staticProcessed = true
+
+  // Some elements (templates) need to behave differently inside of a v-pre
+  // node.  All pre nodes are static roots, so we can use this as a location to
+  // wrap a state change and reset it upon exiting the pre node.
+  const originalPreState = state.pre
+  if (el.pre) {
+    state.pre = el.pre
+  }
+
+  // 将静态节点的渲染函数放进 state.staticRenderFns 数组中
+  // 例如: state.staticRenderFns = ['_c(tag, data, children)']
+  state.staticRenderFns.push(`with(this){return ${genElement(el, state)}}`)
+  state.pre = originalPreState
+
+  // 返回一个函数 _m(index, true or '')
+  // index 是当前静态节点的渲染函数在 staticRenderFns 数组中下标
+  return `_m(${
+    state.staticRenderFns.length - 1
+  }${
+    el.staticInFor ? ',true' : ''
+  })`
+}
+```
+
+
+
+#### 3-7-5、genFor
+
+用来处理 v-for 的情况
+
+> vue\src\compiler\codegen\index.js
+
+```js
+// 处理 v-for，例如：
+// <p v-for="item in list" :key="item">1111</p>，得到：
+// _l((list), function(item){return _c('p', {key:item}, [_v(\"1111\")])})])
+export function genFor (
+  el: any,
+  state: CodegenState,
+  altGen?: Function,
+  altHelper?: string
+): string {
+  // v-for 的迭代器，比如: v-for="item in list", 这个 el.for 就是 list
+  const exp = el.for
+  // 迭代的别名
+  const alias = el.alias
+  // v-for="(item, index) in list"
+  // iterator1 是 item
+  // iterator2 是 index
+  const iterator1 = el.iterator1 ? `,${el.iterator1}` : ''
+  const iterator2 = el.iterator2 ? `,${el.iterator2}` : ''
+
+  // 提示，v-for 需要有 key
+  if (process.env.NODE_ENV !== 'production' &&
+    state.maybeComponent(el) &&
+    el.tag !== 'slot' &&
+    el.tag !== 'template' &&
+    !el.key
+  ) {
+    state.warn(
+      `<${el.tag} v-for="${alias} in ${exp}">: component lists rendered with ` +
+      `v-for should have explicit keys. ` +
+      `See https://vuejs.org/guide/list.html#key for more info.`,
+      el.rawAttrsMap['v-for'],
+      true /* tip */
+    )
+  }
+
+  // 标记当前节点上的 v-for 已被处理过
+  el.forProcessed = true // avoid recursion
+
+  // <p v-for="item in list" :key="item">1111</p>，得到：
+  // _l((list), function(item){return _c('p', {key:item}, [_v(\"1111\")])})])
+  return `${altHelper || '_l'}((${exp}),` +
+    `function(${alias}${iterator1}${iterator2}){` +
+      `return ${(altGen || genElement)(el, state)}` +
+    '})'
+}
+```
+
+
+
+#### 3-7-6、genIf
+
+用于处理 v-if 的情况
+
+> vue\src\compiler\codegen\index.js
+
+```js
+// 处理 v-if，得到一个三元表达式，例如：
+//   <p v-if="show"></p> <p v-else></p> 得到三元表达式：
+//   (_vm.show) ? _c('p') : _c('p')
+export function genIf (
+  el: any,
+  state: CodegenState,
+  altGen?: Function,
+  altEmpty?: string
+): string {
+  // 标记当前节点 v-if 指令已被处理过
+  el.ifProcessed = true // avoid recursion
+
+  // 得到三元表达式
+  return genIfConditions(el.ifConditions.slice(), state, altGen, altEmpty)
+}
+
+
+function genIfConditions (
+  conditions: ASTIfConditions,
+  state: CodegenState,
+  altGen?: Function,
+  altEmpty?: string
+): string {
+  if (!conditions.length) {
+    return altEmpty || '_e()'
+  }
+
+  const condition = conditions.shift()
+  if (condition.exp) {
+    return `(${condition.exp})?${
+      genTernaryExp(condition.block)
+    }:${
+      genIfConditions(conditions, state, altGen, altEmpty)
+    }`
+  } else {
+    return `${genTernaryExp(condition.block)}`
+  }
+
+  // v-if with v-once should generate code like (a)?_m(0):_m(1)
+  function genTernaryExp (el) {
+    return altGen
+      ? altGen(el, state)
+      : el.once
+        ? genOnce(el, state)
+        : genElement(el, state)
+  }
+}
+```
+
+
+
+#### 3-7-7、genData
+
+> vue\src\compiler\codegen\index.js
+
+```js
+// 处理节点上的众多属性（不包括 v-if、v-for 之类已经处理过的）
+// 生成属性对象，{ key: xxx, attrs: { id: aaa }, ... }
+export function genData (el: ASTElement, state: CodegenState): string {
+  let data = '{'
+
+  // directives first.
+  // directives may mutate the el's other properties before they are generated.
+  // 处理指令，例如：v-text、v-html、v-model
+  // 例如：v-html="htmlStr" 得到：_c('div', { domProps: { "innerHTML": _vm._s(_vm.htmlStr) } })
+  // 当指令在运行时还有任务时，比如 v-model，有 <input v-model="msg">，最终生成的是： 
+  //   _c('input', {
+  //     directives: [{ name: "model", rawName: "v-model", value: (_vm.msg), expression: "msg" }],
+  //     domProps: { "value": (_vm.msg) },
+  //     on: {
+  //       "input": function ($event) {
+  //         if ($event.target.composing) {
+  //           return;
+  //         }
+  //         _vm.msg = $event.target.value
+  //       }
+  //     }
+  //   })
+  //   表单元素的 v-model 在这里处理
+  const dirs = genDirectives(el, state)
+  if (dirs) data += dirs + ','
+
+  // key
+  // 处理 key，data = { key:xxx }
+  if (el.key) {
+    data += `key:${el.key},`
+  }
+
+  // ref
+  // 处理 ref， data = { ref:xxx }
+  if (el.ref) {
+    data += `ref:${el.ref},`
+  }
+  if (el.refInFor) {
+    data += `refInFor:true,`
+  }
+
+  // pre
+  // 处理 v-pre，data = { pre:true }
+  if (el.pre) {
+    data += `pre:true,`
+  }
+
+  // record original tag name for components using "is" attribute
+  // 处理动态组件，data = { tag: 'compoment' }
+  if (el.component) {
+    data += `tag:"${el.tag}",`
+  }
+
+  // module data generation functions
+  // 处理(class、style)
+  // 得到 data = { staticClass: xx, class: xx, staticStyle: xx, style: xx }
+  // staticClass 代表 <p class="test"></p>;  class 代表 <p :class="test"></p>
+  for (let i = 0; i < state.dataGenFns.length; i++) {
+    data += state.dataGenFns[i](el)
+  }
+
+  // attributes
+  // 处理其他的一些属性，例如：<p id="test"></p>
+  // 得到 data = { attrs: { id: 'test' } }
+  if (el.attrs) {
+    data += `attrs:${genProps(el.attrs)},`
+  }
+
+  // DOM props，得到：data = { domProps: { xx: aa } }
+  if (el.props) {
+    data += `domProps:${genProps(el.props)},`
+  }
+
+  // event handlers
+  // 处理事件绑定，例如：<p @click="testFun"></p>
+  // 得到 data = { on: { 'click': testFun } }
+  if (el.events) {
+    data += `${genHandlers(el.events, false)},`
+  }
+  if (el.nativeEvents) {
+    data += `${genHandlers(el.nativeEvents, true)},`
+  }
+
+  // slot target
+  // only for non-scoped slots
+  // 处理非作用域插槽，得到：data = { slot: slotName }
+  if (el.slotTarget && !el.slotScope) {
+    data += `slot:${el.slotTarget},`
+  }
+
+  // scoped slots
+  // 处理作用于插槽，得到 data = { scopedSlots: '_u(xxx)' }
+  if (el.scopedSlots) {
+    data += `${genScopedSlots(el, el.scopedSlots, state)},`
+  }
+
+  // component v-model
+  // 处理组件上的 v-model，比如 <my-compoment v-model="msg" />
+  // 得到: { model: { value: (hshs), callback: function ($$v) { msg = $$v }, expression: "msg"}
+  // 表单的 v-model 在上面已经处理
+  if (el.model) {
+    data += `model:{value:${
+      el.model.value
+    },callback:${
+      el.model.callback
+    },expression:${
+      el.model.expression
+    }},`
+  }
+
+  // inline-template
+  // 处理内联模板
+  if (el.inlineTemplate) {
+    const inlineTemplate = genInlineTemplate(el, state)
+    if (inlineTemplate) {
+      data += `${inlineTemplate},`
+    }
+  }
+  data = data.replace(/,$/, '') + '}'
+  // v-bind dynamic argument wrap
+  // v-bind with dynamic arguments must be applied using the same v-bind object
+  // merge helper so that class/style/mustUseProp attrs are handled correctly.
+  if (el.dynamicAttrs) {
+    data = `_b(${data},"${el.tag}",${genProps(el.dynamicAttrs)})`
+  }
+  // v-bind data wrap
+  if (el.wrapData) {
+    data = el.wrapData(data)
+  }
+  // v-on data wrap
+  if (el.wrapListeners) {
+    data = el.wrapListeners(data)
+  }
+  return data
+}
+```
+
+
+
+#### 3-7-8、总结
+
+**渲染函数的生成过程：**
+
+说到渲染函数，很可能都会说是 render 函数，其实编译器生成的渲染函数有两类：
+
+- 第一类：就是一个 render 函数，负责生成动态节点的 vnode
+- 第二类：放在 staticRenderFns 数组中的静态渲染函数，这些函数负责生成静态节点的 vnode
+
+渲染函数生成的过程，实际上是在遍历 AST 节点树，递归处理每个节点，最后生成的每一个标签渲染函数类似：`_c(tag, attr, children, normalizationType)` 。
+
+- tag 是标签名
+- attr 是属性对象
+- children 是子节点组成的数组
+- normalization 表示节点的规范化类型，是一个数字 0、1、2。
+
+
+
+**静态节点的处理分为两步：**
+
+- 将生成静态节点 vnode 函数放到 staticRenderFns 数组中
+- 返回一个 _m(idx) 的可执行函数，意思是执行 staticRenderFns 数组中下标为 idx 的函数，生成静态节点的 vnode
+
+
+
+v-once、v-if、v-for、组件 等的处理：
+
+- 单纯的 v-once 节点处理方式和静态节点一致
+- v-if 节点的处理结果是一个三元表达式
+- v-for 节点的处理结果是可执行的 _l 函数，该函数负责生成 v-for 节点的 vnode
+- 组件的处理结果和普通元素一样，得到的是形如 `_c(compName)` 的可执行代码，生成组件的 vnode
+
+
+
+v-model 的处理：这里先不展开，后面在 v-model 一节再详细说明
+
+
+
 ## 4、响应式原理
 
 -   Observer 类，实例化一个 Observer 类会通过 Object.defineProperty 对数据的 getter,setter 方法进行改写，在 getter 阶段进行依赖的收集,在数据发生更新阶段，触发 setter 方法进行依赖的更新
