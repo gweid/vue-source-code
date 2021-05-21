@@ -1870,7 +1870,7 @@ function baseCompile (template: string, options: CompilerOptions): CompiledResul
 
 
 
-### 3-5、parse（template=>ast）
+### 3-5、parse：将 template 解析成 AST
 
 parse 的过程就是将 template 模板转换为 ast 的过程。
 
@@ -2861,6 +2861,31 @@ export function processElement (
   return element
 }
 ```
+
+
+
+#### 3-5-7、总结
+
+**parse 将 template 模板字符串模版变成 AST 对象的过程：**
+
+1. 遍历 template 模版字符串，通过正则表达式匹配标签开始符号 "<"
+
+2. 跳过某些不需要处理的标签，比如：注释标签、条件注释标签、Doctype 类型标签。
+
+3. 解析开始标签（核心就是解析开始标签和结束标签）
+   - 用 match 对象形式去描述当前标签，这个对象包括 标签名（tagName）、所有的属性（attrs）、标签在 html 模版字符串中的索引位置
+   - 进一步处理上一步得到的 attrs 属性，将其变成 [{ name: attrName, value: attrVal, start: xx, end: xx }, ...] 的形式
+   - 通过标签名、属性对象和当前元素的父元素生成 AST 对象，其实就是一个 普通的 JS 对象，通过 key、value 的形式记录了该元素的一些信息
+   - 接下来进一步处理开始标签上的一些指令，比如 v-pre、v-for、v-if、v-once，并将处理结果放到 AST 对象上
+   - 处理结束将 ast 对象存放到 stack 数组
+   - 处理完成后会截断 html 字符串，将已经处理掉的字符串截掉
+
+4. 解析闭合标签
+   - 如果匹配到结束标签，就从 stack 数组中拿出最后一个元素，它和当前匹配到的结束标签是一对。
+   - 再次处理开始标签上的属性，这些属性和前面处理的不一样，比如：key、ref、scopedSlot、样式等，并将处理结果放到元素的 AST 对象上
+   - 然后将当前元素和父元素产生联系，给当前元素的 ast 对象设置 parent 属性，然后将自己放到父元素的 ast 对象的 children 数组中
+
+5. 最后遍历完整个 template 模版字符串以后，返回 ast 对象
 
 
 
