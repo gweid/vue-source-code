@@ -16,7 +16,11 @@ export function installRenderHelpers (target: any) {
   target._o = markOnce
   target._n = toNumber
   target._s = toString
+
+  // 运行时渲染 v-for 列表的帮助函数
+  // 循环遍历 val 值，依次为每一项执行 render 方法生成 VNode，最终返回一个 VNode 数组
   target._l = renderList
+
   target._t = renderSlot
   target._q = looseEqual
   target._i = looseIndexOf
@@ -24,8 +28,8 @@ export function installRenderHelpers (target: any) {
   target._f = resolveFilter
   target._k = checkKeyCodes
   target._b = bindObjectProps
-  target._v = createTextVNode
-  target._e = createEmptyVNode
+  target._v = createTextVNode // 为文本节点创建 VNode
+  target._e = createEmptyVNode // 为空节点创建 VNode
   target._u = resolveScopedSlots
   target._g = bindObjectListeners
   target._d = bindDynamicKeys
