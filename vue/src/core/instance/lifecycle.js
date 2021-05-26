@@ -62,20 +62,27 @@ export function lifecycleMixin (Vue: Class<Component>) {
   // 负责更新页面，首次渲染和更新数据都会调用 _update 去做页面更新
   // 也是 patch 的入口位置
   Vue.prototype._update = function (vnode: VNode, hydrating?: boolean) {
+    // 保存当前 vm 实例
     const vm: Component = this
+
+    // 页面挂载的根节点
     const prevEl = vm.$el
+
+    // 保存一份老的 VNode
     const prevVnode = vm._vnode
-    const restoreActiveInstance = setActiveInstance(vm) // 在 _update 中把 vm 赋值给 activeInstance
+    const restoreActiveInstance = setActiveInstance(vm)
+
+    // 将新的 VNode 挂载到 vm._vnode 上
     vm._vnode = vnode
+
     // Vue.prototype.__patch__ is injected in entry points
     // based on the rendering backend used.
     if (!prevVnode) {
-      // 首次渲染，即初始化页面时走这里
-      // vm.$el: 真实的 dom   vnode: 虚拟 vnode
-      // 首次定义 vm.__patch__ 是在 runtime/index.js
+      // 老 VNode 不存在，表示首次渲染，即初始化页面时走这里
+      // 使用 vm.__patch__ 进行 dom diff 并且生成真实 dom，最后挂载到 vm.$el 上
       vm.$el = vm.__patch__(vm.$el, vnode, hydrating, false /* removeOnly */)
     } else {
-      // 页面更新走这里
+      // 老 VNode 不存在，代表是更新操作，即页面更新走这里
       vm.$el = vm.__patch__(prevVnode, vnode)
     }
     restoreActiveInstance()
