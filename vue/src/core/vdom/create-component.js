@@ -36,10 +36,10 @@ const componentVNodeHooks = {
     ) {
       // kept-alive components, treat as a patch
       const mountedNode: any = vnode; // work around flow
+      // 只调用 prepatch 更新实例属性
       componentVNodeHooks.prepatch(mountedNode, mountedNode);
     } else {
-      // 将组件实例赋值给 vnode 的 componentInstance 属性
-      // createComponentInstanceForVnode 主要的作用就是 new Ctor 进行实例化
+      // createComponentInstanceForVnode 会 new Vue 构造组件实例并赋值到 componentInstance
       const child = (vnode.componentInstance = createComponentInstanceForVnode(
         vnode,
         activeInstance

@@ -63,6 +63,8 @@ const patternTypes: Array < Function > = [String, RegExp, Array]
 
 export default {
   name: 'keep-alive',
+  // 标记为抽象组件
+  // 抽象组件：只对包裹的子组件做处理，并不会和子组件建立父子关系，也不会作为节点渲染到页面上
   abstract: true,
 
   props: {
@@ -110,11 +112,11 @@ export default {
       // check pattern
       // 第一个 VNode 节点的 name
       const name: ? string = getComponentName(componentOptions)
-      const {
-        include,
-        exclude
-      } = this
-      // 判断子组件是否能够缓存
+
+      const { include, exclude } = this
+
+      // 判断子组件是否符合缓存条件
+      // 组件名与 include 不匹配或与 exclude 匹配都会直接退出并返回 VNode，不走缓存机制
       if (
         // not included
         (include && (!name || !matches(include, name))) ||
@@ -124,36 +126,34 @@ export default {
         return vnode
       }
 
-      const {
-        cache,
-        keys
-      } = this
+      const { cache, keys } = this
       const key: ? string = vnode.key == null
         // same constructor may get registered as different local components
         // so cid alone is not enough (#3269)
         ?
         componentOptions.Ctor.cid + (componentOptions.tag ? `::${componentOptions.tag}` : '') :
         vnode.key
-      // 再次命中缓存
+
       if (cache[key]) {
-        // 直接取出缓存组件
+        // 再次命中缓存，直接取出缓存组件
         vnode.componentInstance = cache[key].componentInstance
         // make current key freshest
-        // keys命中的组件名移到数组末端
+        // keys 命中的组件名移到数组末端，这里使用 LRU 缓存策略
         remove(keys, key)
         keys.push(key)
       } else {
-        // 初次渲染时，将 vnode 缓存
+        // 初次渲染时，将 VNode 缓存
         cache[key] = vnode
         keys.push(key)
         // prune oldest entry
-        // 配置了 max 并且缓存的长度超过了 this.max，则要从缓存中删除第一个
+        // 配置了 max 并且缓存的长度超过了 this.max，则从缓存中删除第一个，即 keys[0]
+        // 并调用 $destroy 销毁组件实例
         if (this.max && keys.length > parseInt(this.max)) {
           pruneCacheEntry(cache, keys[0], keys, this._vnode)
         }
       }
 
-      // 为缓存组件打上标志
+      // 为被 keep-alive 包裹的缓存组件打上标志
       vnode.data.keepAlive = true
     }
 

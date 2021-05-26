@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>keep-alive</title>
+</head>
+<body>
+  <div id="app">
+    <button @click="changeTabs('child1')">child1</button>
+    <button @click="changeTabs('child2')">child2</button>
+    <keep-alive>
+      <component :is="chooseTabs">
+      </component>
+    </keep-alive>
+  </div>
+  
+  <script src="../dist/vue.js"></script>
+  <script>
+    const child1 = {
+      template: '<div><button @click="add">add</button><p>{{num}}</p></div>',
+      data() {
+          return {
+              num: 1
+          }
+      },
+      methods: {
+          add() {
+              this.num++
+          }
+      }
+    }
+
+    const child2 = {
+      template: '<div>child2</div>'
+    }
+
+    new Vue({
+      el: '#app',
+      components: {
+        child1,
+        child2,
+      },
+      data() {
+        return {
+          chooseTabs: 'child1',
+        }
+      },
+      methods: {
+        changeTabs(tab) {
+          this.chooseTabs = tab;
+        }
+      }
+    })
+  </script>
+</body>
+</html>

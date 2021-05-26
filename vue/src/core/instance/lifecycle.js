@@ -36,6 +36,10 @@ export function initLifecycle (vm: Component) {
   // locate first non-abstract parent
   let parent = options.parent  // 此时的 parent 其实是 activeInstance，也是父组件 vm 实例
   if (parent && !options.abstract) {
+    // 判断父组件是否是抽象组件
+    // 如果是抽象组件，就选取抽象组件的上一级作为父级，忽略与抽象组件和子组件之间的层级关系
+    // 主要是 keep-alive 包裹状态下
+    // keep-alive 会被定义为抽象组件，不会作为节点渲染到页面上
     while (parent.$options.abstract && parent.$parent) {
       parent = parent.$parent
     }
@@ -296,6 +300,7 @@ export function updateChildComponent (
   // Any static slot children from the parent may have changed during parent's
   // update. Dynamic scoped slots may also have changed. In such cases, a forced
   // update is necessary to ensure correctness.
+  // 组件内有插槽，那么标记 needsForceUpdate 为 true，代表需要强制更新
   const needsForceUpdate = !!(
     renderChildren ||               // has new static slots
     vm.$options._renderChildren ||  // has old static slots
@@ -338,6 +343,7 @@ export function updateChildComponent (
   updateComponentListeners(vm, listeners, oldListeners)
 
   // resolve slots + force update if has children
+  // 存在插槽，强制更新
   if (needsForceUpdate) {
     vm.$slots = resolveSlots(renderChildren, parentVnode.context)
     vm.$forceUpdate()
