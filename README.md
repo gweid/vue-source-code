@@ -1,12 +1,14 @@
-> 阅读 vue、vue-router、vuex 的一些记录
-
-vue 源码记录文档：[Vue](#Vue)
-
-vue-router 源码记录文档：[vue-router](./vueRouterReadme.md)
-
-vuex 源码记录文档：[vuex](./vuexReadme.md)
-
-记录文档仅为总结整理，对应源码目录里面有更详细的逐行注释。
+> **阅读 vue、vue-router、vuex 的一些记录**
+>
+> ​     vue 源码记录文档：[Vue](#Vue)
+>
+> ​     vue-router 源码记录文档：[vue-router](./vueRouterReadme.md)
+>
+> ​     vuex 源码记录文档：[vuex](./vuexReadme.md)
+>
+> 
+>
+> 记录文档仅为总结整理，对应源码目录里面有更详细的逐行注释。
 
 
 
