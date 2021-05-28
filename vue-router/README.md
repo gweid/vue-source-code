@@ -149,47 +149,132 @@ window.addEventListener('popstate', (event) => {
 
 ## 2、vue-router 的注册
 
+接下来，看看 vue-router 是怎么被注册到 vue 上的。
 
 
-### 2-1、Vue.use() 插件的安装
 
-通过 Vue.use 可以将一些功能或 API 入侵到 Vue 内部；在 Vue.use() 中，接收一个参数，如果这个参数有 install 方法，那么 Vue.use()会执行这个 install 方法，如果接收到的参数是一个函数，那么这个函数会作为 install 方法被执行
+平时在使用 `vue-router` 的时候通常需要在 `main.js` 中初始化 `Vue` 实例时将 `vue-router` 实例对象当做参数传入
 
+```js
+import Vue from 'vue'
+import Router from 'vue-router'
+import Home from './views/Home.vue'
+
+Vue.use(Router)
+
+export default new Router({
+  mode: 'history',
+  base: process.env.BASE_URL,
+  routes: [
+    {
+      path: '/',
+      name: 'home',
+      component: Home
+    },
+    {
+      path: '/about',
+      name: 'about',
+      component: () => import(/* webpackChunkName: "about" */ './views/About.vue')
+    }
+  ]
+})
 ```
-// 在 vue-router/src/install.js
 
-function install (Vue) {
+```js
+import Vue from 'vue'
+import router from './router'
 
+let a = new Vue({
+  router,
+  render: h => h(App)
+}).$mount('#app')
+```
+
+
+
+### 2-1、Vue.use()
+
+在使用的时候，会通过 `Vue.use(Router)` 的形式将 vue-router 当做插件安装到 vue 身上，来看看 vue 源码是怎么定义 Vue.use 的：
+
+```js
+// 用于安装 vue 插件：
+//   1、检查插件是否安装，如果安装了就不再安装
+//   2、如果没有没有安装，安装插件，执行插件的 install 方法
+export function initUse(Vue: GlobalAPI) {
+  // 接受一个 plugin 参数
+  Vue.use = function (plugin: Function | Object) {
+    // this 就是 Vue 本身
+    // _installedPlugins 存储了所有 plugin
+    // installedPlugins 与 this._installedPlugins 指向同一个数组
+    // 那么只要 installedPlugins 或者 this._installedPlugins 其中一个改变，肯定会影响另外一个
+    const installedPlugins =
+      this._installedPlugins || (this._installedPlugins = []);
+
+    // 如果 plugin 在 installedPlugins 已存在，那么返回 Vue（说明安装过，不再重复安装）
+    if (installedPlugins.indexOf(plugin) > -1) {
+      return this;
+    }
+
+    // additional parameters
+    const args = toArray(arguments, 1);
+    // 将 Vue 实例放到参数数组的首位，后面将这些参数传递给 install 方法
+    args.unshift(this);
+
+    if (typeof plugin.install === "function") {
+      // plugin 是对象形式，执行 plugin.install, args 的第一项就是 Vue
+      plugin.install.apply(plugin, args);
+    } else if (typeof plugin === "function") {
+      // plugin 是函数形式，直接将 plugin 本身当做 install 来执行
+      plugin.apply(null, args);
+    }
+
+    // 在插件列表 installedPlugins 和 vue._installedPlugins 中添加新安装的插件
+    // 因为上面说过 installedPlugins 和 vue._installedPlugins 指向同一个数组
+    installedPlugins.push(plugin);
+
+    // 返回 this（即 Vue）
+    return this;
+  };
 }
 ```
 
-```
-// 在 vue-router/src/index.js
+基本上，Vue.use 做的事：
 
-class VueRouter {
-    constructor(){
+- 检查插件是否安装，如果安装了就不再安装
 
-    }
+- 如果没有没有安装，安装插件，执行插件的 install 方法
+
+- 将已安装过的插件保存到 `vue._installedPlugins` 中
+
+
+
+### 2-2、install
+
+由 Vue.use 可知，`Vue` 注册插件其实就是在执行插件的 `install` 方法，那么 vue-router 也需要一个 install 方法
+
+> vue-router\src\index.js
+
+```js
+import { install } from './install'
+
+export default class VueRouter {
+  
 }
 
 VueRouter.install = install
 ```
 
+明显，定义了 VueRouter 类，并且往 VueRouter 类上挂载 install 方法，接下来看看这个 install
 
 
-### 2-2、install 函数
 
-install 函数是真正的 vue-router 的注册流程
+> vue-router\src\install.js
 
--   判断是否注册过，如果注册过不会再重新注册
--   \_Vue = Vue 将 Vue 保存，并导出 \_Vue，使 vue-router 在任何时候都能访问到 Vue
--   通过 Vue.mixin 全局混入，通过全局混入使得每一个组件执行 beforeCreate、destroyed 都会执行这里的 beforeCreate、destroyed 定义的逻辑；beforeCreate 中会判断是否在 new Vue 的时候传入 router。Vue.use() 会执行 install，会执行 install 的 beforeCreate 中的 this.\_router.init(this) [init 是 VueRouter 类上的方法]
--   定义了 Vue 原型上的 $router 与 $route
--   注册 router-view 和 router-link 这两个组件
+```js
+import View from './components/view'
+import Link from './components/link'
 
-```
-// install.js
-
+// 保存 Vue 的局部变量，并导出，使 vue-router 在任何地方都能访问到 Vue
 export let _Vue
 
 export function install (Vue) {
@@ -198,7 +283,8 @@ export function install (Vue) {
   // install.installed = true 代表已经注册过
   install.installed = true
 
-  // 因为在上面通过 export let _Vue 将 Vue 导出，使 vue-router 在任何时候都能访问到 Vue，所以将 Vue 保存到 _Vue
+  // 因为在上面通过 export let _Vue 将 Vue 导出，使 vue-router 在任何时候都能访问到 Vue
+  // 好处: 在其它模块中，可以导入这个 _Vue，这样既能访问到 Vue，又避免了将 Vue 做为依赖打包
   _Vue = Vue
 
   const isDef = v => v !== undefined
@@ -210,18 +296,20 @@ export function install (Vue) {
     }
   }
 
-  /**
-   * 通过 Vue.mixin 去做全局混入，通过全局混入使得每一个组件执行 beforeCreate、destroyed 都会执行这里的
-   * beforeCreate、destroyed 定义的逻辑
-   */
+  // 通过 Vue.mixin 去做全局混入，通过全局混入使得每一个组件
+  // 当组件实例化执行到 beforeCreate、destroyed 钩子时都会执行这里定义的逻辑
   Vue.mixin({
     beforeCreate () {
       // 判断是否在 new Vue 的时候是否把 router 传入
+      // 传进来了，会在 Vue.$options 上挂载有 router
       // new Vue({ el: 'app', router })
       if (isDef(this.$options.router)) {
-        this._routerRoot = this  // 将 Vue 赋值给 this._routerRoot
-        this._router = this.$options.router // 将传入的 router 赋值给 this._router
-        // 传入的 router 是通过 new VueRouter({mode: '', routes: [{}]}) 出来的，VueRouter 类身上有 init 方法
+        // 将 Vue 赋值给 this._routerRoot 
+        this._routerRoot = this
+        // 将传入的 router 赋值给 this._router
+        this._router = this.$options.router 
+        // 传入的 router 是通过 new VueRouter({mode: '', routes: [{}]}) 出来的
+        // VueRouter 类身上有 init 方法，主要是进行 VueRouter 的初始化
         this._router.init(this)
         // 将 _route 变成响应式的
         Vue.util.defineReactive(this, '_route', this._router.history.current)
@@ -235,25 +323,36 @@ export function install (Vue) {
     }
   })
 
-  // 定义了原型上的 $router 实例
+  // 通过 Object.defineProperty 代理的方式往 Vue 原型上加入 $router 实例
+  // 这样在使用的时候可以通过 this.$router 访问
   Object.defineProperty(Vue.prototype, '$router', {
     get () { return this._routerRoot._router }
   })
 
-  // // 定义了原型上的 $route 参数
+  // 通过 Object.defineProperty 代理的方式往 Vue 原型上加入 $route
+  // 这样在使用的时候可以通过 this.$route 访问
   Object.defineProperty(Vue.prototype, '$route', {
     get () { return this._routerRoot._route }
   })
 
-  // 注册 router-view 和 router-link 这两个组件
+  // 全局注册 router-view 和 router-link 这两个组件
   Vue.component('RouterView', View)
   Vue.component('RouterLink', Link)
 
+  // 设置路由组件的 beforeRouteEnter、beforeRouteLeave、beforeRouteUpdate 守卫的合并策略
   const strats = Vue.config.optionMergeStrategies
   // use the same hook merging strategy for route hooks
   strats.beforeRouteEnter = strats.beforeRouteLeave = strats.beforeRouteUpdate = strats.created
 }
+
 ```
+
+-   判断是否注册过，如果注册过不会再重新注册
+-   \_Vue = Vue 将 Vue 保存，并导出 \_Vue，使 vue-router 在任何时候都能访问到 Vue
+-   通过 Vue.mixin 全局混入，通过全局混入使得每一个组件执行 beforeCreate、destroyed 都会执行这里的 beforeCreate、destroyed 定义的逻辑；beforeCreate 中会判断是否在 new Vue 的时候是否传入 router，`new Vue({ el: 'app', router })`。当组件实例化执行到 beforeCreate 会调用 `this._router.init(this)` 进行 vue-router 的初始化。
+-   往 Vue 原型上注入 $router 与 $route，这样在使用的时候可以通过 this.$router、this.$route 的方式方便调用
+-   全局注册 router-view 和 router-link 这两个组件
+-   设置路由组件的 beforeRouteEnter、beforeRouteLeave、beforeRouteUpdate 守卫的合并策略
 
 
 
