@@ -157,12 +157,12 @@ window.addEventListener('popstate', (event) => {
 
 ```js
 import Vue from 'vue'
-import Router from 'vue-router'
+import VueRouter from 'vue-router'
 import Home from './views/Home.vue'
 
-Vue.use(Router)
+Vue.use(VueRouter)
 
-export default new Router({
+export default new VueRouter({
   mode: 'history',
   base: process.env.BASE_URL,
   routes: [
@@ -258,7 +258,9 @@ export function initUse(Vue: GlobalAPI) {
 import { install } from './install'
 
 export default class VueRouter {
-  
+  static install: () => void;
+
+  // ...
 }
 
 VueRouter.install = install
@@ -356,37 +358,37 @@ export function install (Vue) {
 
 
 
-## 3、VueRouter 对象
+## 3、VueRouter
 
 
 
-### 3-1、VueRouter 是一个类，在 new VueRouter 的时候实际上就是执行这个 VueRouter 类
+### 3-1、VueRouter 的实例化 new VueRouter 
 
-// const router = new VueRouter({
-// mode: 'hash',
-// routes: [
-// {
-// path: '/',
-// name: 'home',
-// component: Home
-// }
-// ]
-// })
+VueRouter 的实例化的过程就是 new VueRouter 执行构造器函数 constructor 的过程：
 
--   先根据 mode 来确定所选的模式，如果当前环境不支持 history 模式，会强制切换到 hash 模式
--   果当前环境不是浏览器环境，会切换到 abstract 模式下
+> vue-router\src\index.js
 
-```
-// vue-router/src/index.js
-
+```js
 export default class VueRouter {
   constructor (options: RouterOptions = {}) {
-    ...
+    this.app = null
+    this.apps = []
+    this.options = options
+    this.beforeHooks = []
+    this.resolveHooks = []
+    this.afterHooks = []
 
+    // 创建路由 matcher 对象
+    // 主要用来处理传进来的路由配置 routes 的，创建路由配置表匹配器
+    // new VueRouter({ routes: [{ path: '/', component: Home }] })
+    this.matcher = createMatcher(options.routes || [], this)
+
+    // new VueRouter 的时候是否传入 mode，没有默认使用 hash 模式
     let mode = options.mode || 'hash'
-    this.fallback = mode === 'history' && !supportsPushState && options.fallback !== false
 
-    // 如果当前环境不支持 history 模式，会被强制转换到 hash 模式
+    // 如果使用 history 模式，会做一层判断
+    // 判断当前环境支不支持 history 模式，不支持会被强制转换到 hash 模式（降级处理）
+    this.fallback = mode === 'history' && !supportsPushState && options.fallback !== false
     if (this.fallback) {
       mode = 'hash'
     }
@@ -395,8 +397,10 @@ export default class VueRouter {
     if (!inBrowser) {
       mode = 'abstract'
     }
+
     this.mode = mode
 
+    // 根据不同 mode，实例化不同 history 实例
     switch (mode) {
       case 'history':
         this.history = new HTML5History(this, options.base)
@@ -416,9 +420,13 @@ export default class VueRouter {
 }
 ```
 
+-   根据传进来的路由配置表 routes，创建路由配置表匹配器
+-   如果没有传入 mode，默认使用 hash 模式；如果当前环境不支持 history 模式，会强制切换到 hash 模式；如果当前环境不是浏览器环境，会切换到 abstract 模式下。
+-   根据不同 mode，实例化不同 history 实例
 
 
-### 3-2、VueRouter 的 init 函数
+
+### 3-2、VueRouter 的初始化 init
 
 -   存储当前 app（Vue 实例）到 apps，并且在 VueRouter 上挂载 app 属性
 -   transitionTo 对不同路由模式进行路由导航

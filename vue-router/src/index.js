@@ -51,20 +51,30 @@ export default class VueRouter {
     this.beforeHooks = []
     this.resolveHooks = []
     this.afterHooks = []
+
+    // 创建路由 matcher 对象
+    // 主要用来处理传进来的路由配置 routes 的，创建路由配置表匹配器
+    // new VueRouter({ routes: [{ path: '/', component: Home }] })
     this.matcher = createMatcher(options.routes || [], this)
 
+    // new VueRouter 的时候是否传入 mode，没有默认使用 hash 模式
     let mode = options.mode || 'hash'
+
+    // 如果使用 history 模式，会做一层判断
+    // 判断当前环境支不支持 history 模式，不支持会被强制转换到 hash 模式（降级处理）
     this.fallback = mode === 'history' && !supportsPushState && options.fallback !== false
-    // 如果当前环境不支持 history 模式，会被强制转换到 hash 模式
     if (this.fallback) {
       mode = 'hash'
     }
+
     // 不是浏览器环境，会切换到 abstract 模式
     if (!inBrowser) {
       mode = 'abstract'
     }
+
     this.mode = mode
 
+    // 根据不同 mode，实例化不同 history 实例
     switch (mode) {
       case 'history':
         this.history = new HTML5History(this, options.base)
