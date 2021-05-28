@@ -1,18 +1,157 @@
 # vue-router 源码阅读
 
-当前阅读的 vue-router 版本 3.1.6。
+当前阅读的 vue-router 版本 3.1.6。基本源码目录结构：
+
+```
+Vue-Router
+├── src                         源码目录
+│   ├── components              vue-router 提供的组件
+│   │   ├── link.js             <router-link /> 组件
+│   │   └── view.js             <router-view /> 组件
+│   ├── history                 路由的封装方式
+│   │   ├── abstract.js         非浏览器环境下的，抽象路由模式
+│   │   ├── base.js             定义 History 基类
+│   │   ├── hash.js             hash 模式，#
+│   │   └── html5.js            html5 history 模式
+│   ├── create-matcher.js       路由匹配规则
+│   ├── create-route-map.js     路由匹配规则
+│   ├── index.js                声明 VueRouter 构造函数，并导出
+│   ├── install.js              定义 VueRouter 通过插件安装到 Vue 上
+│   ├── util                    各种功能函数
+│   │   ├── async.js            
+│   │   ├── dom.js            
+│   │   ├── errors.js             
+│   │   ├── location.js
+│   │   ├── misc.js
+│   │   ├── params.js
+│   │   ├── path.js
+│   │   ├── push-state.js
+│   │   ├── query.js
+│   │   ├── resolve-components.js
+│   │   ├── route.js
+│   │   ├── scroll.js
+│   │   ├── state-key.js
+│   │   └── warn.js
+```
 
 
 
-## 1、vue-router
+## 1、前置知识
+
+在阅读 vue-router 源码之前，先来了解一下 hash 和 histroy 相关的知识。
 
 
 
-### 1-1、vue-router 的注册
+### 1-1、hash
 
 
 
-#### 1-1-1、Vue.use() 插件的安装
+#### 1-1-1、浏览器 url 中的 hash
+
+浏览器中 URL 的 hash，比如：
+
+```js
+http://www.example.com/#home
+```
+
+#后面的就是 url 的 hash，比如这里的 #home
+
+hash 的特点：hash 虽然出现在 URL 中，但不会被包括在 HTTP 请求中，对后端完全没有影响，因此改变 hash 不会重新加载页面。
+
+改变#后的部分，浏览器只会滚动到相应位置（如果存在该节点），不会重新加载网页。
+
+每一次改变#后的部分，都会在浏览器的访问历史中增加一个记录，使用浏览器"后退"按钮，就可以回到上一个位置。
+
+
+
+#### 1-2-2、读取 hash 值
+
+可以通过：
+
+```js
+window.location.hash
+```
+
+读取浏览器 url 中的 hash 值
+
+
+
+#### 1-1-3、监听 hash 变化
+
+可以通过 **window.onhashchange 事件** 监听浏览器 url 的 hash 值的变化：这是一个 HTML5 新增的事件，当 hash 值发生变化时，就会触发该事件
+
+```js
+window.addEventListener('hashchange', () => {
+   // 监听 hash 变化，读取最新的 hash 值
+   console.log(window.location.hash)
+})
+```
+
+
+
+### 1-2、history
+
+HTML5 为浏览器的 history 对象新增了两个方法：history.pushState() 和 history.replaceState()，用来在浏览历史中添加和修改记录。这两个方法都可以**修改浏览器的 url 地址而无须重新加载页面**。
+
+
+
+这两者的区别：
+
+- pushState：会在浏览器 history 栈中添加一个新的记录
+- replaceState：会在浏览器 history 栈中修改历史记录项而不是新建一个
+
+
+
+#### 1-2-1、pushState  用法
+
+```js
+window.history.pushState(state,title,url)
+```
+
+- state：需要保存的数据，这个数据在触发 popstate 事件时，可以在 event.state 里获取
+- title：标题，基本没用，一般传 null
+- url：设定新的历史纪录的 url。新的 url 与当前 url 的 origin 必须是一样的，否则会抛出错误。url可以是绝对路径，也可以是相对路径。如当前url是 https://www.baidu.com/a/ （注意，开启本地服务测试：127.0.0.1，不要使用 file:// 协议）
+  - 执行 history.pushState(null, null, './qq/')，变成 https://www.baidu.com/a/qq/
+  - 执行history.pushState(null, null, '/qq/')，变成 https://www.baidu.com/qq/
+
+使用实例：
+
+```js
+history.pushState({ page: 1 }, null, "?page=1")
+```
+
+
+
+#### 1-2-2、replaceState 使用
+
+```js
+window.history.replaceState(state,title,url)
+```
+
+参数与 pushState 的一样，不一样的地方是：replaceState 是修改当前历史纪录，而 pushState 是创建新的历史纪录
+
+
+
+#### 1-2-3、popstate 监听
+
+通过 popstate 进行监听：
+
+```js
+window.addEventListener('popstate', (event) => {
+  console.log('触发了 popstate')
+  console.log(event.state)
+})
+```
+
+注意：**仅仅调用 pushState 方法或 replaceState 方法，并不会触发该事件**，只有用户**点击浏览器后退和前进按钮时**，或者使用 js 调用history.back、history.forward、history.go 方法时才会触发
+
+
+
+## 2、vue-router 的注册
+
+
+
+### 2-1、Vue.use() 插件的安装
 
 通过 Vue.use 可以将一些功能或 API 入侵到 Vue 内部；在 Vue.use() 中，接收一个参数，如果这个参数有 install 方法，那么 Vue.use()会执行这个 install 方法，如果接收到的参数是一个函数，那么这个函数会作为 install 方法被执行
 
@@ -38,7 +177,7 @@ VueRouter.install = install
 
 
 
-#### 1-1-2、install 函数
+### 2-2、install 函数
 
 install 函数是真正的 vue-router 的注册流程
 
@@ -118,11 +257,11 @@ export function install (Vue) {
 
 
 
-### 1-2、VueRouter 对象
+## 3、VueRouter 对象
 
 
 
-#### 1-2-1、VueRouter 是一个类，在 new VueRouter 的时候实际上就是执行这个 VueRouter 类
+### 3-1、VueRouter 是一个类，在 new VueRouter 的时候实际上就是执行这个 VueRouter 类
 
 // const router = new VueRouter({
 // mode: 'hash',
@@ -180,7 +319,7 @@ export default class VueRouter {
 
 
 
-#### 1-2-2、VueRouter 的 init 函数
+### 3-2、VueRouter 的 init 函数
 
 -   存储当前 app（Vue 实例）到 apps，并且在 VueRouter 上挂载 app 属性
 -   transitionTo 对不同路由模式进行路由导航
@@ -236,7 +375,7 @@ class VueRouter {
 
 
 
-#### 1-2-3、HashHistory(即 hash 模式)
+### 3-3、HashHistory(即 hash 模式)
 
 大致流程
 
@@ -594,7 +733,7 @@ setupListeners () {
 
 
 
-#### 1-2-4、HTML5History(即 history 模式)
+### 3-4、HTML5History(即 history 模式)
 
 ```
 // index.js

@@ -26,7 +26,7 @@ import type { Matcher } from './create-matcher'
 //     }
 //   ]
 // })
-
+// 导出 VueRouter 类
 export default class VueRouter {
   static install: () => void;
   static version: string;
