@@ -2,9 +2,9 @@
 >
 > ​     vue 源码记录文档：[Vue](#Vue)
 >
-> ​     vue-router 源码记录文档：[vue-router](./vueRouterReadme.md)
+> ​     vue-router 源码记录文档：[vue-router](./vue-router/)
 >
-> ​     vuex 源码记录文档：[vuex](./vuexReadme.md)
+> ​     vuex 源码记录文档：[vuex](./vuex/)
 >
 > 
 >
