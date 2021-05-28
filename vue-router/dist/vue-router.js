@@ -1,13 +1,13 @@
 /*!
   * vue-router v3.1.6
-  * (c) 2020 Evan You
+  * (c) 2021 Evan You
   * @license MIT
   */
 (function (global, factory) {
   typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory() :
   typeof define === 'function' && define.amd ? define(factory) :
   (global = global || self, global.VueRouter = factory());
-}(this, function () { 'use strict';
+}(this, (function () { 'use strict';
 
   /*  */
 
@@ -307,6 +307,7 @@
       query = clone(query);
     } catch (e) {}
 
+    // 路由的信息
     var route = {
       name: location.name || (record && record.name),
       meta: (record && record.meta) || {},
@@ -320,6 +321,7 @@
     if (redirectedFrom) {
       route.redirectedFrom = getFullPath(redirectedFrom, stringifyQuery);
     }
+    // 通过 Object.freeze 定义的只读对象 route
     return Object.freeze(route)
   }
 
@@ -610,7 +612,7 @@
    * @return {!function(Object=, Object=)}
    */
   function compile (str, options) {
-    return tokensToFunction(parse(str, options))
+    return tokensToFunction(parse(str, options), options)
   }
 
   /**
@@ -640,14 +642,14 @@
   /**
    * Expose a method for transforming tokens into the path function.
    */
-  function tokensToFunction (tokens) {
+  function tokensToFunction (tokens, options) {
     // Compile all the tokens into regexps.
     var matches = new Array(tokens.length);
 
     // Compile all the patterns before compilation.
     for (var i = 0; i < tokens.length; i++) {
       if (typeof tokens[i] === 'object') {
-        matches[i] = new RegExp('^(?:' + tokens[i].pattern + ')$');
+        matches[i] = new RegExp('^(?:' + tokens[i].pattern + ')$', flags(options));
       }
     }
 
@@ -760,7 +762,7 @@
    * @return {string}
    */
   function flags (options) {
-    return options.sensitive ? '' : 'i'
+    return options && options.sensitive ? '' : 'i'
   }
 
   /**
@@ -1042,6 +1044,7 @@
         type: toTypes,
         required: true
       },
+      // 默认标签名
       tag: {
         type: String,
         default: 'a'
@@ -1051,11 +1054,17 @@
       replace: Boolean,
       activeClass: String,
       exactActiveClass: String,
+      ariaCurrentValue: {
+        type: String,
+        default: 'page'
+      },
+      // 默认绑定的事件
       event: {
         type: eventTypes,
         default: 'click'
       }
     },
+    // 默认创建一个 a 标签，同时为 a 标签绑定 click 事件
     render: function render (h) {
       var this$1 = this;
 
@@ -1096,6 +1105,9 @@
         ? classes[exactActiveClass]
         : isIncludedRoute(current, compareTarget);
 
+      var ariaCurrentValue = classes[exactActiveClass] ? this.ariaCurrentValue : null;
+
+      // 声明式导航其实真正还是调用 router.replace 或者 router.push 来完成
       var handler = function (e) {
         if (guardEvent(e)) {
           if (this$1.replace) {
@@ -1144,7 +1156,7 @@
 
       if (this.tag === 'a') {
         data.on = on;
-        data.attrs = { href: href };
+        data.attrs = { href: href, 'aria-current': ariaCurrentValue };
       } else {
         // find the first <a> child and apply listener and href
         var a = findAnchor(this.$slots.default);
@@ -1172,6 +1184,7 @@
 
           var aAttrs = (a.data.attrs = extend({}, a.data.attrs));
           aAttrs.href = href;
+          aAttrs['aria-current'] = ariaCurrentValue;
         } else {
           // doesn't have <a> child, apply listener to self
           data.on = on;
@@ -1182,19 +1195,25 @@
     }
   };
 
+  // 主要是对是否跳转做了判断
   function guardEvent (e) {
     // don't redirect with control keys
+    // 忽略带有功能键的点击
     if (e.metaKey || e.altKey || e.ctrlKey || e.shiftKey) { return }
     // don't redirect when preventDefault called
+    // 调用 preventDefault 时不重定向
     if (e.defaultPrevented) { return }
     // don't redirect on right click
+    // 忽略右击
     if (e.button !== undefined && e.button !== 0) { return }
     // don't redirect if `target="_blank"`
+    // 如果 `target="_blank"` 也不进行
     if (e.currentTarget && e.currentTarget.getAttribute) {
       var target = e.currentTarget.getAttribute('target');
       if (/\b_blank\b/i.test(target)) { return }
     }
     // this may be a Weex event which doesn't have this method
+    // 判断是否存在 `e.preventDefault`，在 weex 中没有这个方法
     if (e.preventDefault) {
       e.preventDefault();
     }
@@ -1219,9 +1238,12 @@
   var _Vue;
 
   function install (Vue) {
+    // 如果是多次注册，就会 return 不会进行重复的注册
     if (install.installed && _Vue === Vue) { return }
+    // install.installed = true 代表已经注册过
     install.installed = true;
 
+    // 因为在上面通过 export let _Vue 将 Vue 导出，使 vue-router 在任何时候都能访问到 Vue，所以将 Vue 保存到 _Vue
     _Vue = Vue;
 
     var isDef = function (v) { return v !== undefined; };
@@ -1233,12 +1255,21 @@
       }
     };
 
+    /**
+     * 通过 Vue.mixin 去做全局混入，通过全局混入使得每一个组件执行 beforeCreate、destroyed 都会执行这里的 
+     * beforeCreate、destroyed 定义的逻辑
+     */
     Vue.mixin({
       beforeCreate: function beforeCreate () {
+        // 判断是否在 new Vue 的时候是否把 router 传入
+        // new Vue({ el: 'app', router })
         if (isDef(this.$options.router)) {
-          this._routerRoot = this;
-          this._router = this.$options.router;
+          this._routerRoot = this;  // 将 Vue 赋值给 this._routerRoot 
+          // 将传入的 router 赋值给 this._router
+          this._router = this.$options.router; 
+          // 传入的 router 是通过 new VueRouter({mode: '', routes: [{}]}) 出来的，VueRouter 类身上有 init 方法
           this._router.init(this);
+          // 将 _route 变成响应式的
           Vue.util.defineReactive(this, '_route', this._router.history.current);
         } else {
           this._routerRoot = (this.$parent && this.$parent._routerRoot) || this;
@@ -1250,14 +1281,17 @@
       }
     });
 
+    // 定义了原型上的 $router 实例，并进行响应式监听
     Object.defineProperty(Vue.prototype, '$router', {
       get: function get () { return this._routerRoot._router }
     });
 
+    // 定义了原型上的 $route 参数, 并进行响应式监听
     Object.defineProperty(Vue.prototype, '$route', {
       get: function get () { return this._routerRoot._route }
     });
 
+    // 注册 router-view 和 router-link 这两个组件
     Vue.component('RouterView', View);
     Vue.component('RouterLink', Link);
 
@@ -1485,18 +1519,22 @@
     }
 
     function match (
-      raw,
-      currentRoute,
-      redirectedFrom
+      raw, // 目标 url
+      currentRoute, // 当前 url 对应的 route 对象
+      redirectedFrom // 重定向
     ) {
+      // 解析当前 url，得到 hash、path、query 和 name 等信息
       var location = normalizeLocation(raw, currentRoute, false, router);
       var name = location.name;
 
+      // 如果是命名路由
       if (name) {
+        // 获取路由记录
         var record = nameMap[name];
         {
           warn(record, ("Route with name '" + name + "' does not exist"));
         }
+        // 不存在记录，返回
         if (!record) { return _createRoute(null, location) }
         var paramNames = record.regex.keys
           .filter(function (key) { return !key.optional; })
@@ -1506,6 +1544,7 @@
           location.params = {};
         }
 
+        // 复制 currentRoute.params 到 location.params
         if (currentRoute && typeof currentRoute.params === 'object') {
           for (var key in currentRoute.params) {
             if (!(key in location.params) && paramNames.indexOf(key) > -1) {
@@ -1517,7 +1556,9 @@
         location.path = fillParams(record.path, location.params, ("named route \"" + name + "\""));
         return _createRoute(record, location, redirectedFrom)
       } else if (location.path) {
+        // 不是命名路由
         location.params = {};
+        // 这里会遍历 pathList，找到合适的 record，因此命名路由的 record 查找效率更高
         for (var i = 0; i < pathList.length; i++) {
           var path = pathList[i];
           var record$1 = pathMap[path];
@@ -1527,6 +1568,7 @@
         }
       }
       // no match
+      // 没有匹配到的情况
       return _createRoute(null, location)
     }
 
@@ -1614,6 +1656,7 @@
       return _createRoute(null, location)
     }
 
+    // _createRoute 根据 RouteRecord 执行相关的路由操作，最后返回Route对象
     function _createRoute (
       record,
       location,
@@ -1853,7 +1896,7 @@
         return false
       }
 
-      return window.history && 'pushState' in window.history
+      return window.history && typeof window.history.pushState === 'function'
     })();
 
   function pushState (url, replace) {
@@ -1866,8 +1909,10 @@
         // preserve existing history state as it could be overriden by the user
         var stateCopy = extend({}, history.state);
         stateCopy.key = getStateKey();
+        // replaceState
         history.replaceState(stateCopy, '', url);
       } else {
+        // pushState
         history.pushState({ key: setStateKey(genStateKey()) }, '', url);
       }
     } catch (e) {
@@ -2040,6 +2085,10 @@
     this.router = router;
     this.base = normalizeBase(base);
     // start with a route object that stands for "nowhere"
+    // START 是 通过 createRoute 创建出来的
+    // export const START = createRoute(null, {
+    // path: '/'
+    // })
     this.current = START;
     this.pending = null;
     this.ready = false;
@@ -2048,6 +2097,7 @@
     this.errorCbs = [];
   };
 
+  // 绑定路由 route 参数 更新回调函数
   History.prototype.listen = function listen (cb) {
     this.cb = cb;
   };
@@ -2067,6 +2117,7 @@
     this.errorCbs.push(errorCb);
   };
 
+  // 主要就是路径切换
   History.prototype.transitionTo = function transitionTo (
     location,
     onComplete,
@@ -2074,11 +2125,16 @@
   ) {
       var this$1 = this;
 
+    // 先定义 route 变量
+    // location 代表当前 hash 路径
+    // this.current = START， START 由 createRoute 创建出来的路由信息对象 route
     var route = this.router.match(location, this.current);
+    // 调用 this.confirmTransition，执行路由转换动作
     this.confirmTransition(
       route,
       function () {
-        this$1.updateRoute(route);
+        // ...跳转完成
+        this$1.updateRoute(route); // 更新 route
         onComplete && onComplete(route);
         this$1.ensureURL();
 
@@ -2107,7 +2163,9 @@
   History.prototype.confirmTransition = function confirmTransition (route, onComplete, onAbort) {
       var this$1 = this;
 
+    // this.current 由 createRoute 创建出来的路由信息对象 route
     var current = this.current;
+    // 定义中断处理
     var abort = function (err) {
       // after merging https://github.com/vuejs/vue-router/pull/2771 we
       // When the user navigates through history through back/forward buttons
@@ -2125,6 +2183,8 @@
       }
       onAbort && onAbort(err);
     };
+    // 同路由且 matched.length 相同
+    // matched: 是匹配到的路由记录的合集
     if (
       isSameRoute(route, current) &&
       // in the case the route map has been dynamically appended to
@@ -2142,16 +2202,22 @@
       var deactivated = ref.deactivated;
       var activated = ref.activated;
 
+    // 路由切换周期钩子队列
     var queue = [].concat(
       // in-component leave guards
+       // 得到即将被销毁组件的 beforeRouteLeave 钩子函数
       extractLeaveGuards(deactivated),
       // global before hooks
+      // 全局 router before hooks
       this.router.beforeHooks,
       // in-component update hooks
+      // 得到组件 updated 钩子
       extractUpdateHooks(updated),
       // in-config enter guards
+      // 将要更新的路由的 beforeEnter 钩子
       activated.map(function (m) { return m.beforeEnter; }),
       // async components
+      // 异步组件
       resolveAsyncComponents(activated)
     );
 
@@ -2188,6 +2254,7 @@
       }
     };
 
+    // 执行队列里的钩子
     runQueue(queue, iterator, function () {
       var postEnterCbs = [];
       var isValid = function () { return this$1.current === route; };
@@ -2215,6 +2282,7 @@
   History.prototype.updateRoute = function updateRoute (route) {
     var prev = this.current;
     this.current = route;
+    // 执行路由参数 route 更新
     this.cb && this.cb(route);
     this.router.afterHooks.forEach(function (hook) {
       hook && hook(route, prev);
@@ -2361,6 +2429,7 @@
 
   /*  */
 
+  // 这种模式下，初始化作的工作相比 hash 模式少了很多，只是调用基类构造函数以及初始化监听事件，不需要再做额外的工作
   var HTML5History = /*@__PURE__*/(function (History) {
     function HTML5History (router, base) {
       var this$1 = this;
@@ -2380,11 +2449,13 @@
 
         // Avoiding first `popstate` event dispatched in some browsers but first
         // history route not updated since async guard at the same time.
+        // 避免在有的浏览器中第一次加载路由就会触发 `popstate` 事件
         var location = getLocation(this$1.base);
         if (this$1.current === START && location === initLocation) {
           return
         }
 
+        // 执行跳转动作
         this$1.transitionTo(location, function (route) {
           if (supportsScroll) {
             handleScroll(router, route, current, true);
@@ -2407,6 +2478,7 @@
       var ref = this;
       var fromRoute = ref.current;
       this.transitionTo(location, function (route) {
+        // pushState 这里主要就是 history 的 replaceState 和 pushState
         pushState(cleanPath(this$1.base + route.fullPath));
         handleScroll(this$1.router, route, fromRoute, false);
         onComplete && onComplete(route);
@@ -2449,13 +2521,22 @@
 
   /*  */
 
+  // HashHistory 继承了 History 基类
   var HashHistory = /*@__PURE__*/(function (History) {
     function HashHistory (router, base, fallback) {
+      
+      // 调用基类构造器
       History.call(this, router, base);
+
       // check history fallback deeplinking
+      // 如果说是从 history 模式降级来的
+      // 需要做降级检查
       if (fallback && checkFallback(this.base)) {
+        // 如果降级且做了降级处理直接 return
         return
       }
+
+      // 保证 hash 是 / 开头
       ensureSlash();
     }
 
@@ -2503,6 +2584,7 @@
       this.transitionTo(
         location,
         function (route) {
+          // pushHash 主要就是对 location.hash
           pushHash(route.fullPath);
           handleScroll(this$1.router, route, fromRoute, false);
           onComplete && onComplete(route);
@@ -2545,26 +2627,35 @@
     return HashHistory;
   }(History));
 
+  // 降级检查
   function checkFallback (base) {
+    // 得到除去 base 的 真正的 location 的值
     var location = getLocation(base);
+
     if (!/^\/#/.test(location)) {
+      // 如果此时地址不是 /# 开头
+      // 需要做一次降级处理 降级为 hash 模式下应有的 /# 开头
       window.location.replace(cleanPath(base + '/#' + location));
       return true
     }
   }
 
+  // 保证 hash 是 / 开头
   function ensureSlash () {
+    // 拿到 hash 值
     var path = getHash();
+    // 以 / 开头，返回 true
     if (path.charAt(0) === '/') {
       return true
     }
+    // 替换成以 / 开头
     replaceHash('/' + path);
     return false
   }
 
   function getHash () {
-    // We can't use window.location.hash here because it's not
-    // consistent across browsers - Firefox will pre-decode it!
+    // 因为兼容性问题 这里没有直接使用 window.location.hash
+    // 因为 Firefox decode hash 值
     var href = window.location.href;
     var index = href.indexOf('#');
     // empty path
@@ -2594,6 +2685,7 @@
     return (base + "#" + path)
   }
 
+  // location.hash
   function pushHash (path) {
     if (supportsPushState) {
       pushState(getUrl(path));
@@ -2688,6 +2780,18 @@
 
 
 
+
+  // const router = new VueRouter({
+  //   mode: 'hash',
+  //   routes: [
+  //     {
+  //       path: '/',
+  //       name: 'home',
+  //       component: Home
+  //     }
+  //   ]
+  // })
+  // 导出 VueRouter 类
   var VueRouter = function VueRouter (options) {
     if ( options === void 0 ) options = {};
 
@@ -2701,9 +2805,11 @@
 
     var mode = options.mode || 'hash';
     this.fallback = mode === 'history' && !supportsPushState && options.fallback !== false;
+    // 如果当前环境不支持 history 模式，会被强制转换到 hash 模式
     if (this.fallback) {
       mode = 'hash';
     }
+    // 不是浏览器环境，会切换到 abstract 模式
     if (!inBrowser) {
       mode = 'abstract';
     }
@@ -2733,6 +2839,7 @@
     current,
     redirectedFrom
   ) {
+    // this.mather.match 最终返回的就是 Route 对象，这个在 create-matcher.js 中定义
     return this.matcher.match(raw, current, redirectedFrom)
   };
 
@@ -2749,6 +2856,7 @@
       "before creating root instance."
     );
 
+    // this._router.init(this) 可知，app 是当前 Vue 实例
     this.apps.push(app);
 
     // set up app destroyed handler
@@ -2764,17 +2872,24 @@
 
     // main app previously initialized
     // return as we don't need to set up new history listener
+    // 不会多次执行
     if (this.app) {
       return
     }
 
+    // 在 VueRouter 上挂载app属性
     this.app = app;
 
     var history = this.history;
 
+    // transitionTo 是进行路由导航的函数
     if (history instanceof HTML5History) {
+      // history 模式
       history.transitionTo(history.getCurrentLocation());
     } else if (history instanceof HashHistory) {
+      // hash 模式
+      // 在hash模式下会在 transitionTo 的回调中调用 setupListeners
+      // setupListeners 里会对 hashchange 事件进行监听
       var setupHashListener = function () {
         history.setupListeners();
       };
@@ -2785,6 +2900,7 @@
       );
     }
 
+    // 挂载了回调的 cb， 每次更新路由更新 _route
     history.listen(function (route) {
       this$1.apps.forEach(function (app) {
         app._route = route;
@@ -2792,6 +2908,7 @@
     });
   };
 
+  // 下面是路由的钩子函数 beforeEach、beforeResolve、afterEach、onReady、onError
   VueRouter.prototype.beforeEach = function beforeEach (fn) {
     return registerHook(this.beforeHooks, fn)
   };
@@ -2812,6 +2929,7 @@
     this.history.onError(errorCb);
   };
 
+  // 路由的方法 push、replace、go、back、forward
   VueRouter.prototype.push = function push (location, onComplete, onAbort) {
       var this$1 = this;
 
@@ -2914,6 +3032,7 @@
     return base ? cleanPath(base + '/' + path) : path
   }
 
+  // 路由身上加 install 函数，因为 路由是插件形式被 Vue.use()
   VueRouter.install = install;
   VueRouter.version = '3.1.6';
 
@@ -2923,4 +3042,5 @@
 
   return VueRouter;
 
-}));
+})));
+//# sourceMappingURL=vue-router.js.map
