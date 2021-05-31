@@ -23,7 +23,7 @@ export function install (Vue) {
     }
   }
 
-  // 通过 Vue.mixin 去做全局混入，通过全局混入使得每一个组件
+  // 通过 Vue.mixin 去做全局混入
   // 当组件实例化执行到 beforeCreate、destroyed 钩子时都会执行这里定义的逻辑
   Vue.mixin({
     beforeCreate () {
@@ -34,9 +34,10 @@ export function install (Vue) {
         // 将 Vue 赋值给 this._routerRoot 
         this._routerRoot = this
         // 将传入的 router 赋值给 this._router
-        this._router = this.$options.router 
         // 传入的 router 是通过 new VueRouter({mode: '', routes: [{}]}) 出来的
+        this._router = this.$options.router 
         // VueRouter 类身上有 init 方法，主要是进行 VueRouter 的初始化
+        // 将 this 当做参数，this 是 vue
         this._router.init(this)
         // 将 _route 变成响应式的
         Vue.util.defineReactive(this, '_route', this._router.history.current)

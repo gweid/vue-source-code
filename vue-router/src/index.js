@@ -55,6 +55,7 @@ export default class VueRouter {
     // 创建路由 matcher 对象
     // 主要用来处理传进来的路由配置 routes 的，创建路由配置表匹配器
     // new VueRouter({ routes: [{ path: '/', component: Home }] })
+    // 将 routes 配置数组和 VueRouter 类传进去
     this.matcher = createMatcher(options.routes || [], this)
 
     // new VueRouter 的时候是否传入 mode，没有默认使用 hash 模式
@@ -74,7 +75,8 @@ export default class VueRouter {
 
     this.mode = mode
 
-    // 根据不同 mode，实例化不同 history 实例
+    // 根据不同 mode，实例化不同 history 实例，并将 history 实例挂载到 VueRouter 类上的 history  属性中
+    // 上面会判断，如果不传 mode，mode 默认为 hash
     switch (mode) {
       case 'history':
         this.history = new HTML5History(this, options.base)
@@ -105,22 +107,28 @@ export default class VueRouter {
     return this.history && this.history.current
   }
 
+  // 路由初始化，初始化时 app 是 vue 实例
   init (app: any /* Vue component instance */) {
+    // 先判断有没有安装 vue-router
     process.env.NODE_ENV !== 'production' && assert(
       install.installed,
       `not installed. Make sure to call \`Vue.use(VueRouter)\` ` +
       `before creating root instance.`
     )
 
-    // this._router.init(this) 可知，app 是当前 Vue 实例
+    // 将各个组件实例保存到 this.apps 数组中
+    // 初始化时是 vue 根实例，后面是各个组件实例
     this.apps.push(app)
 
     // set up app destroyed handler
     // https://github.com/vuejs/vue-router/issues/2639
+    // 注册一个一次性的 destroyed 钩子
     app.$once('hook:destroyed', () => {
       // clean out app from this.apps array once destroyed
+      // 当组件实例销毁，
       const index = this.apps.indexOf(app)
       if (index > -1) this.apps.splice(index, 1)
+
       // ensure we still have a main app or null if no apps
       // we do not release the router so it can be reused
       if (this.app === app) this.app = this.apps[0] || null
@@ -128,27 +136,34 @@ export default class VueRouter {
 
     // main app previously initialized
     // return as we don't need to set up new history listener
-    // 不会多次执行
+    // VueRouter 上有 app（vue实例），不再执行后面逻辑
+    // 主要就是 VueRouter 初始化只进行一次
+    // beforeCreate 首次触发是在 Vue 根组件 <App /> 实例实例化的时候
+    // 所以 this.app 一直都是 vue 根实例
     if (this.app) {
       return
     }
 
-    // 在 VueRouter 上挂载app属性
+    // 首次触发 beforeCreate 也就是 Vue 根组件 <App /> 实例实例化的时候
+    // 就在 VueRouter 上挂载 app（vue实例） 属性，所以 this.app 一直都是 vue 根实例
     this.app = app
 
+    // 拿到 history 实例
     const history = this.history
 
     // transitionTo 是进行路由导航的函数
     if (history instanceof HTML5History) {
-      // history 模式
+      // 如果是 history 模式
+      // 使用 history.transitionTo 进行首次路由跳转
       history.transitionTo(history.getCurrentLocation())
     } else if (history instanceof HashHistory) {
-      // hash 模式
-      // 在hash模式下会在 transitionTo 的回调中调用 setupListeners
+      // 如果是 hash 模式
+      // 在 hash 模式下会在 transitionTo 的回调中调用 setupListeners
       // setupListeners 里会对 hashchange 事件进行监听
       const setupHashListener = () => {
         history.setupListeners()
       }
+      // 使用 history.transitionTo 进行首次路由跳转
       history.transitionTo(
         history.getCurrentLocation(),
         setupHashListener,
@@ -156,7 +171,7 @@ export default class VueRouter {
       )
     }
 
-    // 挂载了回调的 cb， 每次更新路由更新 _route
+    // 挂载了回调的 cb，每次更新路由时更新 app._route
     history.listen(route => {
       this.apps.forEach((app) => {
         app._route = route
@@ -164,23 +179,27 @@ export default class VueRouter {
     })
   }
 
-  // 下面是路由的钩子函数 beforeEach、beforeResolve、afterEach、onReady、onError
+  // 注册 beforeEach 钩子
   beforeEach (fn: Function): Function {
     return registerHook(this.beforeHooks, fn)
   }
 
+  // 注册 beforeResolve 钩子
   beforeResolve (fn: Function): Function {
     return registerHook(this.resolveHooks, fn)
   }
 
+  // 注册 afterEach 钩子
   afterEach (fn: Function): Function {
     return registerHook(this.afterHooks, fn)
   }
 
+  // 注册 onReady 钩子
   onReady (cb: Function, errorCb?: Function) {
     this.history.onReady(cb, errorCb)
   }
 
+  // 注册 onError 钩子
   onError (errorCb: Function) {
     this.history.onError(errorCb)
   }
@@ -269,7 +288,9 @@ export default class VueRouter {
     }
   }
 
+  // 动态添加路由
   addRoutes (routes: Array<RouteConfig>) {
+    // 通过 matcher 对象的 addRoutes 方法动态添加路由
     this.matcher.addRoutes(routes)
     if (this.history.current !== START) {
       this.history.transitionTo(this.history.getCurrentLocation())

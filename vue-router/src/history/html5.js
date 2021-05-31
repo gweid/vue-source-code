@@ -20,6 +20,8 @@ export class HTML5History extends History {
     }
 
     const initLocation = getLocation(this.base)
+
+    // 监听 popstate 事件
     window.addEventListener('popstate', e => {
       const current = this.current
 

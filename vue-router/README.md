@@ -312,6 +312,7 @@ export function install (Vue) {
         this._router = this.$options.router 
         // 传入的 router 是通过 new VueRouter({mode: '', routes: [{}]}) 出来的
         // VueRouter 类身上有 init 方法，主要是进行 VueRouter 的初始化
+        // 将 this 当做参数，this 是 vue
         this._router.init(this)
         // 将 _route 变成响应式的
         Vue.util.defineReactive(this, '_route', this._router.history.current)
@@ -400,7 +401,8 @@ export default class VueRouter {
 
     this.mode = mode
 
-    // 根据不同 mode，实例化不同 history 实例
+    // 根据不同 mode，实例化不同 history 实例，并将 history 实例挂载到 VueRouter 类上的 history  属性中
+    // 上面会判断，如果不传 mode，mode 默认为 hash
     switch (mode) {
       case 'history':
         this.history = new HTML5History(this, options.base)
@@ -420,49 +422,72 @@ export default class VueRouter {
 }
 ```
 
--   根据传进来的路由配置表 routes，创建路由配置表匹配器
+-   根据传进来的路由配置表 routes，createMatcher 创建路由配置表匹配器
 -   如果没有传入 mode，默认使用 hash 模式；如果当前环境不支持 history 模式，会强制切换到 hash 模式；如果当前环境不是浏览器环境，会切换到 abstract 模式下。
--   根据不同 mode，实例化不同 history 实例
+-   根据不同 mode，实例化不同 history 实例，并将 history 实例挂载到 VueRouter 类上的 history  属性中
 
 
 
 ### 3-2、VueRouter 的初始化 init
 
--   存储当前 app（Vue 实例）到 apps，并且在 VueRouter 上挂载 app 属性
--   transitionTo 对不同路由模式进行路由导航
--   history.listen 挂载了回调的 cb， 每次更新路由更新 \_route
+在前面 vue-router 的 install 的时候说过，当组件实例化执行到 beforeCreate 钩子时，会调用 `VueRouter.init` 进行路由初始化
 
-```
+> vue-router\src\index.js
+
+```js
 class VueRouter {
-  constructor() {
+  // ...
 
-  }
-
+  // 路由初始化，初始化时 app 是 vue 实例
   init (app: any /* Vue component instance */) {
+    // 先判断有没有安装 vue-router
+    process.env.NODE_ENV !== 'production' && assert(
+      install.installed,
+      `not installed. Make sure to call \`Vue.use(VueRouter)\` ` +
+      `before creating root instance.`
+    )
 
-    // this._router.init(this) 可知，app 是当前 Vue 实例
+    // 将实例保存到 this.apps 数组中
+    // 初始化时是 vue 实例，后面是各个组件实例
     this.apps.push(app)
 
+    // 注册一个一次性的 destroyed 钩子
+    app.$once('hook:destroyed', () => {
+      // 当组件实例销毁，
+      const index = this.apps.indexOf(app)
+      if (index > -1) this.apps.splice(index, 1)
+
+      if (this.app === app) this.app = this.apps[0] || null
+    })
+
+    // VueRouter 上有 app（vue实例），不再执行后面逻辑
+    // 主要就是 VueRouter 初始化只进行一次
+    // beforeCreate 首次触发是在 Vue 根组件 <App /> 实例实例化的时候
+    // 所以 this.app 一直都是 vue 根实例
     if (this.app) {
       return
     }
 
-    // 在 VueRouter 上挂载 app 属性
+    // 首次触发 beforeCreate 也就是 Vue 根组件 <App /> 实例实例化的时候
+    // 就在 VueRouter 上挂载 app（vue实例） 属性，所以 this.app 一直都是 vue 根实例
     this.app = app
 
+    // 拿到 history 实例
     const history = this.history
 
     // transitionTo 是进行路由导航的函数
     if (history instanceof HTML5History) {
-      // history 模式
+      // 如果是 history 模式
+      // 使用 history.transitionTo 进行首次路由跳转
       history.transitionTo(history.getCurrentLocation())
     } else if (history instanceof HashHistory) {
-      // hash 模式
-      // 在hash模式下会在 transitionTo 的回调中调用 setupListeners
+      // 如果是 hash 模式
+      // 在 hash 模式下会在 transitionTo 的回调中调用 setupListeners
       // setupListeners 里会对 hashchange 事件进行监听
       const setupHashListener = () => {
         history.setupListeners()
       }
+      // 使用 history.transitionTo 进行首次路由跳转
       history.transitionTo(
         history.getCurrentLocation(),
         setupHashListener,
@@ -470,7 +495,7 @@ class VueRouter {
       )
     }
 
-    // 挂载了回调的 cb， 每次更新路由更新 _route
+    // 挂载了回调的 cb，每次更新路由时更新 app._route
     history.listen(route => {
       this.apps.forEach((app) => {
         app._route = route
@@ -479,6 +504,105 @@ class VueRouter {
   }
 }
 ```
+
+-   首先会判断 vue-router 有没有注册
+-   将各个组件实例保存到 this.apps 数组中（初始化时是 vue 根实例，后面是各个组件实例）
+-   通过判断 this.app 有没有值来保证路由仅初始化一次，因为 init 是被全局 mixin 的，这就意味着每个组件的 beforeCreate 都会执行一次 init，此处通过this.app 是否存在保证路由初始化仅仅在根组件 `<App />` 上初始化一次，也就是说 this.app 保存的一直都是根实例
+-   进行首次路由跳转：判断是 history 还是 hash 模式，history.transitionTo 执行首次路由跳转
+-   history.listen 挂载了回调的 cb， 每次更新路由更新 \_route
+
+
+
+## 4、路由模式
+
+在 VueRouter 实例化的时候，会根据不同的 mode 创建不同的 history 实例，不同的 history  实例代表使用不同的路由模式。在 vue-router 中，路由模式一共三种，分别是：history、hash、abstract；其中 abstract 是非浏览器端的（服务端渲染），这里不分析。
+
+history 和 hash 路由模式实例，主要由下面的三个核心类实现：
+
+- 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### 3-3、路由配置表匹配器
+
+上面说过，会通过 `createMatcher ` 创建路由配置表匹配器
+
+```js
+class VueRouter {
+  constructor (options: RouterOptions = {}) {
+    // ...
+      
+    this.matcher = createMatcher(options.routes || [], this)
+  }
+}
+```
+
+```js
+new VueRouter({
+  mode: 'history',
+  routes: [
+    {
+      path: '/',
+      name: 'home',
+      component: Home
+    },
+    {
+      path: '/about',
+      name: 'about',
+      component: () => import(/* webpackChunkName: "about" */ './views/About.vue')
+    }
+  ]
+})
+```
+
+createMatcher 接受两个参数：
+
+- 一个是 `new VueRouter` 时传进来的路由配置数组 routes
+- 另外一个就是当前 VueRouter 类
 
 
 

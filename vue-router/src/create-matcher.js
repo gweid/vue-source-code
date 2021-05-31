@@ -13,12 +13,10 @@ export type Matcher = {
   addRoutes: (routes: Array<RouteConfig>) => void;
 };
 
-export function createMatcher (
-  routes: Array<RouteConfig>,
-  router: VueRouter
-): Matcher {
+export function createMatcher (routes: Array<RouteConfig>, router: VueRouter): Matcher {
   const { pathList, pathMap, nameMap } = createRouteMap(routes)
 
+  // 动态添加路由
   function addRoutes (routes) {
     createRouteMap(routes, pathList, pathMap, nameMap)
   }
