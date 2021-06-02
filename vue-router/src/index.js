@@ -83,8 +83,9 @@ export default class VueRouter {
         break
       case 'hash':
         // this.fallback：
-        //  当浏览器不支持 history.pushState 控制路由是否应该回退到 hash 模式。默认值为 true
-        //  可以在 new VueRouter 时可以手动传进来
+        //  当浏览器不支持 history.pushState 控制路由是否应该回退到 hash 模式。
+        //  可以在 new VueRouter 时可以手动传进来，会在上面进行判断
+        // this.fallback = mode === 'history' && !supportsPushState && options.fallback !== false
         this.history = new HashHistory(this, options.base, this.fallback)
         break
       case 'abstract':
@@ -97,11 +98,7 @@ export default class VueRouter {
     }
   }
 
-  match (
-    raw: RawLocation,
-    current?: Route,
-    redirectedFrom?: Location
-  ): Route {
+  match (raw: RawLocation,current?: Route,redirectedFrom?: Location): Route {
     // this.mather.match 最终返回的就是 Route 对象，这个在 create-matcher.js 中定义
     return this.matcher.match(raw, current, redirectedFrom)
   }

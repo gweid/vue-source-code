@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document</title>
+</head>
+<body>
+  <div id="app">
+    <div>{{msg}}</div>
+    <div @click="toTest">toTest</div>
+    <div @click="toTestA">toTestA</div>
+  </div>
+
+  <script src="../../vue/dist/vue.js"></script>
+  <script src="../dist/vue-router.js"></script>
+
+  <script>
+    const test = Vue.component('test', {
+      template: `<div>测试组件test</div>`
+    })
+    const testA = Vue.component('test-a', {
+      template: `<div>测试组件test-a</div>`
+    })
+
+    Vue.use(VueRouter)
+    const router = new VueRouter({
+      mode: 'history',
+      routes: [
+        {
+          path: '/test',
+          component: test
+        },
+        {
+          path: '/testA',
+          component: testA
+        }
+      ]
+    })
+    Vue.use(router)
+
+    new Vue({
+      el: '#app',
+      router,
+      data: {
+        msg: 'name'
+      },
+      methods: {
+        toTest() {
+          this.$router.push('/test')
+        },
+        toTestA() {
+          this.$router.push('/testA')
+        }
+      }
+    })
+  </script>
+</body>
+</html>

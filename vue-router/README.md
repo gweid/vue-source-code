@@ -363,7 +363,11 @@ export function install (Vue) {
 
 
 
-### 3-1、VueRouter 的实例化 new VueRouter 
+### 3-1、VueRouter 的实例化
+
+
+
+#### 3-1-1、new VueRouter 的过程
 
 VueRouter 的实例化的过程就是 new VueRouter 执行构造器函数 constructor 的过程：
 
@@ -425,9 +429,364 @@ export default class VueRouter {
 }
 ```
 
--   根据传进来的路由配置表 routes，createMatcher 创建路由配置表匹配器
+-   根据传进来的路由配置表 routes，createMatcher 创建路由配置表匹配器（下面路由跳转的时候再分析这个创建过程）
 -   如果没有传入 mode，默认使用 hash 模式；如果当前环境不支持 history 模式，会强制切换到 hash 模式；如果当前环境不是浏览器环境，会切换到 abstract 模式下。
 -   根据不同 mode，实例化不同 history 实例，并将 history 实例挂载到 VueRouter 类上的 history  属性中
+
+
+
+#### 3-1-2、创建路由匹配器
+
+```js
+this.matcher = createMatcher(options.routes || [], this)
+```
+
+这个就是在创建路由匹配器
+
+
+
+##### createMatcher 
+
+createMatcher 是创建匹配器的入口
+
+> vue-router\src\create-matcher.js
+
+```js
+function createMatcher (routes: Array<RouteConfig>, router: VueRouter): Matcher {
+  const { pathList, pathMap, nameMap } = createRouteMap(routes)
+
+  // 动态添加路由
+  function addRoutes (routes) {
+    createRouteMap(routes, pathList, pathMap, nameMap)
+  }
+
+  // 路由匹配
+  function match () {/.../}
+
+  function redirect () {/.../}
+
+  function alias () {/.../}
+
+  function _createRoute () {/.../}
+    
+  return {
+    match,
+    addRoutes
+  }
+}
+```
+
+createMatcher 主要的作用：
+
+- 调用 createRouteMap 拿到 pathList、pathMap、nameMap
+- 定义了 addRoutes 动态添加路由方法，定义了 match 路由匹配方法，还有一些其他方法，最后将 addRoutes 和 match 包裹在对象里面返回
+
+
+
+##### createRouteMap
+
+在上面的 createMatcher，会调用 createRouteMap 创建路由映射表
+
+> vue-router\src\create-route-map.js
+
+```js
+export function createRouteMap (
+  routes: Array<RouteConfig>,
+  oldPathList?: Array<string>,
+  oldPathMap?: Dictionary<RouteRecord>,
+  oldNameMap?: Dictionary<RouteRecord>
+): {
+  pathList: Array<string>,
+  pathMap: Dictionary<RouteRecord>,
+  nameMap: Dictionary<RouteRecord>
+} {
+
+  // 若旧的路由相关映射列表及 map 存在，则使用旧的初始化（借此实现添加路由功能）
+  // 用于存储 routes 所有的 path
+  const pathList: Array<string> = oldPathList || []
+  // 维护 path 与路由记录 RouteRecord 的映射
+  const pathMap: Dictionary<RouteRecord> = oldPathMap || Object.create(null)
+  // 维护 name 与路由记录 RouteRecord 的映射
+  const nameMap: Dictionary<RouteRecord> = oldNameMap || Object.create(null)
+
+  // 遍历路由对象，通过 addRouteRecord 创建路由记录并更新 pathList、pathMap、nameMap
+  routes.forEach(route => {
+    addRouteRecord(pathList, pathMap, nameMap, route)
+  })
+
+  // ensure wildcard routes are always at the end
+  // 确保通配路由在末尾，即 path: * 永远在最后
+  for (let i = 0, l = pathList.length; i < l; i++) {
+    if (pathList[i] === '*') {
+      pathList.push(pathList.splice(i, 1)[0])
+      l--
+      i--
+    }
+  }
+
+  // ...
+
+  return {
+    pathList,
+    pathMap,
+    nameMap
+  }
+}
+```
+
+- 先判断路由相关映射表是否已经存在，若存在则使用，否则新建
+
+- 遍历 routes，依次为每个 route 调用 addRouteRecord 生成一个路由记录 RouteRecord，并更新 pathList、pathMap、nameMap
+
+  - pathList：存储 routes 所有的 path
+  - pathMap：维护 path 与路由记录 RouteRecord 的映射
+  - nameMap：维护 name 与路由记录 RouteRecord 的映射
+
+  pathMap 和 nameMap 都是为了快速找到对应的路由记录 RouteRecord
+
+  可以看看如下 routes 生成的 pathList、pathMap、nameMap：
+
+  ```js
+  [
+      { path: '/', component: Home },
+      { path: '/foo', component: Foo ,
+        children:[
+        {
+          path:'child',
+          component:FooChild
+        }
+      ]},
+      { path: '/bar/:dynamic', component: Bar },
+  ]
+  ```
+
+  生成的 pathList、pathMap、nameMap：
+
+  ![](../imgs/img25.png)
+
+  - 由于没有命名路由，所以`nameMap`为空
+  - pathList 存储了所有 path，有个为空，其实是`/`，在`normalizePath`时被删除了
+  - pathMap 记录了每个 path 和路由记录 RouteRecord 的映射关系
+
+- 遍历 pathList，保证 `path: *` 的情况在最后
+
+路由记录的生成调用了 addRouteRecord 方法，下面来看看这个方法
+
+
+
+##### addRouteRecord
+
+addRouteRecord 生成一个路由记录 RouteRecord，并更新 pathList、pathMap、nameMap
+
+> vue-router\src\create-route-map.js
+
+```js
+// 添加路由记录，并更新对应的 pathList、pathMap、nameMap
+function addRouteRecord (
+  pathList: Array<string>,
+  pathMap: Dictionary<RouteRecord>,
+  nameMap: Dictionary<RouteRecord>,
+  route: RouteConfig,
+  parent?: RouteRecord,
+  matchAs?: string
+) {
+  // 拿到路由的路径和路由名
+  // routes = [{name: 'xxx', path: '/xx/yy'}]
+  const { path, name } = route
+
+  const pathToRegexpOptions: PathToRegexpOptions =
+    route.pathToRegexpOptions || {}
+
+  // 生成格式化后的 path，子路由会拼接上父路由的 path
+  const normalizedPath = normalizePath(path, parent, pathToRegexpOptions.strict)
+
+  // 匹配规则是否大小写敏感？(默认值：false)
+  if (typeof route.caseSensitive === 'boolean') {
+    pathToRegexpOptions.sensitive = route.caseSensitive
+  }
+
+  // 创建一条路由记录对象
+  const record: RouteRecord = {
+    path: normalizedPath, // 规范化后的路径
+    // 利用 path-to-regexp 包生成用来匹配 path 的增强正则对象，可以用来匹配动态路由
+    regex: compileRouteRegex(normalizedPath, pathToRegexpOptions),
+    components: route.components || { default: route.component },
+    instances: {}, // 保存router-view实例
+    name,
+    parent,
+    matchAs,
+    redirect: route.redirect, // 重定向的路由配置对象
+    beforeEnter: route.beforeEnter, // 路由独享守卫
+    meta: route.meta || {}, // 路由元信息
+    props:
+      route.props == null
+        ? {}
+        : route.components
+          ? route.props
+          : { default: route.props }
+  }
+
+  // 如果有子路由，递归子路由调用 addRouteRecord
+  if (route.children) {
+    // ...
+    route.children.forEach(child => {
+      const childMatchAs = matchAs
+        ? cleanPath(`${matchAs}/${child.path}`)
+        : undefined
+      addRouteRecord(pathList, pathMap, nameMap, child, record, childMatchAs)
+    })
+  }
+
+  // pathMap 中不存在当前路径，更新 pathList 和 pathMap
+  if (!pathMap[record.path]) {
+    // 将路径添加到 pathList 末尾
+    pathList.push(record.path)
+    // 将路由记录 record 加到 pathMap
+    pathMap[record.path] = record
+  }
+
+  // 处理路由别名
+  if (route.alias !== undefined) {
+    const aliases = Array.isArray(route.alias) ? route.alias : [route.alias]
+    for (let i = 0; i < aliases.length; ++i) {
+      const alias = aliases[i]
+      
+      // 检查别名和 path 是否重复
+      if (process.env.NODE_ENV !== 'production' && alias === path) {
+        warn(
+          false,
+          `Found an alias with the same value as the path: "${path}". You have to remove that alias. It will be ignored in development.`
+        )
+        // skip in dev to make it work
+        continue
+      }
+
+      // 生成别名路由配置对象
+      const aliasRoute = {
+        path: alias,
+        children: route.children
+      }
+
+      // 添加别名路由记录
+      addRouteRecord(
+        pathList,
+        pathMap,
+        nameMap,
+        aliasRoute,
+        parent,
+        record.path || '/' // matchAs
+      )
+    }
+  }
+
+  // 处理命名路由
+  if (name) {
+    if (!nameMap[name]) {
+      // 更新 nameMap
+      nameMap[name] = record
+    } else if (process.env.NODE_ENV !== 'production' && !matchAs) {
+      // ...
+    }
+  }
+}
+```
+
+addRouteRecord 主要的作用：
+
+- normalizePath 生成格式化后的 path，子路由会拼接上父路由的 path
+- 匹配规则是否大小写敏感？(默认值：false)
+- 创建一条路由记录对象
+- 处理嵌套子路由，递归生成子路由记录
+- 更新 pathList 和 pathMap
+- 处理路由别名，生成别名路由记录
+- 处理命名路由，更新 nameMap
+
+
+
+**嵌套路由生成的路由映射表**
+
+```js
+[
+    {
+      path: '/parent',
+      component: Parent,
+      children: [
+        { path: 'foo', component: Foo }, 
+      ]
+    }
+]
+```
+
+生成了：
+
+![](../imgs/img26.png)
+
+
+
+**别名路由记录**
+
+```js
+// 处理路由别名
+  if (route.alias !== undefined) {
+    // 路由别名支持单别名和多别名
+    //   { path: '/root', component: Root, alias: '/root-alias' }
+    //   { path: '/root', component: Root, alias: ['/root-alias', 'root'] }
+    // 统一转换成数组形式
+    const aliases = Array.isArray(route.alias) ? route.alias : [route.alias]
+
+    // 遍历路由别名数组
+    for (let i = 0; i < aliases.length; ++i) {
+      const alias = aliases[i]
+
+      // 检查别名和 path 是否重复
+      if (process.env.NODE_ENV !== 'production' && alias === path) {
+        warn(
+          false,
+          `Found an alias with the same value as the path: "${path}". You have to remove that alias. It will be ignored in development.`
+        )
+        // skip in dev to make it work
+        continue
+      }
+
+      // 生成别名路由配置对象
+      const aliasRoute = {
+        path: alias,
+        children: route.children
+      }
+
+      // 添加别名路由记录
+      // 这里是对别名路由单独生成一份路由对象，也就是说：
+      // 一旦配置了别名，路由会有两份路由对象，一份是正常的，一份是带有别名的
+      addRouteRecord(
+        pathList,
+        pathMap,
+        nameMap,
+        aliasRoute,
+        parent,
+        record.path || '/' // matchAs
+      )
+    }
+  }
+```
+
+- 对单别名`'/root-alias'`和多别名 `['/root-alias', 'root']` 统一处理成数组形式
+- 遍历路由别名，先检查别名和路径 path 是否重复，然后单独为别名路由生成一份带别名的路由记录
+
+```js
+[
+    { path: '/root', component: Root, alias: '/root-alias' },
+    { path: '/home', component: Home,
+      children: [
+        { path: 'bar', component: Bar, alias: 'bar-alias' },
+        { path: 'baz', component: Baz, alias: ['/baz', 'baz-alias'] }        
+      ]
+    }
+]
+```
+
+生成了：
+
+![](../imgs/img27.png)
 
 
 
@@ -656,9 +1015,41 @@ History 基类做的事：
 
   ```js
   // the starting route that represents the initial state
-  export const START = createRoute(null, {
+  const START = createRoute(null, {
     path: '/'
   })
+  
+  // 创建一个路由信息对象
+  function createRoute (
+    record: ?RouteRecord,
+    location: Location,
+    redirectedFrom?: ?Location,
+    router?: VueRouter
+  ): Route {
+    const stringifyQuery = router && router.options.stringifyQuery
+  
+    let query: any = location.query || {}
+    try {
+      query = clone(query)
+    } catch (e) {}
+  
+    // 路由的信息对象
+    const route: Route = {
+      name: location.name || (record && record.name),
+      meta: (record && record.meta) || {},
+      path: location.path || '/',
+      hash: location.hash || '',
+      query,
+      params: location.params || {},
+      fullPath: getFullPath(location, stringifyQuery),
+      matched: record ? formatMatch(record) : []
+    }
+    if (redirectedFrom) {
+      route.redirectedFrom = getFullPath(redirectedFrom, stringifyQuery)
+    }
+    // 通过 Object.freeze 定义的只读对象 route
+    return Object.freeze(route)
+  }
   ```
 
 - 初始化了路由跳转时的下个路由，默认为`null`；在路由跳转时，`this.pending`代表的是`to`
@@ -968,87 +1359,6 @@ export class HashHistory extends History {
       }
     }
     ```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-### 3-3、路由配置表匹配器
-
-上面说过，会通过 `createMatcher ` 创建路由配置表匹配器
-
-```js
-class VueRouter {
-  constructor (options: RouterOptions = {}) {
-    // ...
-      
-    this.matcher = createMatcher(options.routes || [], this)
-  }
-}
-```
-
-```js
-new VueRouter({
-  mode: 'history',
-  routes: [
-    {
-      path: '/',
-      name: 'home',
-      component: Home
-    },
-    {
-      path: '/about',
-      name: 'about',
-      component: () => import(/* webpackChunkName: "about" */ './views/About.vue')
-    }
-  ]
-})
-```
-
-createMatcher 接受两个参数：
-
-- 一个是 `new VueRouter` 时传进来的路由配置数组 routes
-- 另外一个就是当前 VueRouter 类
 
 
 
@@ -1410,52 +1720,6 @@ setupListeners () {
 
 
 
-### 3-4、HTML5History(即 history 模式)
-
-```
-// index.js
-
-this.history = new HTML5History(this, options.base)
-
-// history/html5.js
-export class HTML5History extends History {
-  constructor (router: Router, base: ?string) {
-    super(router, base)
-
-    const expectScroll = router.options.scrollBehavior
-    const supportsScroll = supportsPushState && expectScroll
-
-    if (supportsScroll) {
-      setupScroll()
-    }
-
-    const initLocation = getLocation(this.base)
-    window.addEventListener('popstate', e => {
-      const current = this.current
-
-      // Avoiding first `popstate` event dispatched in some browsers but first
-      // history route not updated since async guard at the same time.
-      // 避免在有的浏览器中第一次加载路由就会触发 `popstate` 事件
-      const location = getLocation(this.base)
-      if (this.current === START && location === initLocation) {
-        return
-      }
-
-      // 执行跳转动作
-      this.transitionTo(location, route => {
-        if (supportsScroll) {
-          handleScroll(router, route, current, true)
-        }
-      })
-    })
-  }
-}
-```
-
-在这种模式下，初始化作的工作相比 hash 模式少了很多，只是调用基类构造函数以及初始化监听事件
-
-
-
 ## 5、路由跳转
 
 路由的第一次跳转是在 VueRouter 初始化的时候：
@@ -1503,6 +1767,10 @@ class VueRouter {
 
 ### 5-1、history 模式的路由跳转
 
+
+
+#### 5-1-1、transitionTo 开始跳转
+
 ```js
 history.transitionTo(history.getCurrentLocation())
 ```
@@ -1531,6 +1799,10 @@ class HTML5History extends History {
 
 ```js
 class History {
+  constructor (router: Router, base: ?string) {
+    this.router = router
+    // ...
+  }
   // ...
 
   /**
@@ -1543,7 +1815,7 @@ class History {
   transitionTo (location: RawLocation, onComplete?: Function, onAbort?: Function) {
     // 调用 router 实例的 match 方法，从路由映射表中取到将要跳转到的路由对象 route，也就是执行路由匹配
     //   location 代表当前 hash 路径
-    //   this.current = START， START：当前指向的 route 对象；即 from
+    //   this.current = START， START：当前指向的路由对象；即 from 的路由对象
     const route = this.router.match(location, this.current)
 
     // 调用 this.confirmTransition，执行路由转换动作
@@ -1594,7 +1866,185 @@ transitionTo 接受三个参数：
 
 
 
-#### 5-1-1、路由匹配的过程
+#### 5-1-2、进行路由匹配
+
+上面知道，在路由跳转之前先调用 `this.router.match` 进行路由匹配，调用的是 router 实例的 match 方法
+
+> vue-router\src\index.js
+
+```js
+class VueRouter {
+  constructor (options: RouterOptions = {}) {
+    this.matcher = createMatcher(options.routes || [], this)
+    // ...
+  }
+
+  match (raw: RawLocation,current?: Route,redirectedFrom?: Location): Route {
+    return this.matcher.match(raw, current, redirectedFrom)
+  }
+}
+```
 
 
+
+可以看到 `router.match` 实际上是调用了 `router.matcher.match`，matcher 路由匹配器对象由 createMatcher 创建，【可以查看 3-1-2 节的路由匹配器创建的过程】，createMatcher 返回了 match 方法
+
+> vue-router\src\create-matcher.js
+
+```js
+function createMatcher (routes: Array<RouteConfig>, router: VueRouter): Matcher {
+  // 创建路由映射表
+  const { pathList, pathMap, nameMap } = createRouteMap(routes)
+
+  // 路由匹配
+  function match (
+    raw: RawLocation, // 目标 url
+    currentRoute?: Route, // 当前 url 对应的 route 路由对象
+    redirectedFrom?: Location // 重定向
+  ): Route {
+    // 解析当前 url、路由对象，得到包含 hash、path、query 和 name 等信息对象 location
+    const location = normalizeLocation(raw, currentRoute, false, router)
+    const { name } = location
+
+    // 如果是命名路由
+    if (name) {
+      // 获取路由记录
+      const record = nameMap[name]
+      if (process.env.NODE_ENV !== 'production') {
+        warn(record, `Route with name '${name}' does not exist`)
+      }
+      // 找不到匹配的路由记录，创建一个没有路由记录的 Route 返回
+      if (!record) return _createRoute(null, location)
+
+      // 获取动态路由参数名
+      const paramNames = record.regex.keys
+        .filter(key => !key.optional)
+        .map(key => key.name)
+
+      // location 对象没有 params，创建，用来存储动态路由参数的值
+      if (typeof location.params !== 'object') {
+        location.params = {}
+      }
+
+      // 提取当前 Route 中符合动态路由参数名的值赋值给 location 的 params
+      // currentRoute：当前 url 对应的 route 路由对象
+      if (currentRoute && typeof currentRoute.params === 'object') {
+        for (const key in currentRoute.params) {
+          if (!(key in location.params) && paramNames.indexOf(key) > -1) {
+            location.params[key] = currentRoute.params[key]
+          }
+        }
+      }
+
+      location.path = fillParams(record.path, location.params, `named route "${name}"`)
+
+      // 创建 Route（注意与路由记录的差别），返回
+      return _createRoute(record, location, redirectedFrom)
+    } else if (location.path) {
+      // 不是命名路由，而是路径模式
+      location.params = {}
+      // 这里会遍历 pathList，因此命名路由的 record 查找效率更高
+      for (let i = 0; i < pathList.length; i++) {
+        const path = pathList[i]
+        const record = pathMap[path]
+        if (matchRoute(record.regex, location.path, location.params)) {
+          // 找到匹配的路由记录 record，生成对应 Route，返回
+          return _createRoute(record, location, redirectedFrom)
+        }
+      }
+    }
+
+    // name、path 都没有匹配到的情况，创建一个没有路由记录的 Route 返回
+    return _createRoute(null, location)
+  }
+
+  return {
+    match,
+    addRoutes
+  }
+}
+```
+
+match 的逻辑：
+
+- match 接受三个参数
+  - raw：需要匹配的目标 url
+  - currentRoute：当前 url 对应的 route 对象
+  - redirectedFrom：代表从哪个地址重定向过来的
+- 解析当前 url、路由对象，得到包含 hash、path、query 和 name 等信息对象 location
+- 如果 name 存在，判断是否能通过 name 在 nameMap 中找到对应的路由记录 RouteRecord
+  - 如果找到，根据路由记录创建一个 Route 返回
+  - 没有找到，创建一个没有路由记录的 Route 返回
+- 如果 name 不存在，判断 path 存不存在
+  - 存在，根据 pathList、pathMap 找到匹配的路由记录，然后利用路由记录创建一个 Route 返回
+- name、path 都不存在，创建一个没有路由记录的 Route 返回
+
+
+
+**\_createRoute**
+
+上面通过 `_createRoute` 来创建 Route 对象
+
+> vue-router\src\create-matcher.js
+
+```js
+// _createRoute 根据 RouteRecord 执行相关的路由操作，最后返回Route对象
+function _createRoute (record: ?RouteRecord,location: Location,redirectedFrom?: Location): Route {
+    if (record && record.redirect) {
+      return redirect(record, redirectedFrom || location)
+    }
+    if (record && record.matchAs) {
+      return alias(record, location, record.matchAs)
+    }
+    return createRoute(record, location, redirectedFrom, router)
+}
+```
+
+`_createRoute` 接收三个参数：
+
+- record：路由记录
+- location：目标地址
+- redirectedFrom：重定向的来源地址，只在发生重定向时才会有值
+
+对于重定向路由和别名路由会单独处理，其余的调用 
+
+
+
+**createRoute**
+
+> vue-router\src\util\route.js
+
+```js
+// 创建一个路由信息对象
+export function createRoute (
+  record: ?RouteRecord,
+  location: Location,
+  redirectedFrom?: ?Location,
+  router?: VueRouter
+): Route {
+  const stringifyQuery = router && router.options.stringifyQuery
+
+  let query: any = location.query || {}
+  try {
+    query = clone(query)
+  } catch (e) {}
+
+  // 路由的信息对象
+  const route: Route = {
+    name: location.name || (record && record.name),
+    meta: (record && record.meta) || {},
+    path: location.path || '/',
+    hash: location.hash || '',
+    query,
+    params: location.params || {},
+    fullPath: getFullPath(location, stringifyQuery),
+    matched: record ? formatMatch(record) : []
+  }
+  if (redirectedFrom) {
+    route.redirectedFrom = getFullPath(redirectedFrom, stringifyQuery)
+  }
+  // 通过 Object.freeze 定义的只读对象 route
+  return Object.freeze(route)
+}
+```
 

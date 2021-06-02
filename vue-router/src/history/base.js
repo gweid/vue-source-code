@@ -71,14 +71,14 @@ export class History {
   /**
    * 路径切换
    * 接收三个参数：
-   *   location：跳转的路径，必传
+   *   location：跳转的路径，必传，可以是 '/user'，也可以是: { path: '', name: '', params: {} }
    *   onComplete：跳转成功回调，在路由跳转成功时调用
    *   onAbort：是跳转失败(取消)回调，在路由被取消时调用
    */
   transitionTo (location: RawLocation, onComplete?: Function, onAbort?: Function) {
     // 调用 router 实例的 match 方法，从路由映射表中取到将要跳转到的路由对象 route，也就是执行路由匹配
     //   location 代表当前 hash 路径
-    //   this.current = START， START：当前指向的 route 对象；即 from
+    //   this.current = START， START：当前指向的路由对象；即 from 的路由对象
     const route = this.router.match(location, this.current)
 
     // 调用 this.confirmTransition，执行路由转换动作
