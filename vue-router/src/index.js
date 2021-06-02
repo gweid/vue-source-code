@@ -82,6 +82,9 @@ export default class VueRouter {
         this.history = new HTML5History(this, options.base)
         break
       case 'hash':
+        // this.fallback：
+        //  当浏览器不支持 history.pushState 控制路由是否应该回退到 hash 模式。默认值为 true
+        //  可以在 new VueRouter 时可以手动传进来
         this.history = new HashHistory(this, options.base, this.fallback)
         break
       case 'abstract':
@@ -154,6 +157,7 @@ export default class VueRouter {
     // transitionTo 是进行路由导航的函数
     if (history instanceof HTML5History) {
       // 如果是 history 模式
+      // 先使用 history.getCurrentLocation() 获取到需要跳转的路径
       // 使用 history.transitionTo 进行首次路由跳转
       history.transitionTo(history.getCurrentLocation())
     } else if (history instanceof HashHistory) {

@@ -7,18 +7,22 @@ import { START } from '../util/route'
 import { setupScroll, handleScroll } from '../util/scroll'
 import { pushState, replaceState, supportsPushState } from '../util/push-state'
 
-// 这种模式下，初始化作的工作相比 hash 模式少了很多，只是调用基类构造函数以及初始化监听事件，不需要再做额外的工作
+// 这种模式下，初始化作的工作相比 hash 模式少了很多
+// 只是调用基类构造函数以及初始化监听事件，不需要再做额外的工作
 export class HTML5History extends History {
   constructor (router: Router, base: ?string) {
+    // 调用基类构造器
     super(router, base)
 
+    // 判断是否需要支持路由滚动行为
     const expectScroll = router.options.scrollBehavior
     const supportsScroll = supportsPushState && expectScroll
-
+    // 若支持路由滚动行为，初始化 scroll 相关逻辑
     if (supportsScroll) {
       setupScroll()
     }
 
+    // 初始化的时候，获取初始的路径
     const initLocation = getLocation(this.base)
 
     // 监听 popstate 事件
@@ -33,7 +37,7 @@ export class HTML5History extends History {
         return
       }
 
-      // 执行跳转动作
+      // 监听到路由发生变化，执行跳转
       this.transitionTo(location, route => {
         if (supportsScroll) {
           handleScroll(router, route, current, true)
@@ -42,10 +46,12 @@ export class HTML5History extends History {
     })
   }
 
+  // 定义 history 模式的 go
   go (n: number) {
     window.history.go(n)
   }
 
+  // 定义 history 模式的 push
   push (location: RawLocation, onComplete?: Function, onAbort?: Function) {
     const { current: fromRoute } = this
     this.transitionTo(location, route => {
@@ -56,6 +62,7 @@ export class HTML5History extends History {
     }, onAbort)
   }
 
+  // 定义 history 模式的 replace
   replace (location: RawLocation, onComplete?: Function, onAbort?: Function) {
     const { current: fromRoute } = this
     this.transitionTo(location, route => {
@@ -72,6 +79,8 @@ export class HTML5History extends History {
     }
   }
 
+  // 获取当前路径(域名端口之后的路径)
+  // 例如：http://127.0.0.0.1:9000/user/info，得到的是 /user/info
   getCurrentLocation (): string {
     return getLocation(this.base)
   }

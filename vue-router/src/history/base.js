@@ -33,14 +33,15 @@ export class History {
 
   constructor (router: Router, base: ?string) {
     this.router = router
+    // 格式化 base 基础路径，保证 base 是以 / 开头，默认返回 /
     this.base = normalizeBase(base)
     // start with a route object that stands for "nowhere"
     // START 是 通过 createRoute 创建出来的
     // export const START = createRoute(null, {
     //   path: '/'
     // })
-    this.current = START
-    this.pending = null
+    this.current = START // 当前指向的 route 对象，默认为 START；即 from
+    this.pending = null // 记录将要跳转的 route；即 to
     this.ready = false
     this.readyCbs = []
     this.readyErrorCbs = []
@@ -67,22 +68,26 @@ export class History {
     this.errorCbs.push(errorCb)
   }
 
-  // 主要就是路径切换
-  transitionTo (
-    location: RawLocation,
-    onComplete?: Function,
-    onAbort?: Function
-  ) {
-    // 先定义 route 变量
-    // location 代表当前 hash 路径
-    // this.current = START， START 由 createRoute 创建出来的路由信息对象 route
+  /**
+   * 路径切换
+   * 接收三个参数：
+   *   location：跳转的路径，必传
+   *   onComplete：跳转成功回调，在路由跳转成功时调用
+   *   onAbort：是跳转失败(取消)回调，在路由被取消时调用
+   */
+  transitionTo (location: RawLocation, onComplete?: Function, onAbort?: Function) {
+    // 调用 router 实例的 match 方法，从路由映射表中取到将要跳转到的路由对象 route，也就是执行路由匹配
+    //   location 代表当前 hash 路径
+    //   this.current = START， START：当前指向的 route 对象；即 from
     const route = this.router.match(location, this.current)
+
     // 调用 this.confirmTransition，执行路由转换动作
     this.confirmTransition(
       route,
       () => {
-        // ...跳转完成
+        // 跳转完成
         this.updateRoute(route) // 更新 route
+        // 参数有传 onComplete，调用 onComplete 回调函数
         onComplete && onComplete(route)
         this.ensureURL()
 
@@ -95,7 +100,9 @@ export class History {
         }
       },
       err => {
+        // 报错
         if (onAbort) {
+          // 参数有传 onAbort，调用 onAbort 回调函数处理错误
           onAbort(err)
         }
         if (err && !this.ready) {
@@ -108,9 +115,11 @@ export class History {
     )
   }
 
+  // 执行路由转换动作
   confirmTransition (route: Route, onComplete: Function, onAbort?: Function) {
-    // this.current 由 createRoute 创建出来的路由信息对象 route
+    // this.current = START， START：当前指向的 route 对象；即 from
     const current = this.current
+
     // 定义中断处理
     const abort = err => {
       // after merging https://github.com/vuejs/vue-router/pull/2771 we
@@ -129,6 +138,7 @@ export class History {
       }
       onAbort && onAbort(err)
     }
+
     // 同路由且 matched.length 相同
     // matched: 是匹配到的路由记录的合集
     if (
@@ -222,6 +232,7 @@ export class History {
     })
   }
 
+  // 更新路由参数 route
   updateRoute (route: Route) {
     const prev = this.current
     this.current = route
@@ -234,6 +245,7 @@ export class History {
 }
 
 function normalizeBase (base: ?string): string {
+  // 没有 base，默认返回 /
   if (!base) {
     if (inBrowser) {
       // respect <base> tag
@@ -245,7 +257,8 @@ function normalizeBase (base: ?string): string {
       base = '/'
     }
   }
-  // make sure there's the starting slash
+
+  // 保证 base 是 / 开头
   if (base.charAt(0) !== '/') {
     base = '/' + base
   }

@@ -408,6 +408,9 @@ export default class VueRouter {
         this.history = new HTML5History(this, options.base)
         break
       case 'hash':
+        // this.fallback：
+        //  当浏览器不支持 history.pushState 控制路由是否应该回退到 hash 模式。默认值为 true
+        //  可以在 new VueRouter 时可以手动传进来
         this.history = new HashHistory(this, options.base, this.fallback)
         break
       case 'abstract':
@@ -517,11 +520,454 @@ class VueRouter {
 
 在 VueRouter 实例化的时候，会根据不同的 mode 创建不同的 history 实例，不同的 history  实例代表使用不同的路由模式。在 vue-router 中，路由模式一共三种，分别是：history、hash、abstract；其中 abstract 是非浏览器端的（服务端渲染），这里不分析。
 
+> vue-router\src\index.js
+
+```js
+class VueRouter {
+  history: HashHistory | HTML5History | AbstractHistory;
+
+  constructor (options: RouterOptions = {}) {
+    // ...
+      
+    // 根据不同 mode，实例化不同 history 实例，并将 history 实例挂载到 VueRouter 类上的 history  属性中
+    // 上面会判断，如果不传 mode，mode 默认为 hash
+    switch (mode) {
+      case 'history':
+        this.history = new HTML5History(this, options.base)
+        break
+      case 'hash':
+        this.history = new HashHistory(this, options.base, this.fallback)
+        break
+      case 'abstract':
+        this.history = new AbstractHistory(this, options.base)
+        break
+      default:
+        if (process.env.NODE_ENV !== 'production') {
+          assert(false, `invalid mode: ${mode}`)
+        }
+    }
+  }
+}
+```
+
 history 和 hash 路由模式实例，主要由下面的三个核心类实现：
 
-- 
+- History：基础类
+- HTML5History：用于支持 history 模式的 pushState
+- HashHistory：用于支持 hash 模式
+
+HTML5History 和 HashHistory 都继承自 History基础类，但是里面各自实现了不同模式的跳转方法。
 
 
+
+### 4-1、History 基类
+
+> vue-router\src\history\base.js
+
+```js
+class History {
+  router: Router
+  base: string
+  current: Route
+  pending: ?Route
+  cb: (r: Route) => void
+  ready: boolean
+  readyCbs: Array<Function>
+  readyErrorCbs: Array<Function>
+  errorCbs: Array<Function>
+
+  // implemented by sub-classes
+  +go: (n: number) => void
+  +push: (loc: RawLocation) => void
+  +replace: (loc: RawLocation) => void
+  +ensureURL: (push?: boolean) => void
+  +getCurrentLocation: () => string
+
+  constructor (router: Router, base: ?string) {
+    // 保存
+    this.router = router
+    // 格式化 base 基础路径，保证 base 是以 / 开头，默认返回 /
+    this.base = normalizeBase(base)
+    // start with a route object that stands for "nowhere"
+    // START 是 通过 createRoute 创建出来的
+    // export const START = createRoute(null, {
+    //   path: '/'
+    // })
+    this.current = START // 当前指向的 route 对象，默认为 START；即 from
+    this.pending = null // 记录将要跳转的 route；即 to
+    this.ready = false
+    this.readyCbs = []
+    this.readyErrorCbs = []
+    this.errorCbs = []
+  }
+
+  listen (cb: Function) {/../}
+
+  onReady (cb: Function, errorCb: ?Function) {/.../}
+
+  onError (errorCb: Function) {/.../}
+
+  // 路径切换
+  transitionTo (location: RawLocation, onComplete?: Function, onAbort?: Function) {/.../}
+
+  // 执行路由转换动作
+  confirmTransition (route: Route, onComplete: Function, onAbort?: Function) {/.../}
+
+  // 更新路由参数 route
+  updateRoute (route: Route) {/.../}
+}
+```
+
+History 基类做的事：
+
+- 保存 router 实例
+
+- 格式化 base 基础路径，保证 base 是以 / 开头，默认返回 /
+
+  > vue-router\src\history\base.js
+
+  ```js
+  function normalizeBase (base: ?string): string {
+    // 没有 base，默认返回 /
+    if (!base) {
+      if (inBrowser) {
+        // respect <base> tag
+        const baseEl = document.querySelector('base')
+        base = (baseEl && baseEl.getAttribute('href')) || '/'
+        // strip full URL origin
+        base = base.replace(/^https?:\/\/[^\/]+/, '')
+      } else {
+        base = '/'
+      }
+    }
+  
+    // 保证 base 是 / 开头
+    if (base.charAt(0) !== '/') {
+      base = '/' + base
+    }
+    // remove trailing slash
+    return base.replace(/\/$/, '')
+  }
+  ```
+
+- 初始化了当前路由指向，默认只想`START`初始路由；在路由跳转时，`this.current`代表的是`from`
+
+  > vue-router\src\util\route.js
+
+  ```js
+  // the starting route that represents the initial state
+  export const START = createRoute(null, {
+    path: '/'
+  })
+  ```
+
+- 初始化了路由跳转时的下个路由，默认为`null`；在路由跳转时，`this.pending`代表的是`to`
+
+- 还初始化了一些其他属性
+
+- 同时在基类上定义了一些方法，例如：`listen`、`transitionTo`、`confirmTransition`、`updateRoute` 等方法，被自身或者继承于 History 的子类调用
+
+
+
+### 4-2、HTML5History 类
+
+> vue-router\src\history\html5.js
+
+```js
+export class HTML5History extends History {
+  constructor (router: Router, base: ?string) {
+    super(router, base)
+
+    // 判断是否需要支持路由滚动行为
+    const expectScroll = router.options.scrollBehavior
+    const supportsScroll = supportsPushState && expectScroll
+    // 若支持路由滚动行为，初始化 scroll 相关逻辑
+    if (supportsScroll) {
+      setupScroll()
+    }
+
+    // 初始化的时候，获取初始的路径
+    const initLocation = getLocation(this.base)
+
+    // 监听 popstate 事件
+    window.addEventListener('popstate', e => {
+      const current = this.current
+
+      // Avoiding first `popstate` event dispatched in some browsers but first
+      // history route not updated since async guard at the same time.
+      // 避免在有的浏览器中第一次加载路由就会触发 `popstate` 事件
+      const location = getLocation(this.base)
+      if (this.current === START && location === initLocation) {
+        return
+      }
+
+      // 监听到路由发生变化，执行跳转
+      this.transitionTo(location, route => {
+        if (supportsScroll) {
+          handleScroll(router, route, current, true)
+        }
+      })
+    })
+  }
+
+  // 定义 history 模式的 go
+  go (n: number) {
+    window.history.go(n)
+  }
+
+  // 定义 history 模式的 push
+  push (location: RawLocation, onComplete?: Function, onAbort?: Function) {
+    const { current: fromRoute } = this
+    this.transitionTo(location, route => {
+      // pushState 这里主要就是 history 的 replaceState 和 pushState
+      pushState(cleanPath(this.base + route.fullPath))
+      handleScroll(this.router, route, fromRoute, false)
+      onComplete && onComplete(route)
+    }, onAbort)
+  }
+
+  // 定义 history 模式的 replace
+  replace (location: RawLocation, onComplete?: Function, onAbort?: Function) {
+    const { current: fromRoute } = this
+    this.transitionTo(location, route => {
+      replaceState(cleanPath(this.base + route.fullPath))
+      handleScroll(this.router, route, fromRoute, false)
+      onComplete && onComplete(route)
+    }, onAbort)
+  }
+
+  ensureURL (push?: boolean) {
+    if (getLocation(this.base) !== this.current.fullPath) {
+      const current = cleanPath(this.base + this.current.fullPath)
+      push ? pushState(current) : replaceState(current)
+    }
+  }
+
+  // 获取当前路径
+  getCurrentLocation (): string {
+    return getLocation(this.base)
+  }
+}
+
+export function getLocation (base: string): string {
+  let path = decodeURI(window.location.pathname)
+  if (base && path.indexOf(base) === 0) {
+    path = path.slice(base.length)
+  }
+  return (path || '/') + window.location.search + window.location.hash
+}
+```
+
+- HTML5History  继承自 History
+- new HTML5History  做的事：
+  - 检查是否需要支持滚动行为，如果支持，则初始化滚动相关逻辑。具体查看 [vue路由滚动行为](https://router.vuejs.org/zh/guide/advanced/scroll-behavior.html)
+  - 监听 popstate 事件，popstate 触发，代表路由发生改变，执行 `transitionTo` 进行跳转
+
+- HTML5History  上定义了 history 模式改变路由的方式，例如：`go`、`push`、`replace`
+
+
+
+### 4-3、HashHistory 类
+
+> vue-router\src\history\hash.js
+
+```js
+// HashHistory 继承了 History 基类
+export class HashHistory extends History {
+  constructor (router: Router, base: ?string, fallback: boolean) {
+    // 调用基类构造器
+    super(router, base)
+
+    // check history fallback deeplinking
+    // 如果说是从 history 模式降级来的，需要做降级检查
+    // 如果需要回退，则将 url 换为 hash 模式(/#开头)
+    // checkFallback 就是将 history 模式的 url 替换为 hash 模式的 url
+    if (fallback && checkFallback(this.base)) {
+      // 如果降级且做了降级处理直接 return
+      return
+    }
+
+    // 保证 hash 是 / 开头
+    ensureSlash()
+  }
+
+  // hash 的监听在这里实现，会延迟到应用程序挂载之后
+  // 如果 beforeEnter 是异步的话，beforeEnter 就会触发两次
+  // 这是因为在初始化时，hash 值不是 / 开头的话就会补上 #/，这个过程会触发 hashchange 事件
+  // 所以会再走一次生命周期钩子，导致再次调用 beforeEnter 钩子函数
+  // 所以只能将hashChange事件的监听延迟到初始路由跳转完成后
+  setupListeners () {
+    const router = this.router
+
+    // 判断是否需要支持路由滚动行为
+    const expectScroll = router.options.scrollBehavior
+    const supportsScroll = supportsPushState && expectScroll
+    // 若支持路由滚动行为，初始化 scroll 相关逻辑
+    if (supportsScroll) {
+      setupScroll()
+    }
+
+    // 监听 url 改变
+    // 这里即使使用了 mode=hash，还是会判断当前环境是否支持 pushState，
+    // 支持优先使用 popstate 监听
+    window.addEventListener(
+      supportsPushState ? 'popstate' : 'hashchange',
+      () => {
+        const current = this.current
+        if (!ensureSlash()) {
+          return
+        }
+        // 路由跳转
+        this.transitionTo(getHash(), route => {
+          if (supportsScroll) {
+            handleScroll(this.router, route, current, true)
+          }
+          if (!supportsPushState) {
+            replaceHash(route.fullPath)
+          }
+        })
+      }
+    )
+  }
+
+  // hash 模式的 push
+  push (location: RawLocation, onComplete?: Function, onAbort?: Function) {
+    const { current: fromRoute } = this
+    this.transitionTo(
+      location,
+      route => {
+        pushHash(route.fullPath)
+        handleScroll(this.router, route, fromRoute, false)
+        onComplete && onComplete(route)
+      },
+      onAbort
+    )
+  }
+
+  // hash 模式的 replace
+  replace (location: RawLocation, onComplete?: Function, onAbort?: Function) {
+    const { current: fromRoute } = this
+    this.transitionTo(
+      location,
+      route => {
+        replaceHash(route.fullPath)
+        handleScroll(this.router, route, fromRoute, false)
+        onComplete && onComplete(route)
+      },
+      onAbort
+    )
+  }
+
+  // hash 模式的 go
+  go (n: number) {
+    window.history.go(n)
+  }
+
+  ensureURL (push?: boolean) {
+    const current = this.current.fullPath
+    if (getHash() !== current) {
+      push ? pushHash(current) : replaceHash(current)
+    }
+  }
+
+  getCurrentLocation () {
+    return getHash()
+  }
+}
+```
+
+- HashHistory 继承自 History 基类
+
+- new HashHistory 做的事：
+
+  - 检查 fallback（当浏览器不支持 history 的时候，是否回退 hash 模式，默认为 true），当需要从 history 模式回退到 hash 模式时，调用 checkFallback 将 url 添加上 #
+
+    > vue-router\src\history\hash.js
+
+    ```js
+    // 降级检查
+    function checkFallback (base) {
+      // 得到除去 base 的 真正的 location 的值
+      const location = getLocation(base)
+    
+      if (!/^\/#/.test(location)) {
+        // 如果此时地址不是 /# 开头
+        // 需要做一次降级处理 降级为 hash 模式下应有的 /# 开头
+        window.location.replace(cleanPath(base + '/#' + location))
+        return true
+      }
+    }
+    ```
+
+  - 如果不是 fallback，则直接调用 ensureSlash ，确保 url 是以 `/#` 开头的
+
+    > vue-router\src\history\hash.js
+
+    ```js
+    // 保证 hash 是 /# 开头
+    function ensureSlash (): boolean {
+      // 拿到 hash 值
+      const path = getHash()
+      // 以 / 开头，返回 true
+      if (path.charAt(0) === '/') {
+        return true
+      }
+      // 替换成以 / 开头
+      replaceHash('/' + path)
+      return false
+    }
+    
+    export function getHash (): string {
+      // 因为兼容性问题 这里没有直接使用 window.location.hash
+      // 因为 Firefox decode hash 值
+      let href = window.location.href
+      const index = href.indexOf('#')
+      // empty path
+      if (index < 0) return ''
+    
+      href = href.slice(index + 1)
+      // decode the hash but not the search or hash
+      // as search(query) is already decoded
+      // https://github.com/vuejs/vue-router/issues/2708
+      const searchIndex = href.indexOf('?')
+      if (searchIndex < 0) {
+        const hashIndex = href.indexOf('#')
+        if (hashIndex > -1) {
+          href = decodeURI(href.slice(0, hashIndex)) + href.slice(hashIndex)
+        } else href = decodeURI(href)
+      } else {
+        href = decodeURI(href.slice(0, searchIndex)) + href.slice(searchIndex)
+      }
+    
+      return href
+    }
+    
+    function getUrl (path) {
+      const href = window.location.href
+      const i = href.indexOf('#')
+      const base = i >= 0 ? href.slice(0, i) : href
+      return `${base}#${path}`
+    }
+    
+    // location.hash
+    function pushHash (path) {
+      // 如果支持 pushState，使用 pushState
+      if (supportsPushState) {
+        pushState(getUrl(path))
+      } else {
+        // 不支持，替换 hash
+        window.location.hash = path
+      }
+    }
+    
+    function replaceHash (path) {
+      if (supportsPushState) {
+        replaceState(getUrl(path))
+      } else {
+        window.location.replace(getUrl(path))
+      }
+    }
+    ```
 
 
 
@@ -1007,3 +1453,148 @@ export class HTML5History extends History {
 ```
 
 在这种模式下，初始化作的工作相比 hash 模式少了很多，只是调用基类构造函数以及初始化监听事件
+
+
+
+## 5、路由跳转
+
+路由的第一次跳转是在 VueRouter 初始化的时候：
+
+> vue-router\src\index.js
+
+```js
+class VueRouter {
+  // ...
+
+  // 路由初始化，初始化时 app 是 vue 实例
+  init (app: any /* Vue component instance */) {
+    // ...
+
+    // 拿到 history 实例
+    const history = this.history
+
+    // transitionTo 是进行路由导航的函数
+    if (history instanceof HTML5History) {
+      // 如果是 history 模式
+      // 先使用 history.getCurrentLocation() 获取到需要跳转的路径
+      // 使用 history.transitionTo 进行首次路由跳转
+      history.transitionTo(history.getCurrentLocation())
+    } else if (history instanceof HashHistory) {
+      // 如果是 hash 模式
+      // 在 hash 模式下会在 transitionTo 的回调中调用 setupListeners
+      // setupListeners 里会对 hashchange 事件进行监听
+      const setupHashListener = () => {
+        history.setupListeners()
+      }
+      // 使用 history.transitionTo 进行首次路由跳转
+      history.transitionTo(
+        history.getCurrentLocation(),
+        setupHashListener,
+        setupHashListener
+      )
+    }
+
+    // ...
+  }
+}
+```
+
+
+
+### 5-1、history 模式的路由跳转
+
+```js
+history.transitionTo(history.getCurrentLocation())
+```
+
+首先，会调用 HTML5History 类上的 getCurrentLocation 方法，获取需要跳转的路径
+
+> vue-router\src\history\html5.js
+
+```js
+class HTML5History extends History {
+  // ...
+
+  // 获取当前路径(域名端口之后的路径)
+  // 例如：http://127.0.0.0.1:9000/user/info，得到的是 /user/info
+  getCurrentLocation (): string {
+    return getLocation(this.base)
+  }
+}
+```
+
+
+
+然后执行 history.transitionTo 执行跳转动作，transitionTo 是继承自父类 History
+
+>vue-router\src\history\base.js
+
+```js
+class History {
+  // ...
+
+  /**
+   * 路径切换
+   * 接收三个参数：
+   *   location：跳转的路径，必传
+   *   onComplete：跳转成功回调，在路由跳转成功时调用，选传
+   *   onAbort：是跳转失败(取消)回调，在路由被取消时调用，选传
+   */
+  transitionTo (location: RawLocation, onComplete?: Function, onAbort?: Function) {
+    // 调用 router 实例的 match 方法，从路由映射表中取到将要跳转到的路由对象 route，也就是执行路由匹配
+    //   location 代表当前 hash 路径
+    //   this.current = START， START：当前指向的 route 对象；即 from
+    const route = this.router.match(location, this.current)
+
+    // 调用 this.confirmTransition，执行路由转换动作
+    this.confirmTransition(
+      route,
+      () => {
+        // 跳转完成
+        this.updateRoute(route) // 更新 route
+        // 参数有传 onComplete，调用 onComplete 回调函数
+        onComplete && onComplete(route)
+        this.ensureURL()
+
+        // fire ready cbs once
+        if (!this.ready) {
+          this.ready = true
+          this.readyCbs.forEach(cb => {
+            cb(route)
+          })
+        }
+      },
+      err => {
+        // 报错
+        if (onAbort) {
+          // 参数有传 onAbort，调用 onAbort 回调函数处理错误
+          onAbort(err)
+        }
+        if (err && !this.ready) {
+          this.ready = true
+          this.readyErrorCbs.forEach(cb => {
+            cb(err)
+          })
+        }
+      }
+    )
+  }
+}
+```
+
+transitionTo 接受三个参数：
+
+- location：跳转的路径，必传
+- onComplete：跳转成功回调，在路由跳转成功时调用，选传
+- onAbort：是跳转失败(取消)回调，在路由被取消时调用，选传
+
+**路由匹配：**一开始，会调用 router 实例的 match 方法，从路由映射表中取到将要跳转到的路由对象 route，这就是路由匹配的过程
+
+**导航解析：**拿到将要跳转的 `route` 后，调用 `confirmTransition` 完成 `route` 的解析跳转，并在跳转成功、取消时调用对应回调方法（如果有传回调）；这一步就是导航解析
+
+
+
+#### 5-1-1、路由匹配的过程
+
+
+
