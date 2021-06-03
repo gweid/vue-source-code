@@ -73,18 +73,21 @@ function getFullPath (
   return (path || '/') + stringify(query) + hash
 }
 
+// 判断两个路由是否相同
 export function isSameRoute (a: Route, b: ?Route): boolean {
   if (b === START) {
     return a === b
   } else if (!b) {
     return false
   } else if (a.path && b.path) {
+    // path 都存在，比较 path、hash、query 是否相同
     return (
       a.path.replace(trailingSlashRE, '') === b.path.replace(trailingSlashRE, '') &&
       a.hash === b.hash &&
       isObjectEqual(a.query, b.query)
     )
   } else if (a.name && b.name) {
+    // 如果 name 存在，比较 name、hash、query、params 是否相同
     return (
       a.name === b.name &&
       a.hash === b.hash &&

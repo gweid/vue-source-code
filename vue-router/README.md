@@ -2048,3 +2048,816 @@ export function createRoute (
 }
 ```
 
+可以看到，createRoute 的主要工作就是根据路由记录 record 还有传进来的路径信息对象 location 创建 Route
+
+传进来的路径信息对象，这里以 `this.$router.push` 为例，可以有一下几种方法：
+
+```js
+// 字符串形式
+this.$router.push('home') // 相对
+this.$router.push('/home') // 绝对
+
+// Location 对象形式
+this.$router.push({ path: 'home' })
+this.$router.push({ path: '/home' })
+
+this.$router.push({ path: '/home', query: { test: 3 } }) // 携带qs
+
+this.$router.push({ name: 'home' }) // 命名路由
+this.$router.push({ name: 'detail', params: { id: 1 } }) // 命名+带参
+
+this.$router.push({ params: { id: 1 } }) // 仅带参，针对仅有参数变化的相对跳转；相对参数跳转
+```
+
+
+
+**小结：**
+
+路由匹配的过程，其实就是拿`地址RawLocation`生成`路由对象Route`的过程，这中间`路由记录RouteRecord`起中间桥梁的作用，因为路由记录上保存了生成路由对象的重要信息；所以流程应该是拿`地址`从路由映射表中找到对应的`路由记录`，然后拿`路由记录`生成`路由对象`
+
+
+
+#### 5-1-3、路由导航解析跳转
+
+上面说过，进行完路由匹配之后的到 route 对象，然后调用 `confirmTransition` 执行路由导航跳转
+
+> vue-router\src\history\base.js
+
+```js
+class History {
+  // ...
+
+  transitionTo (location: RawLocation, onComplete?: Function, onAbort?: Function) {
+    // 1、拿到 route
+    const route = this.router.match(location, this.current)
+    
+    // 2、执行跳转动作
+    // 调用 this.confirmTransition，执行路由转换动作
+    this.confirmTransition(
+      route,
+      () => {
+        // 跳转完成
+        this.updateRoute(route) // 更新 route
+        // 参数有传 onComplete，调用 onComplete 回调函数
+        onComplete && onComplete(route)
+        this.ensureURL()
+
+        // fire ready cbs once
+        if (!this.ready) {
+          this.ready = true
+          this.readyCbs.forEach(cb => {
+            cb(route)
+          })
+        }
+      },
+      err => {
+        // 报错
+        if (onAbort) {
+          // 参数有传 onAbort，调用 onAbort 回调函数处理错误
+          onAbort(err)
+        }
+        if (err && !this.ready) {
+          this.ready = true
+          this.readyErrorCbs.forEach(cb => {
+            cb(err)
+          })
+        }
+      }
+    )
+  }
+}
+```
+
+首先，在分析导航路由跳转之前，需要了解一些路由跳转知识：
+
+- 在路由跳转时，会按顺序触发各种钩子、守卫函数，例如 beforeRouteLeave、beforeRouteEnter 等等；
+
+- 首先这些钩子、守卫有的是定义在`vue-router`实例上的，有的是路由独享的，有的是位于 `.vue` 组件中的，所以第一步必须抽出这些钩子、守卫函数统一处理
+
+- 其次这些钩子、守卫是按顺序依次执行的，所以需要设计一个队列和迭代器来保证顺序执行
+
+- 最后还有一些特殊场景需要处理，例如异步路由组件如何保证顺序执行
+
+
+
+下面就根据上面那几个知识点来看看 confirmTransition 函数：
+
+> vue-router\src\history\base.js
+
+```js
+class History {
+  // ...
+
+  /**
+   * 执行路由转换动作
+   * 接收三个参数：
+   *   route：目标路由对象
+   *   onComplete：跳转成功回调
+   *   onAbort：取消跳转、跳转失败回调（可选）
+   */
+  confirmTransition (route: Route, onComplete: Function, onAbort?: Function) {
+    // this.current = START， START：当前指向的 route 对象；即 from
+    // 先获取当前路由队形
+    const current = this.current
+
+    // 定义中断处理函数
+    const abort = err => {
+      // after merging https://github.com/vuejs/vue-router/pull/2771 we
+      // When the user navigates through history through back/forward buttons
+      // we do not want to throw the error. We only throw it if directly calling
+      // push/replace. That's why it's not included in isError
+      if (!isExtendedError(NavigationDuplicated, err) && isError(err)) {
+        if (this.errorCbs.length) {
+          this.errorCbs.forEach(cb => {
+            cb(err)
+          })
+        } else {
+          warn(false, 'uncaught error during route navigation:')
+          console.error(err)
+        }
+      }
+      // 如果有传 onAbort 错误处理函数，那么执行错误处理函数
+      onAbort && onAbort(err)
+    }
+
+    /**
+     * 判断重复跳转：
+     *  isSameRoute 检测当前路由对象与目标路由对象是否相同
+     *  并且检测两者匹配到的路由记录数量是否相同
+     *  如果相同，视为重复跳转，中断流程，并执行 abort 中断处理函数
+     */
+    if (
+      isSameRoute(route, current) &&
+      // in the case the route map has been dynamically appended to
+      route.matched.length === current.matched.length
+    ) {
+      this.ensureURL()
+      return abort(new NavigationDuplicated(route))
+    }
+
+    // 对比前后 route 对象的 matched(matched 就是路由记录)
+    // 找出需要 更新(updated)、失活(deactivated)、激活(activated) 的路由记录
+    const { updated, deactivated, activated } = resolveQueue(
+      this.current.matched,
+      route.matched
+    )
+
+    // 路由守卫钩子队列
+    const queue: Array<?NavigationGuard> = [].concat(
+      // in-component leave guards
+      extractLeaveGuards(deactivated), // 即将被销毁组件的 beforeRouteLeave 守卫
+      // global before hooks
+      this.router.beforeHooks, // 全局的 beforeEach 守卫
+      // in-component update hooks
+      extractUpdateHooks(updated), // 组件中所有 beforeRouteUpdate 守卫
+      // in-config enter guards
+      activated.map(m => m.beforeEnter), // 将要更新的路由的独享守卫 beforeEnter
+      // async components
+      resolveAsyncComponents(activated) // 解析异步组件
+    )
+
+    // 记录目标路由对象，方便取消对比用
+    this.pending = route
+
+    // 迭代器
+    const iterator = (hook: NavigationGuard, next) => {
+      if (this.pending !== route) {
+        return abort()
+      }
+      try {
+        hook(/* to*/route, /* from*/current, /* next*/(to: any) => {
+          if (to === false || isError(to)) {
+            // next(false) -> abort navigation, ensure current URL
+            // next(false) -> 取消跳转，添加一个新历史记录(但由于url地址未发生变化，所以并未添加记录)
+            this.ensureURL(true)
+            abort(to)
+          } else if (
+            typeof to === 'string' ||
+            (typeof to === 'object' &&
+              (typeof to.path === 'string' || typeof to.name === 'string'))
+          ) {
+            // next('/') or next({ path: '/' }) -> redirect
+            abort()
+            if (typeof to === 'object' && to.replace) {
+              this.replace(to)
+            } else {
+              this.push(to)
+            }
+          } else {
+            // confirm transition and pass on the value
+            next(to)
+          }
+        })
+      } catch (e) {
+        abort(e)
+      }
+    }
+
+    // 执行队列里的钩子
+    runQueue(queue, iterator, () => {
+      const postEnterCbs = []
+      const isValid = () => this.current === route
+      // wait until async components are resolved before
+      // extracting in-component enter guards
+      const enterGuards = extractEnterGuards(activated, postEnterCbs, isValid)
+      const queue = enterGuards.concat(this.router.resolveHooks)
+      runQueue(queue, iterator, () => {
+        if (this.pending !== route) {
+          return abort()
+        }
+        this.pending = null
+
+        // 执行 onComplete 回调，onComplete 中会调用:
+        //  updateRoute 方法更新 route 信息，内部会触发 afterEach 结束钩子
+        onComplete(route)
+
+        if (this.router.app) {
+          this.router.app.$nextTick(() => {
+            postEnterCbs.forEach(cb => {
+              cb()
+            })
+          })
+        }
+      })
+    })
+  }
+}
+```
+
+confirmTransition 接受三个参数：
+
+- route：目标路由对象
+- onComplete：跳转成功回调
+- onAbort：取消跳转、跳转失败回调（可选）
+
+内部主要逻辑：
+
+- 定义一个中断处理函数，用于处理各种异常
+- 判断是否重复跳转问题
+- 对比前后 route 的路由记录，找出需要 更新(updated)、失活(deactivated)、激活(activated) 的路由记录
+- 抽取出路由守卫钩子队列 queue
+- 将钩子及守卫函数放入队列中并执行
+
+下面来逐一分析上面这几步
+
+
+
+##### 1、定义中断处理函数
+
+> vue-router\src\history\base.js
+
+```js
+confirmTransition (route: Route, onComplete: Function, onAbort?: Function) {
+  // ...
+    
+  // 定义中断处理函数
+  const abort = err => {
+      if (!isExtendedError(NavigationDuplicated, err) && isError(err)) {
+        if (this.errorCbs.length) {
+          this.errorCbs.forEach(cb => {
+            cb(err)
+          })
+        } else {
+          warn(false, 'uncaught error during route navigation:')
+          console.error(err)
+        }
+      }
+
+      // 如果有传 onAbort 错误处理函数，那么执行错误处理函数
+      onAbort && onAbort(err)
+  }
+}
+```
+
+可接受一个 err 参数，主要就是通过回调处理一些错误，后者直接报警告，如果有传 onAbort，调用 onAbort(err)
+
+
+
+##### 2、判断是否重复跳转
+
+> vue-router\src\history\base.js
+
+```js
+confirmTransition (route: Route, onComplete: Function, onAbort?: Function) {
+  // ...
+
+  if (
+    isSameRoute(route, current) &&
+    // in the case the route map has been dynamically appended to
+    route.matched.length === current.matched.length
+  ) {
+    this.ensureURL()
+    return abort(new NavigationDuplicated(route))
+  }
+}
+```
+
+判断重复跳转：
+
+- isSameRoute 检测当前路由对象与目标路由对象是否相同
+- 并且检测两者匹配到的路由记录数量是否相同（route.matched 就是路由记录）在生成路由对象的时候把路由记录挂在了matched 上 
+- 如果相同，视为重复跳转，中断流程，并执行 abort 中断处理函数
+
+isSameRoute 主要判断了 path、name、hash、query、params 等信息：
+
+> vue-router\src\util\route.js
+
+```js
+// 判断两个路由是否相同
+function isSameRoute (a: Route, b: ?Route): boolean {
+  if (b === START) {
+    return a === b
+  } else if (!b) {
+    return false
+  } else if (a.path && b.path) {
+    // path 都存在，比较 path、hash、query 是否相同
+    return (
+      a.path.replace(trailingSlashRE, '') === b.path.replace(trailingSlashRE, '') &&
+      a.hash === b.hash &&
+      isObjectEqual(a.query, b.query)
+    )
+  } else if (a.name && b.name) {
+    // 如果 name 存在，比较 name、hash、query、params 是否相同
+    return (
+      a.name === b.name &&
+      a.hash === b.hash &&
+      isObjectEqual(a.query, b.query) &&
+      isObjectEqual(a.params, b.params)
+    )
+  } else {
+    return false
+  }
+}
+```
+
+
+
+##### 3、对比前后 route 对象，找出需要 更新(updated)、失活(deactivated)、激活(activated) 的路由记录
+
+> vue-router\src\history\base.js
+
+```js
+confirmTransition (route: Route, onComplete: Function, onAbort?: Function) {
+  // ...
+    
+  // 对比前后 route 对象的 matched(matched 就是路由记录)
+  // 找出需要 更新(updated)、失活(deactivated)、激活(activated) 的路由记录
+  const { updated, deactivated, activated } = resolveQueue(
+    this.current.matched,
+    route.matched
+  )
+}
+```
+
+来看看 resolveQueue 函数的功能：
+
+> vue-router\src\history\base.js
+
+```js
+/**
+ * 对比前后 route 对象 路由记录
+ * 找出需要 更新(updated)、失活(deactivated)、激活(activated) 的路由记录
+ * @param {*} current 当前路由记录
+ * @param {*} next 目标路由记录
+ * @returns 
+ */
+function resolveQueue (
+  current: Array<RouteRecord>,
+  next: Array<RouteRecord>
+): {
+  updated: Array<RouteRecord>,
+  activated: Array<RouteRecord>,
+  deactivated: Array<RouteRecord>
+} {
+  let i
+  const max = Math.max(current.length, next.length)
+  // 遍历，找出首个不相等的
+  for (i = 0; i < max; i++) {
+    if (current[i] !== next[i]) {
+      break
+    }
+  }
+  // 例如：current:[1,2,3] next:[1,2,3,4]
+  // 那么最后一个就不同，此时 i=3
+  // 那么需要更新的是 [1,2,3]，需要激活的是 [4], 失效的是 []
+  return {
+    updated: next.slice(0, i),
+    activated: next.slice(i),
+    deactivated: current.slice(i)
+  }
+}
+```
+
+resolveQueue 的基本逻辑：
+
+- 首先找出`current`和`next`列表长度的最大值，
+- 然后以此为循环最大次数循环找出首个不相等的路由记录索引
+- 以此索引为分界线，`next列表`当前索引左侧为需要更新的路由记录、索引及索引右侧的为需要激活的路由记录
+- `current列表`索引及右侧是需要失活的路由记录
+
+
+
+##### 4、抽取钩子、守卫函数、解析异步组件
+
+经过上一步，找出了需要更新、激活、失活的路由记录，接下来就是从中抽取出对应的钩子、守卫函数
+
+> vue-router\src\history\base.js
+
+```js
+confirmTransition (route: Route, onComplete: Function, onAbort?: Function) {
+  // ...
+
+  // 对比前后 route 对象的 matched(matched 就是路由记录)
+  // 找出需要 更新(updated)、失活(deactivated)、激活(activated) 的路由记录
+  const { updated, deactivated, activated } = resolveQueue(
+    this.current.matched,
+    route.matched
+  )
+
+  // 路由守卫钩子队列
+  const queue: Array<?NavigationGuard> = [].concat(
+    // in-component leave guards
+    extractLeaveGuards(deactivated), // 即将被销毁组件的 beforeRouteLeave 守卫
+    // global before hooks
+    this.router.beforeHooks, // 全局的 beforeEach 守卫
+    // in-component update hooks
+    extractUpdateHooks(updated), // 组件中所有 beforeRouteUpdate 守卫
+    // in-config enter guards
+    activated.map(m => m.beforeEnter), // 将要更新的路由的独享守卫 beforeEnter
+    // async components
+    resolveAsyncComponents(activated) // 解析异步组件
+  )
+}
+```
+
+可以看到定义了一个 queue 队列，里面主要做了：
+
+- 抽取了`deactivated`中的组件`beforeRouteLeave`守卫
+- 获取了`VueRouter`实例上定义的全局`beforeEach`守卫
+- 从`updated`中抽取了组件`beforeRouteUpdate`守卫
+- 从`activated`中获取了路由独享的`beforeEnter`守卫
+- 解析`activated`中的异步路由组件，路由组件支持`import()`动态导入，所以这里要处理
+
+
+
+##### 5、守卫队列的执行
+
+执行守卫队列，是通过 runQueue、iterator 相互配合来实现的
+
+
+
+runQueue 方法：
+
+> vue-router\src\util\async.js
+
+```js
+/**
+ * 执行路由守卫队列
+ * @param {*} queue 需要执行的队列
+ * @param {*} fn 迭代函数
+ * @param {*} cb 回调函数
+ */
+export function runQueue (queue: Array<?NavigationGuard>, fn: Function, cb: Function) {
+  const step = index => {
+    if (index >= queue.length) {
+      // 队列已经执行完，执行回调函数 cb
+      cb()
+    } else {
+      if (queue[index]) {
+        // queue[index] 存在，执行迭代函数 fn
+        fn(queue[index], () => {
+          step(index + 1)
+        })
+      } else {
+        // queue[index] 不存在，执行下一个
+        step(index + 1)
+      }
+    }
+  }
+
+  step(0)
+}
+```
+
+runQueue 接受三个参数：
+
+- queue，需要执行的队列
+- fn，迭代函数【每一个守卫函数都会传给迭代函数执行一遍】
+- cb，回调函数：队列已经执行完，执行回调函数 cb
+
+
+
+执行 runQueue，进行路由跳转和触发各个路由守卫钩子
+
+> vue-router\src\history\base.js
+
+```js
+confirmTransition (route: Route, onComplete: Function, onAbort?: Function) {
+  // ...
+    
+  // 路由守卫钩子队列
+  const queue: Array<?NavigationGuard> = [].concat(
+    // in-component leave guards
+    extractLeaveGuards(deactivated), // 即将被销毁组件的 beforeRouteLeave 守卫
+    // global before hooks
+    this.router.beforeHooks, // 全局的 beforeEach 守卫
+    // in-component update hooks
+    extractUpdateHooks(updated), // 组件中所有 beforeRouteUpdate 守卫
+    // in-config enter guards
+    activated.map(m => m.beforeEnter), // 将要更新的路由的独享守卫 beforeEnter
+    // async components
+    resolveAsyncComponents(activated) // 解析异步组件
+  )
+
+  // 记录目标路由对象，方便取消对比用
+  this.pending = route
+
+  // 迭代器
+  const iterator = (hook: NavigationGuard, next) => {
+    if (this.pending !== route) {
+      return abort()
+    }
+    try {
+      hook(/* to*/route, /* from*/current, /* next*/(to: any) => {
+        if (to === false || isError(to)) {
+          // next(false) -> abort navigation, ensure current URL
+          // next(false) -> 取消跳转，添加一个新历史记录(但由于url地址未发生变化，所以并未添加记录)
+          this.ensureURL(true)
+          abort(to)
+        } else if (
+          typeof to === 'string' ||
+          (typeof to === 'object' &&
+            (typeof to.path === 'string' || typeof to.name === 'string'))
+        ) {
+          // next('/') or next({ path: '/' }) -> redirect
+          abort()
+          if (typeof to === 'object' && to.replace) {
+            // 调用子类方法的替换记录
+            this.replace(to)
+          } else {
+            // 调用子类方法的添加记录
+            this.push(to)
+          }
+        } else {
+          // confirm transition and pass on the value
+          next(to)
+        }
+      })
+    } catch (e) {
+      abort(e)
+    }
+  }
+
+  // 执行队列里的钩子
+  runQueue(queue, iterator, () => {
+    const postEnterCbs = []
+    const isValid = () => this.current === route
+    // wait until async components are resolved before
+    // extracting in-component enter guards
+    const enterGuards = extractEnterGuards(activated, postEnterCbs, isValid)
+    const queue = enterGuards.concat(this.router.resolveHooks)
+    runQueue(queue, iterator, () => {
+      if (this.pending !== route) {
+        return abort()
+      }
+      this.pending = null
+
+      // 执行 onComplete 成功回调，onComplete 中会调用:
+      //  updateRoute 方法更新 route 信息，内部会触发 afterEach 结束钩子
+      onComplete(route)
+
+      if (this.router.app) {
+        this.router.app.$nextTick(() => {
+          postEnterCbs.forEach(cb => {
+            cb()
+          })
+        })
+      }
+    })
+  })
+}
+```
+
+主要逻辑：
+
+- 执行 runQueue，先关注前面两个参数，第三个参数是回调函数只有执行完 queue 队列的时候才会被调用
+  - 第一个参数：queue 队列
+  - 第二个参数，iterator 迭代函数
+- queue 队列中的函数会在执行 runQueue 时依次在 iterator 中被调用
+- 等到队列调用完，执行回调函数
+
+
+
+接下来看看回调函数：
+
+> vue-router\src\history\base.js
+
+```js
+confirmTransition (route: Route, onComplete: Function, onAbort?: Function) {
+
+  // 执行队列里的钩子
+  runQueue(queue, iterator, () => {
+
+    runQueue(queue, iterator, () => {
+
+      // 执行 onComplete 成功回调，onComplete 中会调用:
+      //  updateRoute 方法更新 route 信息，内部会触发 afterEach 结束钩子
+      onComplete(route)
+
+    })
+  })
+
+```
+
+回调函数其实还是执行了一次 runQueue，但是这次里面会有一点不同，会执行 onComplete 函数，这个 onComplete 是调用 confirmTransition 的时候传进来的第二个参数
+
+> vue-router\src\history\base.js
+
+```js
+transitionTo (location: RawLocation, onComplete?: Function, onAbort?: Function) {
+    // 调用 router 实例的 match 方法，从路由映射表中取到将要跳转到的路由对象 route，也就是执行路由匹配
+    //   location 代表当前 hash 路径
+    //   this.current = START， START：当前指向的路由对象；即 from 的路由对象
+    const route = this.router.match(location, this.current)
+
+    // 调用 this.confirmTransition，执行路由转换动作
+    this.confirmTransition(
+      route,
+      () => {
+        // 跳转完成
+        this.updateRoute(route) // 更新 route
+
+        // 执行 transitionTo 的 onComplete
+        onComplete && onComplete(route)
+
+        // 更新 url 路径，在子类 HTML5History、HashHistory 中实现
+        this.ensureURL()
+      },
+      err => {/.../}
+    )
+  }
+```
+
+第二个参数执行的逻辑：
+
+- updateRoute 更新 route 对象
+- 执行 transitionTo 的 onComplete，这个主要是为 push、replace 之类跳转的方法服务
+- 调用 子类的 ensureURL 更新 url 路径，并将 url 推历史栈当中
+
+
+
+下面来看看定义在 HTML5History 类的 ensureURL ：
+
+> vue-router\src\history\html5.js
+
+```js
+class HTML5History extends History {
+  // ...
+    
+  // 更新路径信息
+  ensureURL (push?: boolean) {
+    if (getLocation(this.base) !== this.current.fullPath) {
+      const current = cleanPath(this.base + this.current.fullPath)
+      push ? pushState(current) : replaceState(current)
+    }
+  }
+}
+```
+
+> vue-router\src\util\push-state.js
+
+```js
+export function pushState (url?: string, replace?: boolean) {
+  saveScrollPosition()
+  // try...catch the pushState call to get around Safari
+  // DOM Exception 18 where it limits to 100 pushState calls
+  const history = window.history
+  try {
+    if (replace) {
+      // preserve existing history state as it could be overriden by the user
+      const stateCopy = extend({}, history.state)
+      stateCopy.key = getStateKey()
+      // replaceState
+      history.replaceState(stateCopy, '', url)
+    } else {
+      // pushState
+      history.pushState({ key: setStateKey(genStateKey()) }, '', url)
+    }
+  } catch (e) {
+    window.location[replace ? 'replace' : 'assign'](url)
+  }
+}
+
+export function replaceState (url?: string) {
+  pushState(url, true)
+}
+```
+
+可以发现，逻辑很简单，调用了浏览器原生的 `history` 的 `pushState` 和 `replaceState` 方法将 url 更新，并推历史栈当中
+
+
+
+#### 5-1-4、push、replace 方法
+
+> vue-router\src\history\html5.js
+
+```js
+HTML5History extends History {
+  // ...
+    
+  // 定义 history 模式的 push
+  push (location: RawLocation, onComplete?: Function, onAbort?: Function) {
+    const { current: fromRoute } = this
+    this.transitionTo(location, route => {
+      // pushState 这里主要就是 history 的 replaceState 和 pushState
+      pushState(cleanPath(this.base + route.fullPath))
+      handleScroll(this.router, route, fromRoute, false)
+      onComplete && onComplete(route)
+    }, onAbort)
+  }
+
+  // 定义 history 模式的 replace
+  replace (location: RawLocation, onComplete?: Function, onAbort?: Function) {
+    const { current: fromRoute } = this
+    this.transitionTo(location, route => {
+      replaceState(cleanPath(this.base + route.fullPath))
+      handleScroll(this.router, route, fromRoute, false)
+      onComplete && onComplete(route)
+    }, onAbort)
+  }
+}
+```
+
+可以发现，push、replace 方法跟上面分析的基本是一致的，push 跳转利用了 pushState 添加记录，replace 的跳转是 replaceState 替换记录
+
+
+
+### 5-2、hash 模式的路由跳转
+
+hash 的跳转与 history 的基本一致，只是跳转的方式不太一样，这里来看看 hash 的 push、 replace ：
+
+> vue-router\src\history\hash.js
+
+```js
+class HashHistory extends History {
+  // ...
+  
+  // hash 模式的 push
+  push (location: RawLocation, onComplete?: Function, onAbort?: Function) {
+    const { current: fromRoute } = this
+    this.transitionTo(
+      location,
+      route => {
+        pushHash(route.fullPath)
+        handleScroll(this.router, route, fromRoute, false)
+        onComplete && onComplete(route)
+      },
+      onAbort
+    )
+  }
+    
+  // hash 模式的 replace
+  replace (location: RawLocation, onComplete?: Function, onAbort?: Function) {
+    const { current: fromRoute } = this
+    this.transitionTo(
+      location,
+      route => {
+        replaceHash(route.fullPath)
+        handleScroll(this.router, route, fromRoute, false)
+        onComplete && onComplete(route)
+      },
+      onAbort
+    )
+  }
+}
+```
+
+push 使用的是 pushHash，replace 使用的是 replaceHash
+
+> vue-router\src\history\hash.js
+
+```js
+// location.hash
+function pushHash (path) {
+  // 如果支持 pushState，使用 pushState
+  if (supportsPushState) {
+    pushState(getUrl(path))
+  } else {
+    // 不支持，替换 hash
+    window.location.hash = path
+  }
+}
+
+function replaceHash (path) {
+  if (supportsPushState) {
+    replaceState(getUrl(path))
+  } else {
+    window.location.replace(getUrl(path))
+  }
+}
+```
+
+这里会先判断浏览器支不支持 pushState，不支持就使用 `window.location.hash = path` 和 `window.location.replace(getUrl(path))` 的方式替换 hash
+
+
+

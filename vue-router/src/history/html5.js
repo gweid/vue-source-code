@@ -72,6 +72,7 @@ export class HTML5History extends History {
     }, onAbort)
   }
 
+  // 更新路径信息
   ensureURL (push?: boolean) {
     if (getLocation(this.base) !== this.current.fullPath) {
       const current = cleanPath(this.base + this.current.fullPath)

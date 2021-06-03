@@ -87,8 +87,10 @@ export class History {
       () => {
         // 跳转完成
         this.updateRoute(route) // 更新 route
-        // 参数有传 onComplete，调用 onComplete 回调函数
+        // 执行 transitionTo 的 onComplete
         onComplete && onComplete(route)
+
+        // 更新 url 路径，在子类 HTML5History、HashHistory 中实现
         this.ensureURL()
 
         // fire ready cbs once
@@ -115,12 +117,19 @@ export class History {
     )
   }
 
-  // 执行路由转换动作
+  /**
+   * 执行路由转换动作
+   * 接收三个参数：
+   *   route：目标路由对象
+   *   onComplete：跳转成功回调
+   *   onAbort：取消跳转、跳转失败回调（可选）
+   */
   confirmTransition (route: Route, onComplete: Function, onAbort?: Function) {
     // this.current = START， START：当前指向的 route 对象；即 from
+    // 先获取当前路由对象
     const current = this.current
 
-    // 定义中断处理
+    // 定义中断处理函数
     const abort = err => {
       // after merging https://github.com/vuejs/vue-router/pull/2771 we
       // When the user navigates through history through back/forward buttons
@@ -136,11 +145,16 @@ export class History {
           console.error(err)
         }
       }
+      // 如果有传 onAbort 错误处理函数，那么执行错误处理函数
       onAbort && onAbort(err)
     }
 
-    // 同路由且 matched.length 相同
-    // matched: 是匹配到的路由记录的合集
+    /**
+     * 判断重复跳转：
+     *  isSameRoute 检测当前路由对象与目标路由对象是否相同
+     *  并且检测两者匹配到的路由记录数量是否相同（route.matched 就是路由记录）在生成路由对象的时候把路由记录挂在了matched 上 
+     *  如果相同，视为重复跳转，中断流程，并执行 abort 中断处理函数
+     */
     if (
       isSameRoute(route, current) &&
       // in the case the route map has been dynamically appended to
@@ -150,39 +164,40 @@ export class History {
       return abort(new NavigationDuplicated(route))
     }
 
+    // 对比前后 route 对象的 matched(matched 就是路由记录)
+    // 找出需要 更新(updated)、失活(deactivated)、激活(activated) 的路由记录
     const { updated, deactivated, activated } = resolveQueue(
       this.current.matched,
       route.matched
     )
 
-    // 路由切换周期钩子队列
+    // 路由守卫钩子队列
     const queue: Array<?NavigationGuard> = [].concat(
       // in-component leave guards
-       // 得到即将被销毁组件的 beforeRouteLeave 钩子函数
-      extractLeaveGuards(deactivated),
+      extractLeaveGuards(deactivated), // 即将被销毁组件的 beforeRouteLeave 守卫
       // global before hooks
-      // 全局 router before hooks
-      this.router.beforeHooks,
+      this.router.beforeHooks, // 全局的 beforeEach 守卫
       // in-component update hooks
-      // 得到组件 updated 钩子
-      extractUpdateHooks(updated),
+      extractUpdateHooks(updated), // 组件中所有 beforeRouteUpdate 守卫
       // in-config enter guards
-      // 将要更新的路由的 beforeEnter 钩子
-      activated.map(m => m.beforeEnter),
+      activated.map(m => m.beforeEnter), // 将要更新的路由的独享守卫 beforeEnter
       // async components
-      // 异步组件
-      resolveAsyncComponents(activated)
+      resolveAsyncComponents(activated) // 解析异步组件
     )
 
+    // 记录目标路由对象，方便取消对比用
     this.pending = route
+
+    // 迭代器
     const iterator = (hook: NavigationGuard, next) => {
       if (this.pending !== route) {
         return abort()
       }
       try {
-        hook(route, current, (to: any) => {
+        hook(/* to*/route, /* from*/current, /* next*/(to: any) => {
           if (to === false || isError(to)) {
             // next(false) -> abort navigation, ensure current URL
+            // next(false) -> 取消跳转，添加一个新历史记录(但由于url地址未发生变化，所以并未添加记录)
             this.ensureURL(true)
             abort(to)
           } else if (
@@ -193,8 +208,10 @@ export class History {
             // next('/') or next({ path: '/' }) -> redirect
             abort()
             if (typeof to === 'object' && to.replace) {
+              // 调用子类方法的替换记录
               this.replace(to)
             } else {
+              // 调用子类方法的添加记录
               this.push(to)
             }
           } else {
@@ -220,7 +237,11 @@ export class History {
           return abort()
         }
         this.pending = null
+
+        // 执行 onComplete 回调，onComplete 中会调用:
+        //  updateRoute 方法更新 route 信息，内部会触发 afterEach 结束钩子
         onComplete(route)
+
         if (this.router.app) {
           this.router.app.$nextTick(() => {
             postEnterCbs.forEach(cb => {
@@ -266,6 +287,13 @@ function normalizeBase (base: ?string): string {
   return base.replace(/\/$/, '')
 }
 
+/**
+ * 对比前后 route 对象 路由记录
+ * 找出需要 更新(updated)、失活(deactivated)、激活(activated) 的路由记录
+ * @param {*} current 当前路由记录
+ * @param {*} next 目标路由记录
+ * @returns 
+ */
 function resolveQueue (
   current: Array<RouteRecord>,
   next: Array<RouteRecord>
@@ -275,12 +303,17 @@ function resolveQueue (
   deactivated: Array<RouteRecord>
 } {
   let i
+  // 找到两个的最大值
   const max = Math.max(current.length, next.length)
+  // 以这个最大值为最大循环次数，遍历，找出首个不相等的索引
   for (i = 0; i < max; i++) {
     if (current[i] !== next[i]) {
       break
     }
   }
+  // 例如：current:[1,2,3] next:[1,2,3,4]
+  // 那么最后一个就不同，此时 i=3
+  // 那么需要更新的是 [1,2,3]，需要激活的是 [4], 失效的是 []
   return {
     updated: next.slice(0, i),
     activated: next.slice(i),
