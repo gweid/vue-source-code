@@ -2861,3 +2861,179 @@ function replaceHash (path) {
 
 
 
+## 6、router-view 与 router-link
+
+
+
+### 6-1、router-link
+
+> vue-router\src\components\link.js
+
+```js
+export default {
+  name: 'RouterLink',
+  props: {
+    // <router-link :to="'/home'">
+    // <router-link :to="{ path: '/home', query: {} }">
+    to: {
+      type: toTypes, // 可以是 String 和 Object
+      required: true
+    },
+    // 默认标签名
+    tag: {
+      type: String,
+      default: 'a' // router-link 默认为 a 标签
+    },
+    exact: Boolean, // 是否精确匹配
+    // 是否追加，从 /a 导航到一个相对路径 b，没有配置 append，路径为 /b，配了，则为 /a/b
+    append: Boolean,
+    replace: Boolean, // 为true，调用router.replace否则调用router.push
+    activeClass: String, // 设置链接激活时使用的 CSS 类名
+    exactActiveClass: String,
+    ariaCurrentValue: {
+      type: String,
+      default: 'page'
+    },
+    // 默认绑定的事件
+    event: {
+      type: eventTypes,
+      default: 'click' // 默认使用 click 事件
+    }
+  },
+  // 默认创建一个 a 标签，同时为 a 标签绑定 click 事件
+  render (h: Function) {
+    const router = this.$router
+    const current = this.$route
+    const { location, route, href } = router.resolve(
+      this.to,
+      current,
+      this.append
+    )
+
+    const classes = {}
+    const globalActiveClass = router.options.linkActiveClass
+    const globalExactActiveClass = router.options.linkExactActiveClass
+    // Support global empty active class
+    const activeClassFallback =
+      globalActiveClass == null ? 'router-link-active' : globalActiveClass
+    const exactActiveClassFallback =
+      globalExactActiveClass == null
+        ? 'router-link-exact-active'
+        : globalExactActiveClass
+    const activeClass =
+      this.activeClass == null ? activeClassFallback : this.activeClass
+    const exactActiveClass =
+      this.exactActiveClass == null
+        ? exactActiveClassFallback
+        : this.exactActiveClass
+
+    const compareTarget = route.redirectedFrom
+      ? createRoute(null, normalizeLocation(route.redirectedFrom), null, router)
+      : route
+
+    classes[exactActiveClass] = isSameRoute(current, compareTarget)
+    classes[activeClass] = this.exact
+      ? classes[exactActiveClass]
+      : isIncludedRoute(current, compareTarget)
+
+    const ariaCurrentValue = classes[exactActiveClass] ? this.ariaCurrentValue : null
+
+    // 声明式导航其实真正还是调用 router.replace 或者 router.push 来完成
+    const handler = e => {
+      if (guardEvent(e)) {
+        if (this.replace) {
+          router.replace(location, noop)
+        } else {
+          router.push(location, noop)
+        }
+      }
+    }
+
+    const on = { click: guardEvent }
+    if (Array.isArray(this.event)) {
+      this.event.forEach(e => {
+        on[e] = handler
+      })
+    } else {
+      on[this.event] = handler
+    }
+
+    const data: any = { class: classes }
+
+    const scopedSlot =
+      !this.$scopedSlots.$hasNormal &&
+      this.$scopedSlots.default &&
+      this.$scopedSlots.default({
+        href,
+        route,
+        navigate: handler,
+        isActive: classes[activeClass],
+        isExactActive: classes[exactActiveClass]
+      })
+
+    if (scopedSlot) {
+      if (scopedSlot.length === 1) {
+        return scopedSlot[0]
+      } else if (scopedSlot.length > 1 || !scopedSlot.length) {
+        if (process.env.NODE_ENV !== 'production') {
+          warn(
+            false,
+            `RouterLink with to="${
+              this.to
+            }" is trying to use a scoped slot but it didn't provide exactly one child. Wrapping the content with a span element.`
+          )
+        }
+        return scopedSlot.length === 0 ? h() : h('span', {}, scopedSlot)
+      }
+    }
+
+    if (this.tag === 'a') {
+      // 如果 tag 是 a 标签
+      data.on = on
+      data.attrs = { href, 'aria-current': ariaCurrentValue }
+    } else {
+      // find the first <a> child and apply listener and href
+      const a = findAnchor(this.$slots.default)
+      if (a) {
+        // in case the <a> is a static node
+        a.isStatic = false
+        const aData = (a.data = extend({}, a.data))
+        aData.on = aData.on || {}
+        // transform existing events in both objects into arrays so we can push later
+        for (const event in aData.on) {
+          const handler = aData.on[event]
+          if (event in on) {
+            aData.on[event] = Array.isArray(handler) ? handler : [handler]
+          }
+        }
+        // append new listeners for router-link
+        for (const event in on) {
+          if (event in aData.on) {
+            // on[event] is always a function
+            aData.on[event].push(on[event])
+          } else {
+            aData.on[event] = handler
+          }
+        }
+
+        const aAttrs = (a.data.attrs = extend({}, a.data.attrs))
+        aAttrs.href = href
+        aAttrs['aria-current'] = ariaCurrentValue
+      } else {
+        // doesn't have <a> child, apply listener to self
+        data.on = on
+      }
+    }
+
+    // Vue 的 h 函数渲染一个标签
+    return h(this.tag, data, this.$slots.default)
+  }
+}
+```
+
+router-link 逻辑：
+
+- 本质还是通过 vue 的渲染函数 h 创建一个标签
+- 并为标签绑定事件，默认为点击事件 click
+- 点击跳转实际上还是调用的 `router.replace` 或者 `router.push` 来完成
+

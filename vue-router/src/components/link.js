@@ -11,22 +11,26 @@ const eventTypes: Array<Function> = [String, Array]
 
 const noop = () => {}
 
+
 export default {
   name: 'RouterLink',
   props: {
+    // <router-link :to="'/home'">
+    // <router-link :to="{ path: '/home', query: {} }">
     to: {
-      type: toTypes,
+      type: toTypes, // 可以是 String 和 Object
       required: true
     },
     // 默认标签名
     tag: {
       type: String,
-      default: 'a'
+      default: 'a' // router-link 默认为 a 标签
     },
-    exact: Boolean,
+    exact: Boolean, // 是否精确匹配
+    // 是否追加，从 /a 导航到一个相对路径 b，没有配置 append，路径为 /b，配了，则为 /a/b
     append: Boolean,
-    replace: Boolean,
-    activeClass: String,
+    replace: Boolean, // 为true，调用router.replace否则调用router.push
+    activeClass: String, // 设置链接激活时使用的 CSS 类名
     exactActiveClass: String,
     ariaCurrentValue: {
       type: String,
@@ -35,7 +39,7 @@ export default {
     // 默认绑定的事件
     event: {
       type: eventTypes,
-      default: 'click'
+      default: 'click' // 默认使用 click 事件
     }
   },
   // 默认创建一个 a 标签，同时为 a 标签绑定 click 事件
@@ -126,6 +130,7 @@ export default {
     }
 
     if (this.tag === 'a') {
+      // 如果 tag 是 a 标签
       data.on = on
       data.attrs = { href, 'aria-current': ariaCurrentValue }
     } else {
@@ -162,6 +167,7 @@ export default {
       }
     }
 
+    // Vue 的 h 函数渲染一个标签
     return h(this.tag, data, this.$slots.default)
   }
 }
