@@ -39,7 +39,7 @@ export function install (Vue) {
         // VueRouter 类身上有 init 方法，主要是进行 VueRouter 的初始化
         // 将 this 当做参数，this 是 vue
         this._router.init(this)
-        // 将 _route 变成响应式的
+        // 将 _route 变成响应式的，后续 route 变化，重新渲染
         Vue.util.defineReactive(this, '_route', this._router.history.current)
       } else {
         this._routerRoot = (this.$parent && this.$parent._routerRoot) || this

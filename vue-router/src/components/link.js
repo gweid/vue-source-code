@@ -168,6 +168,9 @@ export default {
     }
 
     // Vue 的 h 函数渲染一个标签
+    // render: (h) => h(App)
+    // 实际就是 render: createElement => createElement(App)
+    // h 函数实际就是 createElement 函数
     return h(this.tag, data, this.$slots.default)
   }
 }

@@ -2757,7 +2757,135 @@ export function replaceState (url?: string) {
 
 
 
-#### 5-1-4、push、replace 方法
+#### 5-1-4、更新 route
+
+上面说到过，在路由导航解析成功之后，会调用 updateRoute 去更新 route。
+
+> vue-router\src\history\base.js
+
+```js
+// 调用 this.confirmTransition，执行路由转换动作
+this.confirmTransition(
+  route,
+  () => {
+    // 跳转完成
+    this.updateRoute(route) // 更新 route
+
+    // 执行 transitionTo 的 onComplete
+    onComplete && onComplete(route)
+
+    // 更新 url 路径，在子类 HTML5History、HashHistory 中实现
+    this.ensureURL()
+  },
+  err => {/.../}
+)
+```
+
+
+
+> vue-router\src\history\base.js
+
+```js
+class History {
+  // ...
+    
+  // 绑定路由 route 参数 更新回调函数
+  listen (cb: Function) {
+    // 将回调函数挂载到 this.cb，在 updateRoute 更新 route 的时候调用
+    this.cb = cb
+  }
+    
+  // 更新路由参数 route
+  updateRoute (route: Route) {
+    const prev = this.current
+
+    // 更新当前 route
+    this.current = route
+    // 执行路由参数 route 更新
+    // 调用 updateRoute 回调，回调中会重新为 _routerRoot._route 赋值，进而触发 router-view 的重新渲染
+    this.cb && this.cb(route)
+
+    // 触发 afterEach 钩子
+    this.router.afterHooks.forEach(hook => {
+      hook && hook(route, prev)
+    })
+  }
+}
+```
+
+updateRoute 做的事：
+
+- 更新当前 route
+- 执行 this.cb(route) 回调函数去更新 vue 根的 route
+
+this.cb 是在执行 History 实例的 listen 方法的时候绑定在 this 上的
+
+那么 listen 又是什么时候调用的呢？答案就在初始化 VueRouter 的时候
+
+> vue-router\src\index.js
+
+```js
+class VueRouter {
+  // ...
+    
+  init() {
+    // ...
+      
+    // 拿到 history 实例
+    const history = this.history
+    
+    // 挂载了回调的 cb，每次更新路由时更新 app._route
+    history.listen(route => {
+      this.apps.forEach((app) => {
+        app._route = route
+      })
+    })
+  }
+}
+```
+
+这里的 app 就是 vue 根，在 install 阶段，将`_route`定义为响应式的，依赖了`_route`的地方，在`_route`发生变化时，都会重新渲染
+
+> vue-router\src\install.js
+
+```js
+function install (Vue) {
+  // ...
+    
+  // 通过 Vue.mixin 去做全局混入
+  // 当组件实例化执行到 beforeCreate、destroyed 钩子时都会执行这里定义的逻辑
+  Vue.mixin({
+    beforeCreate () {
+      // 判断是否在 new Vue 的时候是否把 router 传入
+      // 传进来了，会在 Vue.$options 上挂载有 router
+      // new Vue({ el: 'app', router })
+      if (isDef(this.$options.router)) {
+        // 将 Vue 赋值给 this._routerRoot 
+        this._routerRoot = this
+        // 将传入的 router 赋值给 this._router
+        // 传入的 router 是通过 new VueRouter({mode: '', routes: [{}]}) 出来的
+        this._router = this.$options.router 
+        // VueRouter 类身上有 init 方法，主要是进行 VueRouter 的初始化
+        // 将 this 当做参数，this 是 vue
+        this._router.init(this)
+        // 将 _route 变成响应式的，后续 route 变化，重新渲染
+        Vue.util.defineReactive(this, '_route', this._router.history.current)
+      } else {
+        this._routerRoot = (this.$parent && this.$parent._routerRoot) || this
+      }
+      registerInstance(this, this)
+    }
+  })
+}
+```
+
+
+
+以上，就是更新 route，依赖 route 的组件重新渲染的过程
+
+
+
+#### 5-1-5、push、replace 方法
 
 > vue-router\src\history\html5.js
 

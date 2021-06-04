@@ -50,6 +50,7 @@ export class History {
 
   // 绑定路由 route 参数 更新回调函数
   listen (cb: Function) {
+    // 将回调函数挂载到 this.cb，在 updateRoute 更新 route 的时候调用
     this.cb = cb
   }
 
@@ -256,9 +257,14 @@ export class History {
   // 更新路由参数 route
   updateRoute (route: Route) {
     const prev = this.current
+
+    // 更新当前 route
     this.current = route
     // 执行路由参数 route 更新
+    // 调用 updateRoute 回调，回调中会重新为 _routerRoot._route 赋值，进而触发 router-view 的重新渲染
     this.cb && this.cb(route)
+
+    // 触发 afterEach 钩子
     this.router.afterHooks.forEach(hook => {
       hook && hook(route, prev)
     })

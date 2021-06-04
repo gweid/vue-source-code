@@ -3,13 +3,15 @@ import { extend } from '../util/misc'
 
 export default {
   name: 'RouterView',
-  functional: true,
+  functional: true, // 函数组件，没有 this
   props: {
     name: {
       type: String,
       default: 'default'
     }
   },
+  // _ 在这里是 h 函数，即 createElement 函数
+  // 但是 router-view 没有使用自身的 createElement，而是使用父组件的 createElement
   render (_, { props, children, parent, data }) {
     // used by devtools to display a router-view badge
     data.routerView = true
