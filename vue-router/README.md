@@ -44,7 +44,7 @@ Vue-Router
 
    ![](../imgs/img28.png)
 
-3. 然后在源码根目录执行 `npm install` 装包，后运行 `npm run dev`，然后打开： http://127.0.0.1:8080，就可以利用官方的 example 示例进行调试了
+3. 然后在源码根目录执行 `npm install` 装包，后运行 `npm run dev`，然后打开：` http://127.0.0.1:8080`，就可以利用官方的 example 示例进行调试了
 
    ![](../imgs/img29.png)
    
