@@ -19,3 +19,23 @@ Vuex
 │   ├── util.js                           工具函数
 ```
 
+
+
+## 调试方式
+
+1. 将 vuex 源码 clone 下来
+
+2. 修改 `vuex/examples/webpack.config.js`，添加一行代码 `devtool: 'source-map'`
+
+   ![](../imgs/img31.png)
+
+3. 在 vuex 根目录执行 `npm install` 装包，后运行 `npm run dev`，打开 `http://localhost:8080`，就可以利用 vuex 的 example 示例进行调试
+
+   ![](../imgs/img32.png)
+
+4. 在 examples 里面对应的示例打 debugger 即可，例如这里利用 shopping-cart 示例进行调试
+
+   ![](../imgs/img33.png)
+
+
+
