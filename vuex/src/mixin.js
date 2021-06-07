@@ -24,7 +24,7 @@ export default function (Vue) {
   function vuexInit() {
     const options = this.$options
     // store injection
-    // store 注入到每一个 Vue 实例中
+    // store 注入到 Vue 实例中
     if (options.store) {
       this.$store = typeof options.store === 'function' ?
         options.store() :
