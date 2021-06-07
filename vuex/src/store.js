@@ -520,7 +520,9 @@ function unifyObjectStyle (type, payload, options) {
   return { type, payload, options }
 }
 
+// 暴露 install 方法，在 Vue.use(Vuex) 的时候，执行这里的 install 方法
 export function install (_Vue) {
+  // Vue 已经存在并且与传入的相等，说明已经使用 Vue.use 安装过 Vuex
   if (Vue && _Vue === Vue) {
     if (process.env.NODE_ENV !== 'production') {
       console.error(
@@ -529,6 +531,11 @@ export function install (_Vue) {
     }
     return
   }
+
+  // 将 Vue.use(Vuex) 时传入的 Vue 赋值给 Vue，用于判断是否重复安装 vuex
   Vue = _Vue
+
+  // 如果没有被注册过，调用 applyMixin
+  // 执行 mixin 混入，将 $store 对象注入到到每个组件实例
   applyMixin(Vue)
 }
