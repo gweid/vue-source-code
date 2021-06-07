@@ -36,6 +36,24 @@ Vue-Router
 
 
 
+## 调试方式
+
+1. 将 vue-router 代码 clone 下来
+
+2. 进入到源码目录下的 examples 目录，打开 webpack.config.js 文件，在里面添加一行代码 `devtool: 'source-map'`
+
+   ![](../imgs/img28.png)
+
+3. 然后在源码根目录执行 `npm run dev`，然后打开： http://127.0.0.1:8080，就可以利用官方的 example 示例进行调试了
+
+   ![](../imgs/img29.png)
+   
+4. 在 examples 里面对应的示例打 debugger 即可
+
+   ![](../imgs/img30.png)
+
+
+
 ## 1、前置知识
 
 在阅读 vue-router 源码之前，先来了解一下 hash 和 histroy 相关的知识。
