@@ -29,7 +29,7 @@ export default function (Vue) {
    */
   // 最终每个 Vue 的实例对象，都有一个 $store 属性。且是同一个 Store 实例
   // 这也是为什么在每一个组件内部都可以通过 this.$store.xxx 调用的原因
-  // 在进行组件实例化的时候，通过 new Vue({ el: '#app', store }) 的方式将 store 对象放到 vue.$options 上
+  // 在进行根组件实例化的时候，通过 new Vue({ el: '#app', store }) 的方式将 store 对象放到 vue.$options 上
   function vuexInit() {
     // 这里的 this.$options 是当前组件实例的 options
     const options = this.$options
@@ -38,7 +38,7 @@ export default function (Vue) {
     // 下面两种做法都是：保证在任意组件访问 $store 属性都指向同一个 store 对象
     if (options.store) {
       // 若当前组件的 $options 上已存在 store，则将 $options.store 赋值给 this.$store
-      // 这个是用于根组件的
+      // 这个是用于根组件的，因为根组件在 new Vue({ el: '#app', store }) 时会有 store 在 options 上
       this.$store = typeof options.store === 'function' ?
         options.store() :
         options.store
