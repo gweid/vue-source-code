@@ -249,7 +249,7 @@ export default function (Vue) {
 
 
 
-## 2、Vuex.store 构造类
+## 2、Vuex.Store 构造类
 
 根据上面的例子，在 `Vue.use(Vuex)` 之后，是：
 
@@ -387,5 +387,67 @@ export class Store {
 
 
 
-### 2-2、modules 模块化
+## 3、modules 模块化
+
+在阅读 modules 模块化源码之前，先来了解一下 vuex 的 modules
+
+> 由于使用单一状态树，应用的所有状态会集中到一个比较大的对象。当应用变得非常复杂时，store 对象就有可能变得相当臃肿。 为了解决以上问题，Vuex 允许我们将 store 分割成模块（module）。每个模块拥有自己的 state、mutation、action、getter、甚至是嵌套子模块——从上至下进行同样方式的分割
+
+可知：modules 主要就是解决所有状态集中在一个文件中，难以管理的问题。
+
+
+
+### 3-1、new ModuleCollection
+
+在 new Vuex.Store 初始化 Store 实例的时候说过，会通过 new ModuleCollection 初始化 module 属性：
+
+> vuex\src\store.js
+
+```js
+import ModuleCollection from './module/module-collection'
+
+class Store {
+  constructor (options = {}) {
+    // ...
+
+    this._modules = new ModuleCollection(options)
+  }
+}
+```
+
+new ModuleCollection 的时候会将 options 当做参数，options 是 { state, mutations, actions, getters, modules } 这个对象
+
+```js
+const store = new Vuex.Store({
+  state: {
+    count: 0
+  },
+  mutations: {
+    increment (state) {
+      state.count++
+    }
+  }
+})
+```
+
+
+
+接下来就看看 new ModuleCollection 的过程
+
+> vuex\src\module\module-collection.js
+
+```js
+class ModuleCollection {
+  constructor (rawRootModule) {
+    // 注册根模块
+    this.register([], rawRootModule, false)
+  }
+
+  // ...
+}
+```
+
+
+
+### 3-2、ModuleCollection.register 注册根模块
 
