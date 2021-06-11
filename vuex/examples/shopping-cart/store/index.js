@@ -4,7 +4,6 @@ import cart from './modules/cart'
 import products from './modules/products'
 import createLogger from '../../../src/plugins/logger'
 
-debugger;
 Vue.use(Vuex)
 
 const debug = process.env.NODE_ENV !== 'production'

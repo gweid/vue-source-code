@@ -6,7 +6,7 @@
 Vuex
 ├── src                                   源码目录
 │   ├── module                            与模块 module 相关的操作
-│   │   ├── module-collection.js          用于收集并注册根模块和嵌套模块
+│   │   ├── module-collection.js          用于递归收集并注册根模块和嵌套模块
 │   │   └── module.js                     定义 Module 类，存储模块内的一些信息，例如: state...
 │   ├── plugins                           插件
 │   │   ├── devtool.js                    用于 devtool 调试
@@ -33,7 +33,7 @@ Vuex
 
    ![](../imgs/img32.png)
 
-4. 在 examples 里面对应的示例打 debugger 即可，例如这里利用 shopping-cart 示例进行调试
+4. 在 examples 里面对应的示例打 debugger 即可，例如这里利用 shopping-cart 示例进行调试（或者在源码内部进行 debugger）
 
    ![](../imgs/img33.png)
 
@@ -249,5 +249,143 @@ export default function (Vue) {
 
 
 
+## 2、Vuex.store 构造类
 
+根据上面的例子，在 `Vue.use(Vuex)` 之后，是：
+
+```js
+const store = new Vuex.Store({
+  state: {
+    count: 0
+  },
+  mutations: {
+    increment (state) {
+      state.count++
+    }
+  }
+})
+```
+
+通过 `new Vuex.Store()` 的方式得到 store 实例，下面来看看这一步做了什么
+
+
+
+ ### 2-1、new Vuex.Store
+
+new Vuex.Store 主要就是执行 Store 构造类的 constructor 构造方法
+
+> vuex\src\store.js
+
+```js
+export class Store {
+  constructor (options = {}) {
+    // 如果是通过 script 标签的方式引入的 vuex，那么直接调用 install 安装，而不需要 Vue.use 安装
+    if (!Vue && typeof window !== 'undefined' && window.Vue) {
+      install(window.Vue)
+    }
+
+    // 开发环境的一些错误提示
+    // export function assert (condition, msg) {
+    //   if (!condition) throw new Error(`[vuex] ${msg}`)
+    // }
+    if (process.env.NODE_ENV !== 'production') {
+      // 在创建 store 实例之前必须先安装 vuex
+      assert(Vue, `must call Vue.use(Vuex) before creating a store instance.`)
+      // 当前环境不支持Promise，报错：vuex 需要 Promise polyfill
+      assert(typeof Promise !== 'undefined', `vuex requires a Promise polyfill in this browser.`)
+      // store 必须使用 new 进行实例化
+      assert(this instanceof Store, `store must be called with the new operator.`)
+    }
+
+    const {
+      plugins = [], // vuex 插件
+      // 是否严格模式，默认 false
+      // 如果是严格模式，无论何时发生了状态变更且不是由 mutation 函数引起的，都会抛出错误
+      strict = false
+    } = options
+
+    // 表示提交的状态，当通过 mutations 方法改变 state 时，该状态为 true，state 值改变完后，该状态变为 false; 
+    // 在严格模式下会监听 state值 的改变，当改变时，_committing 为 false 时，会发出警告，state 值的改变没有经过 mutations
+    // 也就是说，_committing 主要用来判断严格模式下 state 是否是通过 mutation 修改的 state
+    this._committing = false
+    // 用来存储 actions 方法名称(包括全局和命名空间内的)
+    this._actions = Object.create(null)
+    // 用来存储 actions 订阅函数
+    this._actionSubscribers = []
+    // 用来存储 mutations 方法名称(包括全局和命名空间内的)
+    this._mutations = Object.create(null)
+    // 用来存储 gette
+    this._wrappedGetters = Object.create(null)
+    // 根据传进来的 options 配置，注册各个模块，构造模块树形结构
+    // 注意：此时只是构建好了各个模块的关系，定义了各个模块的 state 状态下
+    // 但 getter、mutation 等各个方法还没有注册
+    this._modules = new ModuleCollection(options)
+    // 存储定义了命名空间的模块
+    this._modulesNamespaceMap = Object.create(null)
+    // 存放 mutation 的订阅函数
+    this._subscribers = []
+    // 实例化一个 Vue，主要用 $watch 对 state、getters 进行监听
+    this._watcherVM = new Vue()
+    // getter 本地缓存
+    this._makeLocalGettersCache = Object.create(null)
+
+    // 将 dispatch 和 commit 方法绑定到 store 实例上
+    // 避免后续使用 dispatch 或 commit 时改变了 this 指向
+    const store = this
+    const { dispatch, commit } = this
+    this.dispatch = function boundDispatch (type, payload) {
+      return dispatch.call(store, type, payload)
+    }
+    this.commit = function boundCommit (type, payload, options) {
+      return commit.call(store, type, payload, options)
+    }
+
+    // strict mode
+    // 严格模式，默认是 false
+    this.strict = strict
+
+    // 获取 根模块 的 state 值
+    const state = this._modules.root.state
+
+    // 初始化根模块，并且递归处理所有子模块
+    installModule(this, state, [], this._modules.root)
+
+    // 实现数据的响应式
+    // 通过 Vue 生成一个 _vm 实例，将 getter 和 state 交给 _vm 托管，作用：
+    //  store.state 赋值给 _vm.data.$$state
+    //  getter 通过转化后赋值给 _vm.computed
+    //  这样一来，就实现了 state 的响应式，getters 实现了类似 computed 的功能
+    resetStoreVM(this, state)
+
+    // 注册插件
+    plugins.forEach(plugin => plugin(this))
+
+    // 调试工具注册
+    const useDevtools = options.devtools !== undefined ? options.devtools : Vue.config.devtools
+    if (useDevtools) {
+      devtoolPlugin(this)
+    }
+  }
+
+  // ...
+}
+```
+
+1. 判断如果是通过 script 标签的方式引入的 vuex，那么直接调用 install 安装，而不需要 Vue.use 安装
+2. 在开发环境下的一些错误提示：
+   - 在创建 store 实例前必须先安装 Vuex
+   - 当前环境不支持Promise，报错：vuex 需要 Promise polyfill
+   - store 必须使用 new 进行实例化
+3. 进行一系列属性的初始化，例如：actions、mutations、getters 等，其中最重要的是调用 ModuleCollection 构造 module 对象。这个后面再分析
+4. 处理 dispatch 和 commit：改变两个方法中的 this 指向，将其指向当前的 store，避免后续使用 dispatch 或 commit 时改变了 this 指向
+5. 调用 installModule 进行根模块处理，并且递归处理各个子模块【后面分析模块化时再分析】
+6. 调用 resetStoreVM 进行响应式处理【后面详细分析】
+7. 注册插件
+8. 调试工具注册
+
+以上，就是 new Vuex.Store 的初始化过程，其中比较重要的是：初始化各种属性、模块化的处理、数据响应式
+
+
+
+### 2-2、modules 模块化
 

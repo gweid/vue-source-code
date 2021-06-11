@@ -10,34 +10,60 @@ export class Store {
     // Auto install if it is not done yet and `window` has `Vue`.
     // To allow users to avoid auto-installation in some cases,
     // this code should be placed here. See #731
+    // 如果是通过 script 标签的方式引入的 vuex，那么直接调用 install 安装，而不需要 Vue.use 安装
     if (!Vue && typeof window !== 'undefined' && window.Vue) {
       install(window.Vue)
     }
 
+    // 开发环境的一些错误提示
+    // export function assert (condition, msg) {
+    //   if (!condition) throw new Error(`[vuex] ${msg}`)
+    // }
     if (process.env.NODE_ENV !== 'production') {
+      // 在创建 store 实例之前必须先安装 vuex
       assert(Vue, `must call Vue.use(Vuex) before creating a store instance.`)
+      // 当前环境不支持Promise，报错：vuex 需要 Promise polyfill
       assert(typeof Promise !== 'undefined', `vuex requires a Promise polyfill in this browser.`)
+      // store 必须使用 new 进行实例化
       assert(this instanceof Store, `store must be called with the new operator.`)
     }
 
     const {
-      plugins = [],
+      plugins = [], // vuex 插件
+      // 是否严格模式，默认 false
+      // 如果是严格模式，无论何时发生了状态变更且不是由 mutation 函数引起的，都会抛出错误
       strict = false
     } = options
 
     // store internal state
+    // 表示提交的状态，当通过 mutations 方法改变 state 时，该状态为 true，state 值改变完后，该状态变为 false; 
+    // 在严格模式下会监听 state值 的改变，当改变时，_committing 为 false 时，会发出警告，state 值的改变没有经过 mutations
+    // 也就是说，_committing 主要用来判断严格模式下 state 是否是通过 mutation 修改的 state
     this._committing = false
+    // 用来存储 actions 方法名称(包括全局和命名空间内的)
     this._actions = Object.create(null)
+    // 用来存储 actions 订阅函数
     this._actionSubscribers = []
+    // 用来存储 mutations 方法名称(包括全局和命名空间内的)
     this._mutations = Object.create(null)
+    // 用来存储 getters
     this._wrappedGetters = Object.create(null)
+    // 根据传进来的 options 配置，注册各个模块，构造模块树形结构
+    // 注意：此时只是构建好了各个模块的关系，定义了各个模块的 state 状态下
+    // 但 getter、mutation 等各个方法还没有注册
     this._modules = new ModuleCollection(options)
+    // 存储定义了命名空间的模块
     this._modulesNamespaceMap = Object.create(null)
+    // 存放 mutation 的订阅函数
     this._subscribers = []
+    // 实例化一个 Vue，主要用 $watch 对 state、getters 进行监听
     this._watcherVM = new Vue()
+    // getter 本地缓存
     this._makeLocalGettersCache = Object.create(null)
 
     // bind commit and dispatch to self
+    // 改变 this 指向，将 dispatch 和 commit 方法绑定到 store 实例上
+    // 避免后续使用 dispatch 或 commit 时改变了 this 指向
     const store = this
     const { dispatch, commit } = this
     this.dispatch = function boundDispatch (type, payload) {
@@ -48,22 +74,32 @@ export class Store {
     }
 
     // strict mode
+    // 严格模式，默认是 false
     this.strict = strict
 
+    // 获取 根模块 的 state 值
     const state = this._modules.root.state
 
     // init root module.
     // this also recursively registers all sub-modules
     // and collects all module getters inside this._wrappedGetters
+    // 初始化根模块，并且递归处理所有子模块
     installModule(this, state, [], this._modules.root)
 
     // initialize the store vm, which is responsible for the reactivity
     // (also registers _wrappedGetters as computed properties)
+    // 实现数据的响应式
+    // 通过 Vue 生成一个 _vm 实例，将 getter 和 state 交给 _vm 托管，作用：
+    //  store.state 赋值给 _vm.data.$$state
+    //  getter 通过转化后赋值给 _vm.computed
+    //  这样一来，就实现了 state 的响应式，getters 实现了类似 computed 的功能
     resetStoreVM(this, state)
 
     // apply plugins
+    // 注册插件
     plugins.forEach(plugin => plugin(this))
 
+    // 调试工具注册
     const useDevtools = options.devtools !== undefined ? options.devtools : Vue.config.devtools
     if (useDevtools) {
       devtoolPlugin(this)
