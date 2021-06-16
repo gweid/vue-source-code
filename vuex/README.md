@@ -1392,3 +1392,8 @@ function resetStoreVM (store, state, hot) {
 }
 ```
 
+主要做的事：
+
+- 生成一个 `Vue` 的实例 `_vm` ，然后将 `store._makeLocalGettersCache` 里的 `getters` 以及 `store.state` 交给一个 `_vm` 托管，即将 `store.state` 赋值给 `_vm.data.$$state` ，将 `store._makeLocalGettersCache` 通过转化后赋值给 `_vm.computed` ，这样一来，`state` 就实现了响应式，`getters` 实现了类似 `computed` 的功能
+
+- 并且，对 store.getters 进行了代理，后续通过 store.getters 访问到 getter 实际上是  `store._makeLocalGettersCache` 通过转化后赋值给挂载在 vm 上的 computed
