@@ -10,11 +10,17 @@ export default class ModuleCollection {
   }
 
   get (path) {
+    // 如果传进来的是空数组，就不进行遍历，直接返回初始值 this.root【根模块】
     return path.reduce((module, key) => {
       return module.getChild(key)
     }, this.root)
   }
 
+  /**
+  * 根据模块是否有命名空间来设定一个路径名称
+  * 例如：A 为父模块，B 为子模块:
+  *   若 A 模块命名空间为 moduleA, B 模块未设定命名空间时; 则 B 模块继承 A 模块的命名空间，为 moduleA/
+  */
   getNamespace (path) {
     let module = this.root
     return path.reduce((namespace, key) => {
@@ -43,18 +49,25 @@ export default class ModuleCollection {
       // 说明：根模块，path 是空数组 []，将根模块挂载到 this.root
       this.root = newModule
     } else {
-      // 子模块，进到这里
+      // 如果是子模块，进到这里
       // 首先，找到子模块的父模块
-      // [1, 2, 3].slice(0, -1) 结果是：[1, 2]
+      // [1].slice(0, -1) 结果是：[]，代表父模块是 根模块，1 就是当前子摸快
+      //   如果是 [1, 2]， 结果是: [1]，代表父模块是 1，1 的父模块是 根模块
+      //   因为在 vuex 中，modules 里面还可以嵌套 modules
       const parent = this.get(path.slice(0, -1))
-      // 将子模块添加到父模块的 _children 上（path 最后一个为子模块）
+      // 将子模块添加到父模块的 _children 上；newModule 是根据当前子模块创建的
+      // 实际上就是类似：parent: { _children: { 当前子模块名: newModule } }
       parent.addChild(path[path.length - 1], newModule)
     }
 
     // register nested modules
     // 递归 modules 进行子模块注册
     if (rawModule.modules) {
+      // export function forEachValue (obj, fn) {
+      //   Object.keys(obj).forEach(key => fn(obj[key], key))
+      // }
       forEachValue(rawModule.modules, (rawChildModule, key) => {
+        // 如果还有 modules，递归注册
         this.register(path.concat(key), rawChildModule, runtime)
       })
     }
