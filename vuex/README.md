@@ -536,7 +536,6 @@ const newModule = new Module(rawModule, runtime)
 ```js
 import { forEachValue } from '../util'
 
-// Base data struct for store's module, package with some attribute and method
 export default class Module {
   // rawModule = { state:{}, getters:{}, mutations:{}, actions:{}, modules:{} }
   constructor (rawModule, runtime) {
@@ -693,7 +692,6 @@ function installModule (store, rootState, path, module, hot) {
   // 如果子模块没有设置命名空间，子模块会继承父模块的命名空间
   const namespace = store._modules.getNamespace(path)
 
-  // register in namespace map
   // 如果当前模块设置了namespaced 或 继承了父模块的namespaced
   // 则在 _modulesNamespaceMap 中存储一下当前模块，便于之后的辅助函数可以调用
   if (module.namespaced) {
@@ -983,8 +981,6 @@ function makeLocalContext (store, namespace, path) {
     }
   }
 
-  // getters and state object must be gotten lazily
-  // because they will be changed by vm update
   // 通过 Object.defineProperties 方法对 local 的 getters 属性和 state 属性设置了一层获取代理
   // 等后续对其访问时，才会进行处理
   Object.defineProperties(local, {
@@ -1317,10 +1313,8 @@ function resetStoreVM (store, state, hot) {
   // 保存一份老的 vm 实例
   const oldVm = store._vm
 
-  // bind store public getters
   // 初始化 store 中的 getters【注意：之前模块注册时 getters 是存放在 store._wrappedGetters 中的】
   store.getters = {}
-  // reset local getters cache
   // 重置本地 getters 缓存
   store._makeLocalGettersCache = Object.create(null)
   // 拿到模块注册时存储的 getters
@@ -1332,10 +1326,6 @@ function resetStoreVM (store, state, hot) {
   // }
   // 遍历 wrappedGetters 中存储的 getters 
   forEachValue(wrappedGetters, (fn, key) => {
-    // use computed to leverage its lazy-caching mechanism
-    // direct inline function use will lead to closure preserving oldVm.
-    // using partial to return function with only arguments preserved in closure environment.
-
     // function partial (fn, arg) {
     //   return function () {
     //     return fn(arg)
@@ -1353,9 +1343,6 @@ function resetStoreVM (store, state, hot) {
     })
   })
 
-  // use a Vue instance to store the state tree
-  // suppress warnings just in case the user has added
-  // some funky global mixins
   const silent = Vue.config.silent
   Vue.config.silent = true
 
@@ -1370,7 +1357,6 @@ function resetStoreVM (store, state, hot) {
   })
   Vue.config.silent = silent
 
-  // enable strict mode for new vm
   // 如果使用了严格模式，那么要求 state 只能通过 mutation 修改
   if (store.strict) {
     enableStrictMode(store)
@@ -1379,8 +1365,6 @@ function resetStoreVM (store, state, hot) {
   // 如果存在旧的 vm 实例，销毁旧的 vm 实例：因为生成了新的 vm 实例
   if (oldVm) {
     if (hot) {
-      // dispatch changes in all subscribed watchers
-      // to force getter re-evaluation for hot reloading.
       // 卸载对 state 的引用
       store._withCommit(() => {
         oldVm._data.$$state = null
@@ -1417,6 +1401,238 @@ class Store {
 ```
 
 当去访问 `store.state` 时，实际上是去访问 `store._vm.data.$$state` 
+
+
+
+## 5、commit 与 dispatch
+
+先来看看在 vue 中是怎么使用这两个方法的：
+
+1. commit：用来调用 mutation 的，它是同步的，写法有两种：
+
+   ```js
+   // 第一种
+   this.$store.commit('mutations方法名', 值)
+   
+   // 第二种
+   this.$store.commit({
+     type: 'mutations方法名',
+     amount: 10 // 值
+   })
+   ```
+
+2. dispatch：用来调用 action 的，它是异步的，写法有两种：
+
+   ```js
+   // 第一种
+   this.$store.dispatch('actions方法名', 值)
+   
+   // 第二种
+   this.$store.dispatch({
+     type: 'actions方法名',
+     amount: 10 // 值
+   })
+   ```
+
+
+
+### 5-1、commit
+
+> vuex\src\store.js
+
+```js
+class Store {
+  // ...
+
+  // 主要用来调用 mutation，同步的，两种调用方式：
+  //  1、this.$store.commit('mutation方法名', 值)
+  //  2、this.$store.commit({ type: 'mutation方法名', amount: 10 })
+  commit (_type, _payload, _options) {
+    // 主要就是处理兼容 commit 的两种调用方式
+    const {
+      type, // mutation 方法名
+      payload, // 传入的参数
+      options
+    } = unifyObjectStyle(_type, _payload, _options)
+
+    const mutation = { type, payload }
+
+    // 取出 type【mutation方法名】 对应的 mutation 方法数组
+    const entry = this._mutations[type]
+    // 没找到 type 对应的 mutation 方法，报错
+    if (!entry) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.error(`[vuex] unknown mutation type: ${type}`)
+      }
+      return
+    }
+
+    // 之前说过，mutation 的 type 对应的方法是存储在一个数组中的
+    // 因为子模块如果没有命名空间，会继承父模块的命名空间
+    // 父子模块有同一个 mutation 方法名的时候，为了不让子模块的覆盖父模块的，所以加到数组后面
+    // 所以现在就是将所有符合 type【mtation方法名】的函数拿出来，逐一执行
+    this._withCommit(() => {
+      entry.forEach(function commitIterator (handler) {
+        handler(payload)
+      })
+    })
+
+    // 调用 commit 更改 state 时，调用所有插件中订阅的方法
+    //  执行订阅函数，这个主要是一些 before，after 钩子函数
+    //  比如定义插件的过程中，常常需要监听多个 mutation，在 mutation 触发之后做一些公共的操作
+    //  就可以利用这些订阅的钩子函数
+    this._subscribers
+      .slice() // shallow copy to prevent iterator invalidation if subscriber synchronously calls unsubscribe
+      .forEach(sub => sub(mutation, this.state))
+
+    // ...
+  }
+}
+```
+
+commit 方法的主要逻辑：
+
+- 兼容两种 commit 写法
+
+- 取出 type【mutation方法名】 对应的 mutation 方法数组
+
+- 遍历 mutation 方法数组，逐个执行（注意，并不是直接执行，而是包裹在 this._withCommit 中）
+
+  > vuex\src\store.js
+
+  ```js
+  class Store {
+    // ...
+  
+   _withCommit (fn) {
+      // 原来的 this._committing 存储一份 
+      const committing = this._committing
+      // this._committing 设置为 true
+      this._committing = true
+      // 执行传进来的函数
+      fn()
+      // 恢复 this._committing 状态
+      this._committing = committing
+    }
+  }
+  ```
+
+  _withCommit 的逻辑很简单：
+
+  - 在调用 mutation 前，将原来的 `this._committing`存储一份 
+  - 然后将 `this._committing` 设置为 true，代表当前是 mutation 操作【因为 vuex 建议 state 通过 mutation 修改，严格模式下，更是强制】
+  - 执行 mutation 方法
+  - 将 `this._committing` 状态恢复原状
+
+
+
+### 5-2、dispatch
+
+> vuex\src\store.js
+
+```js
+class Store {
+  // ...
+ 
+  // 主要用来调用 action，异步的，两种调用方式：
+  //  1、this.$store.dispatch('action方法名', 值)
+  //  2、this.$store.dispatch({ type: 'action方法名', amount: 10 })
+  dispatch (_type, _payload) {
+    // check object-style dispatch
+    // 兼容处理两种 action 调用方法
+    const { type, payload } = unifyObjectStyle(_type, _payload)
+
+    const action = { type, payload }
+
+    // 取出 type【action方法名】 对应的 actions 方法数组
+    const entry = this._actions[type]
+    // 没找到 type【action方法名】 对应的 actions 方法数组，报错
+    if (!entry) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.error(`[vuex] unknown action type: ${type}`)
+      }
+      return
+    }
+
+    try {
+      this._actionSubscribers
+        .slice() // shallow copy to prevent iterator invalidation if subscriber synchronously calls unsubscribe
+        .filter(sub => sub.before)
+        .forEach(sub => sub.before(action, this.state))
+    } catch (e) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn(`[vuex] error in before action subscribers: `)
+        console.error(e)
+      }
+    }
+
+    // 判断 type【action方法名】 对应的 actions 方法数组长度
+    // 大于1，使用 promise.all 执行所有方法
+    // 否则，使用直接取出第一项执行
+    const result = entry.length > 1
+      ? Promise.all(entry.map(handler => handler(payload)))
+      : entry[0](payload)
+
+    // 现在 3.1.3 版本，是执行一下 result.then 后返回结果
+    // 但是 3.4.0 及之后的版本，是会返回 promise 的，具体查看：https://github.com/vuejs/vuex/blob/v3.4.0/src/store.js#L152
+    return result.then(res => {
+      try {
+        this._actionSubscribers
+          .filter(sub => sub.after)
+          .forEach(sub => sub.after(action, this.state))
+      } catch (e) {
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn(`[vuex] error in after action subscribers: `)
+          console.error(e)
+        }
+      }
+      return res
+    })
+  }
+}
+```
+
+- 兼容两种 action 写法
+
+- 取出 type【action方法名】对应的 actions 数组
+
+- 判断 actions 数组长度，大于1，使用 Promise.all 执行拿到结果，否则，直接取出第一项执行拿到结果
+
+- 因为 action 方法的返回也是包裹在 promise 中的，所以，此处处理在不同版本中有所区别
+
+  - 3.4.0 版本一下（不包括3.4.0），是直接执行 resule.then 后将结果返回
+
+  - 3.4.0 及以上版本，会包裹在 promise 中返回，具体查看：https://github.com/vuejs/vuex/blob/v3.4.0/src/store.js#L152
+
+    ```js
+    return new Promise((resolve, reject) => {
+          result.then(res => {
+            try {
+              this._actionSubscribers
+                .filter(sub => sub.after)
+                .forEach(sub => sub.after(action, this.state))
+            } catch (e) {
+              if (__DEV__) {
+                console.warn(`[vuex] error in after action subscribers: `)
+                console.error(e)
+              }
+            }
+            resolve(res)
+          }, error => {
+            try {
+              this._actionSubscribers
+                .filter(sub => sub.error)
+                .forEach(sub => sub.error(action, this.state, error))
+            } catch (e) {
+              if (__DEV__) {
+                console.warn(`[vuex] error in error action subscribers: `)
+                console.error(e)
+              }
+            }
+            reject(error)
+          })
+    })
+    ```
 
 
 

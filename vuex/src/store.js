@@ -115,34 +115,53 @@ export class Store {
     return this._vm._data.$$state
   }
 
+  // 警告不允许直接通过 store.state.xxx = aaa 的形式设置 state
   set state (v) {
     if (process.env.NODE_ENV !== 'production') {
       assert(false, `use store.replaceState() to explicit replace store state.`)
     }
   }
 
+  // 主要用来调用 mutation，同步的，两种调用方式：
+  //  1、this.$store.commit('mutation方法名', 值)
+  //  2、this.$store.commit({ type: 'mutation方法名', amount: 10 })
   commit (_type, _payload, _options) {
     // check object-style commit
+    // 主要就是处理兼容 commit 的两种调用方式
     const {
-      type,
-      payload,
+      type, // mutation 方法名
+      payload, // 传入的参数
       options
     } = unifyObjectStyle(_type, _payload, _options)
 
     const mutation = { type, payload }
+
+    // 取出 type 对应的 mutation 方法
     const entry = this._mutations[type]
+    // 没找到 type 对应的 mutation 方法，报错
     if (!entry) {
       if (process.env.NODE_ENV !== 'production') {
         console.error(`[vuex] unknown mutation type: ${type}`)
       }
       return
     }
+
+    // 之前说过，mutation 的 type 对应的方法是存储在一个数组中的
+    // 因为子模块如果没有命名空间，会继承父模块的命名空间
+    // 父子模块有同一个 mutation 方法名的时候，为了不让子模块的覆盖父模块的，所以加到数组后面
+    // 所以现在就是将所有符合 type【mtation方法名】的函数拿出来，逐一执行
+    // _withCommit 主要就是：执行 mutation 前，将 this._committing 设置为 true，说明是通过 mutation 操作 state
+    //   结束后，将 this._committing 恢复原来状态
     this._withCommit(() => {
       entry.forEach(function commitIterator (handler) {
         handler(payload)
       })
     })
 
+    // 调用 commit 更改 state 时，调用所有插件中订阅的方法
+    //  执行订阅函数，这个主要是一些 before，after 钩子函数
+    //  比如定义插件的过程中，常常需要监听多个 mutation，在 mutation 触发之后做一些公共的操作
+    //  就可以利用这些订阅的钩子函数
     this._subscribers
       .slice() // shallow copy to prevent iterator invalidation if subscriber synchronously calls unsubscribe
       .forEach(sub => sub(mutation, this.state))
@@ -158,15 +177,19 @@ export class Store {
     }
   }
 
+  // 主要用来调用 action，异步的，两种调用方式：
+  //  1、this.$store.dispatch('action方法名', 值)
+  //  2、this.$store.dispatch({ type: 'action方法名', amount: 10 })
   dispatch (_type, _payload) {
     // check object-style dispatch
-    const {
-      type,
-      payload
-    } = unifyObjectStyle(_type, _payload)
+    // 兼容处理两种 action 调用方法
+    const { type, payload } = unifyObjectStyle(_type, _payload)
 
     const action = { type, payload }
+
+    // 取出 type【action方法名】 对应的 actions 方法数组
     const entry = this._actions[type]
+    // 没找到 type【action方法名】 对应的 actions 方法数组，报错
     if (!entry) {
       if (process.env.NODE_ENV !== 'production') {
         console.error(`[vuex] unknown action type: ${type}`)
@@ -186,10 +209,15 @@ export class Store {
       }
     }
 
+    // 判断 type【action方法名】 对应的 actions 方法数组长度
+    // 大于1，使用 promise.all 执行所有方法
+    // 否则，使用直接取出第一项执行
     const result = entry.length > 1
       ? Promise.all(entry.map(handler => handler(payload)))
       : entry[0](payload)
 
+    // 现在 3.1.3 版本，是执行一下 result.then 后返回结果
+    // 但是 3.4.0 及之后的版本，是会返回 promise 的，具体查看：https://github.com/vuejs/vuex/blob/v3.4.0/src/store.js#L152
     return result.then(res => {
       try {
         this._actionSubscribers
@@ -272,9 +300,13 @@ export class Store {
   }
 
   _withCommit (fn) {
+    // 原来的 this._committing 存储一份 
     const committing = this._committing
+    // this._committing 设置为 true
     this._committing = true
+    // 执行传进来的函数
     fn()
+    // 恢复 this._committing 状态
     this._committing = committing
   }
 }
