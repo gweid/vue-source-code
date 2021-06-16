@@ -109,6 +109,8 @@ export class Store {
     }
   }
 
+  // 访问 state，实际上就是访问 store._vm.data.$$state
+  // 在 resetStoreVM 响应式处理的时候会将 state 挂载到 store._vm.data.$$state
   get state () {
     return this._vm._data.$$state
   }
