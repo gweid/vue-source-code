@@ -35,6 +35,7 @@ const componentVNodeHooks = {
       vnode.data.keepAlive
     ) {
       // kept-alive components, treat as a patch
+      // keep-alive 包裹的组件走这里
       const mountedNode: any = vnode; // work around flow
       // 只调用 prepatch 更新实例属性
       componentVNodeHooks.prepatch(mountedNode, mountedNode);
@@ -113,7 +114,7 @@ export function createComponent(
   // plain options object: turn it into a constructor
   // 组件局部注册
   if (isObject(Ctor)) {
-    // 相当于调用 Vue.extend
+    // 相当于调用 Vue.extend，得到一个构造器
     Ctor = baseCtor.extend(Ctor);
   }
 
@@ -151,6 +152,7 @@ export function createComponent(
   resolveConstructorOptions(Ctor);
 
   // transform component v-model data into props & events
+  // 组件的 v-model
   if (isDef(data.model)) {
     transformModel(Ctor.options, data);
   }
