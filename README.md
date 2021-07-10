@@ -117,7 +117,7 @@ Vue
 
 附带一张网上经典的流程图：
 
-![vue](/imgs/img0.png)
+ ![vue](/imgs/img0.png)
 
 
 
@@ -301,7 +301,7 @@ export function initMixin (Vue: Class<Component>) {
 
 
 
-![Vue数据驱动](/imgs/img17.png)
+ ![Vue数据驱动](/imgs/img17.png)
 
 总结就是：
 
@@ -563,7 +563,7 @@ updateComponent 非常重要，里面有两步：
 
 基本流程：
 
-![vm._render](/imgs/img8.png)
+ ![vm._render](/imgs/img8.png)
 
 
 
@@ -1064,7 +1064,7 @@ export const patch: Function = createPatchFunction({ nodeOps, modules })
 ```js
 function createPatchFunction(backend) {
   // ...
-    
+
   return function patch(oldVnode, vnode, hydrating, removeOnly) {
     // 如果新节点不存在，但是老节点存在，调用 destroy，直接销毁老节点
     if (isUndef(vnode)) {
@@ -1083,12 +1083,16 @@ function createPatchFunction(backend) {
     } else {
       // 检查老节点是否是真实 DOM（真实 DOM 就是没有动态节点）
       const isRealElement = isDef(oldVnode.nodeType)
+      
+      //  1、判断节点是否可以复用，可以复用则对节点打补丁
       if (!isRealElement && sameVnode(oldVnode, vnode)) {
         // 老节点不是真实 DOM 并且新旧 VNode 节点判定为同一节点时会进行 patchVnode 这个过程
+        // 同一节点代表可复用
         // 这个过程主要就是进行 dom diff（也就是更新阶段，执行 patch 更新节点）
         patchVnode(oldVnode, vnode, insertedVnodeQueue, null, null, removeOnly)
       } else {
         // 新老节点不是同一节点
+        //  2、节点不可复用，创建新的节点插入到旧节点之前，同时删除旧节点
 
         // 老节点是真实 DOM
         if (isRealElement) {
@@ -1198,6 +1202,31 @@ createPatchFunction 这个函数很复杂，里面还定义了很多其他辅助
         -   如果老节点是真实 DOM，先将老节点转换为 VNode
         -   基于新 VNode 创建新节点 DOM 并插入到老 VNode 的父元素下
         -   最后移除老节点
+
+
+
+sameVnode 判断是否是同一个节点，主要用来判断标签是否可复用，可复用的标签才有 diff 的意义：
+
+```js
+// 判断是否是同一个节点
+function sameVnode(a, b) {
+  return (
+    // key 是否一致
+    a.key === b.key && (
+      (
+        a.tag === b.tag && // 标签名
+        a.isComment === b.isComment &&
+        isDef(a.data) === isDef(b.data) &&
+        sameInputType(a, b) // inputType
+      ) || (
+        isTrue(a.isAsyncPlaceholder) &&
+        a.asyncFactory === b.asyncFactory &&
+        isUndef(b.asyncFactory.error)
+      )
+    )
+  )
+}
+```
 
 
 
@@ -1350,9 +1379,9 @@ function patchVnode(
       i(oldVnode, vnode)
     }
 
-    // 老节点的字节点
+    // 老节点的子节点
     const oldCh = oldVnode.children
-    // 新节点的字节点
+    // 新节点的子节点
     const ch = vnode.children
     // 全量更新新节点的【属性】，Vue 3.0 在这里做了很多的优化
     if (isDef(data) && isPatchable(vnode)) {
@@ -1380,7 +1409,7 @@ function patchVnode(
         nodeOps.setTextContent(elm, '')
       }
     } else if (oldVnode.text !== vnode.text) {
-      // 新节点是文本节点，更新文本节点
+      // 当新老节点是文本节点，但是文本内容 text 不一样时，直接替换这段文本
       nodeOps.setTextContent(elm, vnode.text)
     }
 
@@ -1398,27 +1427,27 @@ patchVnode 主要做的事：
 -   如果新旧 VNode 都是静态的，同时它们的 key 相同（代表同一节点），并且新的 VNode 是 clone 或者是标记了 once（标记 v-once 属性，只渲染一次），那么重用这部分节点
 -   全量更新新节点的属性（vue3 在这里做了很多优化）
 -   新节点不是文本节点：
-    - 新老节点均有 children 子节点，调用 updateChildren 对子节点进行 diff
+    - 新老节点均有 children 子节点，调用 updateChildren 对子节点进行 diff（子节点的同层比较流程）
     - 老节点没有子节点而新节点存在子节点，先清空 elm 的文本内容，然后为当前节点加入子节点
     - 当新节点没有子节点而老节点有子节点的时候，则移除所有 ele 的子节点
--   新节点是文本节点，更新文本节点
+-   新节点是文本节点，更新文本节点即可
 
 
 
-##### updateChildren：
+##### updateChildren
 
 当新旧 VNode 都有 children 子节点，对子节点进行 diff。
 
 初步看看 diff 算法：首先假设 Web UI 中 DOM 节点跨层级的移动很少，那么就可以只对同一层级的 DOM 进行比较，对于同一层级的一组子节点，它们可以通过唯一 id 进行区分
 
-![diff](/imgs/img9.png)
+ ![diff](/imgs/img9.png)
 
 具体看看执行 diff 的 updateChildren 函数：
 
 > vue\src\core\vdom\patch.js
 
 ```
-// 执行子节点 diff
+  // 执行子节点 diff
   function updateChildren(parentElm, oldCh, newCh, insertedVnodeQueue, removeOnly) {
     let oldStartIdx = 0 // 旧的第一个下标
     let oldEndIdx = oldCh.length - 1 // 旧的最后一个下标
@@ -1507,7 +1536,7 @@ patchVnode 主要做的事：
       // 如果新节点列表先处理完，则剩余旧节点是多余的，删除
       removeVnodes(oldCh, oldStartIdx, oldEndIdx) // 删除废弃节点
     }
-  }
+ }
 ```
 
 **diff 规则：**
@@ -1556,22 +1585,22 @@ c、key 值查找
 
 7、处理收尾的逻辑
 
-      ```js
-      function updateChildren(parentElm, oldCh, newCh) {
-        ...
-      
-        if (oldStartIdx > oldEndIdx) {
-          // 如果旧节点列表先处理完，处理剩余新节点
-          refElm = isUndef(newCh[newEndIdx + 1]) ? null : newCh[newEndIdx + 1].elm
-          addVnodes(parentElm, refElm, newCh, newStartIdx, newEndIdx, insertedVnodeQueue)  // 添加
-        }
-      
-        else if (newStartIdx > newEndIdx) {
-          // 如果新节点列表先处理完，处理剩余旧节点
-          removeVnodes(parentElm, oldCh, oldStartIdx, oldEndIdx)  // 删除废弃节点
-        }
-      }
-      ```
+       ```js
+       function updateChildren(parentElm, oldCh, newCh) {
+         ...
+       
+         if (oldStartIdx > oldEndIdx) {
+           // 如果旧节点列表先处理完，处理剩余新节点
+           refElm = isUndef(newCh[newEndIdx + 1]) ? null : newCh[newEndIdx + 1].elm
+           addVnodes(parentElm, refElm, newCh, newStartIdx, newEndIdx, insertedVnodeQueue)  // 添加
+         }
+       
+         else if (newStartIdx > newEndIdx) {
+           // 如果新节点列表先处理完，处理剩余旧节点
+           removeVnodes(parentElm, oldCh, oldStartIdx, oldEndIdx)  // 删除废弃节点
+         }
+       }
+       ```
 
 ![diff7](/imgs/img16.png)
 
@@ -2385,7 +2414,7 @@ function parseStartTag() {
 
 解析开始标签，将开始标签的标签名、标签上的属性、开始索引、结束索引组成 match 对象返回，比如：`<div id="app">` 被解析后的 match 是：
 
-![](/imgs/img22.png)
+ ![](/imgs/img22.png)
 
 
 
@@ -2532,8 +2561,6 @@ function parseEndTag (tagName, start, end) {
   }
 }
 ```
-
-
 
 
 
@@ -3792,7 +3819,7 @@ v-model 的处理：这里先不展开，后面在 v-model 一节再详细说明
 ## 4、响应式原理
 
 -   Observer 类，实例化一个 Observer 类会通过 Object.defineProperty 对数据的 getter,setter 方法进行改写，在 getter 阶段进行依赖的收集,在数据发生更新阶段，触发 setter 方法进行依赖的更新
--   watcher 类，实例化 watcher 类相当于创建一个依赖，简单的理解是数据在哪里被使用就需要产生了一个依赖。当数据发生改变时，会通知到每个依赖进行更新，前面提到的渲染 wathcer 便是渲染 dom 时使用数据产生的依赖。
+-   watcher 类，实例化 watcher 类相当于创建一个依赖，简单的理解是数据在哪里被使用就需要产生了一个依赖（当然，在 Vue2 中的 Watcher 对应的是组件层级的）。当数据发生改变时，会通知到每个依赖进行更新，前面提到的渲染 wathcer 便是渲染 dom 时使用数据产生的依赖
 -   Dep 类，既然 watcher 理解为每个数据需要监听的依赖，那么对这些依赖的收集和通知则需要另一个类来管理，这个类便是 Dep,Dep 需要做的只有两件事，收集依赖和派发更新依赖
 
 **总结：处理的核心是在访问数据时对数据所在场景的依赖进行收集，在数据发生更改时，通知收集过的依赖进行更新**
@@ -3801,7 +3828,7 @@ v-model 的处理：这里先不展开，后面在 v-model 一节再详细说明
 
 ![响应式原理](/imgs/img3.png)
 
-响应式流程(data)：
+响应式流程(data 的)：
 
 ![响应式流程](/imgs/img7.png)
 
@@ -4038,7 +4065,7 @@ export function getData(data: Function, vm: Component): any {
 ```js
 function initData(vm: Component) {
   let data = vm.$options.data
-  
+
   // ...
 
   // 响应式数据的处理
@@ -4104,7 +4131,7 @@ export class Observer {
   value: any;
   dep: Dep;
   vmCount: number;
-  
+
   constructor(value: any) {
     this.value = value;
     // 实例化一个 Dep
@@ -4194,12 +4221,14 @@ export function defineReactive(
     configurable: true,
     // get 拦截 obj[key] 读取操作，做依赖收集
     get: function reactiveGetter() {
+      // 先获取值，如果已经收集过依赖，那么就不需要再重复收集，在最后直接返回即可
       const value = getter ? getter.call(obj) : val;
 
       // Dep.target 是 Dep 的一个静态属性，值是 watcher，在 new Watcher 的时候设置
       // 在 new Watcher 时会执行回调函数 updateComponent
       // 回调函数中如果有 vm.key 的读取行为，会触发这里进行读取拦截，收集依赖
       // 回调函数执行完以后会将 Dep.target 设置为 null，避免这里重复收集依赖
+      // 也就是说，data 只有在首次渲染的时候才会去收集依赖 watcher
       if (Dep.target) {
         // 依赖收集，在 dep 中添加 watcher
         dep.depend();
@@ -4222,14 +4251,17 @@ export function defineReactive(
 }
 ```
 
-主要看看依赖收集的逻辑：
+先来看看依赖收集的逻辑：
 
 1. 通过 new Dep 创建一个 dep 实例，这个 dep 实例就是收集以来的
+
 2. 接下来看看 Object.defineProperty 的 get ：
-   - 判断是否存在 Dep.target，Dep.target 是 Dep 的一个静态属性，值是 watcher，在 new Watcher 的时候设置
-   - 在 new Watcher 时会执行回调函数 updateComponent 进行实例的挂载
-   - 实例挂载过程中，模板会被优先解析为 render 函数，而 render 函数转换成 Vnode 时，会访问到定义的 data数据，这个时候会触发 gettter 调用 dep.depend() 进行依赖收集
-   - 回调函数执行完以后会将 Dep.target 设置为 null，避免这里重复收集依赖
+
+   - 先获取值，如果已经收集过依赖，那么就不需要再重复收集，在最后直接返回即可
+
+   - 判断是否存在 Dep.target，（Dep.target 是 Dep 的一个静态属性，值是 watcher，在 new Watcher 的时候设置），存在，进行依赖收集
+   - 在 new Watcher 时会执行回调函数 updateComponent 进行实例的挂载，实例挂载过程中，模板会被优先解析为 render 函数，而 render 函数转换成 Vnode 时，会访问到定义的 data 数据，这个时候会触发 gettter 调用 dep.depend() 进行依赖收集
+   - 回调函数 updateComponent  执行完以后会通过 popTarget 将 Dep.target 设置为 null，避免这里重复收集依赖（也就是说，基本上只有在首次渲染的时候才会去收集依赖 watcher）
 
 
 
@@ -4242,7 +4274,7 @@ export function defineReactive(
 ```js
 function mountComponent () {
     // ...
-    
+
     new Watcher(vm, updateComponent, noop, {
         before () {
           if (vm._isMounted && !vm._isDestroyed) {
@@ -4266,12 +4298,12 @@ class Watcher {
         // 不是 computed，执行 this.get()
         this.value = this.lazy ? undefined : this.get();
     }
-    
+
     get() {
-        // 将 watcher 添加到 Dep.target
+      // 将 watcher 添加到 Dep.target
     	pushTarget(this)
 
-        // ...
+      // ...
     }
 }
 ```
@@ -4292,7 +4324,7 @@ export function pushTarget (target: ?Watcher) {
 }
 ```
 
-这就很清晰了：**new Watcher 的过程会调用 Watcher 本身的 get 方法，get方法中是通过 pushTarget(this) 将 watcher 添加到 Dep.target**
+这就很清晰了：**new Watcher 的过程会调用 Watcher 本身的 get 方法，get 方法中是通过 pushTarget(this) 将 watcher 添加到 Dep.target**
 
 
 
@@ -4329,7 +4361,7 @@ class Watcher {
         this.newDeps = [];
         this.newDepIds = new Set();
     }
-    
+
     addDep(dep: Dep) {
         const id = dep.id;
         if (!this.newDepIds.has(id)) {
@@ -4427,6 +4459,7 @@ function defineReactive() {
 
     // 派发更新
     set: function reactiveSetter(newVal) {
+      // 先获取旧的值
       const value = getter ? getter.call(obj) : val;
       /* eslint-disable no-self-compare */
       // 如果新值和旧值一样时，return，不会触发响应式更新
@@ -4440,6 +4473,7 @@ function defineReactive() {
 
       // setter 不存在说明该属性是一个只读属性，直接 return
       if (getter && !setter) return;
+      // 设置新值
       if (setter) {
         setter.call(obj, newVal);
       } else {
@@ -4519,9 +4553,8 @@ class Watcher {
       this.dirty = true;
     } else if (this.sync) {
       // 是否是同步 watcher
-      // 同步执行，在使用 vm.$watch 或者 watch 选项时可以传一个 sync 选项，
-      // 当为 true 时在数据更新时该 watcher 就不走异步更新队列，直接执行 this.run 
-      // 方法进行更新
+      // 同步执行，在使用 vm.$watch 或者 watch 选项时可以传一个 sync 选项
+      // sync 为 true 数据更新时该 watcher 就不走异步更新队列，直接执行 this.run 方法进行更新
       this.run();
     } else {
       // 把需要更新的 watcher 往一个队列里面推
@@ -4532,7 +4565,7 @@ class Watcher {
 }
 ```
 
-watcher.update 里面会分别处理 computed 的情况、同步 watcher 的情况，还有就是将需要更新的 watcher 往一个通过 queueWatcher 往队列 queue 里面推，接下来就进入了异步更新的过程
+watcher.update 里面会分别处理 computed 的情况、同步 watcher 的情况，还有就是将需要更新的 watcher 通过 queueWatcher 函数往队列 queue 里面推，接下来就进入了异步更新的过程
 
 
 
@@ -4860,7 +4893,7 @@ class Watcher {
 
 #### 4-3-7、总结异步更新
 
-异步更新：其实就是通过 Promise 或者 MutationObserver 或者 setImmediate 或者 setTimeout或者将更新操作放到异步任务队列里面，这也是 nextTick 的原理
+异步更新：其实就是通过 Promise 或者 MutationObserver 或者 setImmediate 或者 setTimeout 或者将更新操作放到异步任务队列里面，这也是 nextTick 的原理
 
 在 Vue 中，进行数据操作的时候，Vue 并没有马上去更新 DOM 数据，而是将这个操作放进一个队列中，如果重复执行的话，队列还会进行去重操作；等待同一事件循环中的所有数据变化完成之后，会将队列中的事件拿出来处理。这样做主要是为了提升性能，因为如果在主线程中更新 DOM，循环 100 次就要更新 100 次 DOM；但是如果等事件循环完成之后更新 DOM，只需要更新 1 次。也就是说数据改变后触发的渲染 watcher 的 update 是在 nextTick 中的。
 
@@ -5010,6 +5043,14 @@ methodsToPatch.forEach(function (method) {
     return result
   })
 })
+
+
+observeArray(items: Array < any > ) {
+  // 遍历数组，对里面的的每一个元素进行观察
+  for (let i = 0, l = items.length; i < l; i++) {
+  	observe(items[i]);
+  }
+}
 ```
 
 - 对于新增的元素进行响应式处理
@@ -5227,7 +5268,7 @@ function initComputed(vm: Component, computed: Object) {
 `计算watcher` 的四个参数：
 
 - vm：vm 实例
-- getter：就是 computed 的 getter 函数
+- getter：就是 computed 的 getter 函数，例如： {computed: { getName() {}}} 的 getName
 - noop：空函数
 - computedWatcherOptions：{ lazy: true }，lazy=true 标记这个为 `计算watcher`
 
@@ -5268,12 +5309,22 @@ class Watcher {
 实例化 `计算watcher` 的时候：
 
 - 把 this.dirty 置为 true。这个 dirty 就是 computed 缓存的关键，dirty=true，代表有脏数据，需要重新计算
-- 将 computed 的 getter 函数赋值给 watcher.getter
+
+- 将 computed 的属性值（是指 computed 每一个属性）赋值给 watcher.getter
+
+  ```js
+  // computed 属性值是指: getName
+  
+  computed: {
+    getName() {}
+  }
+  ```
+
 - 当前为 `计算watcher`，**this.lazy=true，不会执行 watcher.get()**
 
 
 
-然后，回头看看创建 computed 的 getter 的函数，这里主要分析客户端的，在 defineComputed 函数中调用 createComputedGetter 创建
+然后，回头看看创建 computed 的 getter 的函数（这个 getter 函数是指拦截Object.defineProperty 拦截 computed 时的 getter），这里主要分析客户端的，在 defineComputed 函数中调用 createComputedGetter 创建
 
 > vue\src\core\instance\state.js
 
@@ -5281,7 +5332,7 @@ class Watcher {
 // 用于创建客户端的 conputed 的 getter
 // 由于 computed 被代理了，所以当访问到 computed 的时候，会触发这个 getter
 function createComputedGetter(key) {
-  // 返回一个函数 computedGetter 作为 computed 的 getter 函数
+  // 返回一个函数 computedGetter 作为 computed 的 Object.defineProperty 的 getter 函数
   return function computedGetter() {
     // 每次读取到 computer 触发 getter 时都先获取 key 对应的 watcher
     const watcher = this._computedWatchers && this._computedWatchers[key]
@@ -5715,7 +5766,7 @@ function createWatcher(
   // handler(watch[key]) 不是对象也不是字符串，那么不需要处理 handler，直接执行 vm.$watch
   // 例如：watch: { a(newName, oldName) {} }
   /**
-   * expOrFn: 就是每一个 watch 的名字(key 值)
+   * expOrFn: 就是每一个 watch 的名字(key)
    * handler: watch[key]
    * options: 如果是对象形式，options 有值，不是，可能是 undefined
    */
@@ -5899,7 +5950,7 @@ export function parsePath(path: string): any {
 
 #### 4-6-3、watch 的派发更新
 
-经过上面的依赖收集可以知道，其实每一个 data 的数据身上至少会有两个 watcher，['user watcher',  'render watcher', ...]，这里 user watcher 的是会在 render watcher 前面的，因为 render watcher 是在 $mount 进行挂载的时候才 new Watcher 创建，而 user watcher 是在 initState 期间就会创建，initState 先于 $mount 执行
+经过上面的依赖收集可以知道，其实每一个 data 的数据身上至少会有两个 watcher，['user watcher',  'render watcher', ...]，这里 user watcher 的是会在 render watcher 前面的，因为 render watcher 是在 \$mount 进行挂载的时候才 new Watcher 创建，而 user watcher 是在 initState 期间就会创建，initState 先于 \$mount 执行
 
 ```js
 function initMixin (Vue: Class<Component>) {
@@ -7708,7 +7759,7 @@ renderMixin(Vue)
 
 
 
-### 7-1、vm.$data、vm.$props
+### 7-1、vm.\$data、vm.\$props
 
 vm.$data、vm.$props 的实现很简单，就是使用 Object.defineProperty 劫持了对这两个的访问，当访问到这两者，返回的是 Vue.\_data 和 Vue.\_props
 
@@ -7736,7 +7787,7 @@ function stateMixin(Vue: Class < Component > ) {
 
 
 
-### 7-2、vm.$set、vm.$delete
+### 7-2、vm.\$set、vm.\$delete
 
 与全局方法基本一致，区别只是实例方法定义在 Vue.prototype
 
@@ -7773,7 +7824,7 @@ function stateMixin(Vue: Class < Component > ) {
 
 
 
-### 7-4、vm.$on、vm.$emit、vm.$off、vm.$once
+### 7-4、vm.\$on、vm.\$emit、vm.\$off、vm.\$once
 
 这些主要是与事件播报相关的实例方法
 
@@ -8738,4 +8789,4 @@ function reactivateComponent (vnode, insertedVnodeQueue, parentElm, refElm) {
 
 #### 8-4-5、总结
 
-`keep-alive` 组件是抽象组件，在对应父子关系时会跳过抽象组件，它只对包裹的子组件做处理，主要是根据LRU策略缓存组件 `VNode`，最后在 `render` 时返回子组件的 `VNode`。缓存渲染过程会更新 `keep-alive` 插槽，重新再 `render` 一次，从缓存中读取之前的组件 `VNode` 实现状态缓存。
+`keep-alive` 组件是抽象组件，在对应父子关系时会跳过抽象组件，它只对包裹的子组件做处理，主要是根据 LRU 策略缓存组件 `VNode`，最后在 `render` 时返回子组件的 `VNode`。缓存渲染过程会更新 `keep-alive` 插槽，重新再 `render` 一次，从缓存中读取之前的组件 `VNode` 实现状态缓存。

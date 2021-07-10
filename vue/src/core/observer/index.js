@@ -202,12 +202,14 @@ export function defineReactive(
     configurable: true,
     // get 拦截 obj[key] 读取操作，做依赖收集
     get: function reactiveGetter() {
+      // 先获取值，如果已经收集过依赖，那么就不需要再重复收集，在最后直接返回即可
       const value = getter ? getter.call(obj) : val;
 
       // Dep.target 是 Dep 的一个静态属性，值是 watcher，在 new Watcher 的时候设置
       // 在 new Watcher 时会执行回调函数 updateComponent
       // 回调函数中如果有 vm.key 的读取行为，会触发这里进行读取拦截，收集依赖
       // 回调函数执行完以后又会将 Dep.target 设置为 null，避免这里重复收集依赖
+      // 也就是说，data 只有在首次渲染的时候才会去收集依赖 watcher
       if (Dep.target) {
         // 依赖收集，在 dep 中添加 watcher
         // 一个组件一个 watcher，如果用户手动创建 watcher 比如 watch 选 this.$watch
@@ -225,6 +227,7 @@ export function defineReactive(
     },
     // 主要做派发更新
     set: function reactiveSetter(newVal) {
+      // 先获取旧的值
       const value = getter ? getter.call(obj) : val;
       /* eslint-disable no-self-compare */
       // 如果新值和旧值一样时，return，不会触发响应式更新
@@ -238,6 +241,7 @@ export function defineReactive(
 
       // setter 不存在说明该属性是一个只读属性，直接 return
       if (getter && !setter) return;
+      // 设置新值
       if (setter) {
         setter.call(obj, newVal);
       } else {

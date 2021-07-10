@@ -44,14 +44,16 @@ export const emptyNode = new VNode('', {}, [])
 
 const hooks = ['create', 'activate', 'update', 'remove', 'destroy']
 
+// 判断是否是同一个节点
 function sameVnode(a, b) {
   return (
+    // key 是否一致
     a.key === b.key && (
       (
-        a.tag === b.tag &&
-        a.isComment === b.isComment &&
-        isDef(a.data) === isDef(b.data) &&
-        sameInputType(a, b)
+        a.tag === b.tag && // 标签名
+        a.isComment === b.isComment && // 是否是注释节点
+        isDef(a.data) === isDef(b.data) && // data
+        sameInputType(a, b) // inputType
       ) || (
         isTrue(a.isAsyncPlaceholder) &&
         a.asyncFactory === b.asyncFactory &&
@@ -790,12 +792,16 @@ export function createPatchFunction(backend) {
     } else {
       // 检查老节点是否是真实 DOM（真实 DOM 就是没有动态节点）
       const isRealElement = isDef(oldVnode.nodeType)
+
+      //  1、判断节点是否可以复用，可以复用则对节点打补丁
       if (!isRealElement && sameVnode(oldVnode, vnode)) {
         // 老节点不是真实 DOM 并且新旧 VNode 节点判定为同一节点时会进行 patchVnode 这个过程
+        // 同一节点代表可复用
         // 这个过程主要就是进行 dom diff（也就是更新阶段，执行 patch 更新节点）
         patchVnode(oldVnode, vnode, insertedVnodeQueue, null, null, removeOnly)
       } else {
         // 新老节点不是同一节点
+        //  2、节点不可复用，创建新的节点插入到旧节点之前，同时删除旧节点
 
         // 老节点是真实 DOM
         if (isRealElement) {

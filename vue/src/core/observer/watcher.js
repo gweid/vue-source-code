@@ -197,7 +197,7 @@ export default class Watcher {
     } else if (this.sync) {
       // 是否是同步 watcher
       // 同步执行，在使用 vm.$watch 或者 watch 选项时可以传一个 sync 选项
-      // 当为 true 时在数据更新时该 watcher 就不走异步更新队列，直接执行 this.run 方法进行更新
+      // sync 为 true 数据更新时该 watcher 就不走异步更新队列，直接执行 this.run 方法进行更新
       this.run();
     } else {
       // 把需要更新的 watcher 往一个队列里面推
@@ -226,7 +226,7 @@ export default class Watcher {
         // when the value is the same, because the value may
         // have mutated.
         isObject(value) ||
-        this.deep
+        this.deep // 深度监听
       ) {
         // set new value
         const oldValue = this.value;
