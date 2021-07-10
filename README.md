@@ -485,6 +485,8 @@ mountComponent 主要的作用：
 
 **Watcher 在这里起到两个作用，一个是初始化的时候会执行回调函数，另一个是当 vm 实例中的监测的数据发生变化的时候执行回调函数**
 
+**为什么说一个组件对应一个 watcher，在这里就可以体现出来，每个组件都是需要进行 $mount 挂载的，而 new Watcher 就是在这个 mount 挂载的过程中进行的。**
+
 
 
 看看与首次渲染相关的 Watcher 
@@ -918,7 +920,7 @@ class VNode {
 
 
 
-#### 2.5.1、一些前置知识
+#### 2-5-1、一些前置知识
 
 其实，在 Vue1.x 的时候，是没有 diff 算法的，那时的 Vue 只有响应式原理；这时的 watcher 和 Dom 是一一对应的关系，例如：
 
@@ -943,7 +945,7 @@ class VNode {
 
 
 
-#### 2.5.2、vm.\_update 的主要过程
+#### 2-5-2、vm.\_update 的主要过程
 
 -   主要作用：把生成的 VNode 转化为真实的 DOM
 -   调用时机: 有两个，一个是发生在初次渲染阶段，这个时候没有旧的虚拟 dom；另一个发生数据更新阶段，存在新的虚拟 dom 和旧的虚拟 dom
@@ -951,7 +953,7 @@ class VNode {
 
 
 
-#### 2.5.3、入口
+#### 2-5-3、入口
 
 > vue\src\core\instance\lifecycle.js
 
@@ -979,7 +981,7 @@ function mountComponent (vm: Component,el: ?Element,hydrating?: boolean): Compon
 
 
 
-#### 2.5.4、vm._update
+#### 2-5-4、vm._update
 
 > vue\src\core\instance\lifecycle.js
 
@@ -1031,7 +1033,7 @@ function lifecycleMixin (Vue: Class<Component>) {
 
 
 
-#### 2.5.5、vm.\_\_patch\_\_
+#### 2-5-5、vm.\_\_patch\_\_
 
 > vue\src\platforms\web\runtime\index.js
 
@@ -1045,7 +1047,7 @@ Vue.prototype.__patch__ = inBrowser ? patch : noop
 
 
 
-#### 2.5.6、patch
+#### 2-5-6、patch
 
 > vue\src\platforms\web\runtime\patch.js
 
@@ -6033,13 +6035,17 @@ watch 派发更新的过程:  data 数据发生改变时，触发 setter 拦截�
 
 ### 5-1、组件的 VNode 
 
-(create-element.js、create-component.js、vnode.js、extend.js)
+(create-element.js --> create-component.js --> vnode.js --> extend.js)
 
-![VNode](/imgs/img1.png)
+ ![VNode](/imgs/img1.png)
 
--   在 create-element.js 中的 \_createElement 时，如果 tag 不是一个标签字符串，而是一个组件对象，此时通过 createComponent 创建一个组件 VNode
+ 
 
-```
+先从 \_createElement 开始
+
+> vue\src\core\vdom\create-element.js
+
+```js
 export function _createElement (
   context: Component,
   tag?: string | Class<Component> | Function | Object,
@@ -6051,34 +6057,180 @@ export function _createElement (
   if (typeof tag === 'string') {
 
   } else if ((!data || !data.pre) && isDef(Ctor = resolveAsset(context.$options, 'components', tag))) {
-      // component
+      // 去 vm 的 components 上查找是否有这个标签的定义
+      // 查找到，说明是组件，调用 createComponent 创建组件
       vnode = createComponent(Ctor, data, context, children, tag)
   }
 }
 ```
 
--   在 create-component.js 的 createComponent 中，会调用 Vue.extend(组件)(即: Ctor = baseCtor.extend(Ctor)), 这里的 extend 主要就是把 Vue 的功能赋给组件，并且合并配置, 在 extend 中会对组件做缓存
+- \_createElement 时，如果 tag 不是一个标签字符串，而是一个组件对象，此时通过 createComponent 创建一个组件 VNode
 
-```
-extend.js
 
-// 判断缓存中有没有存在,有就直接使用
-if (cachedCtors[SuperId]) {
-  return cachedCtors[SuperId]
+
+ 接下来看看 createComponent  函数所做的事：
+
+> vue\src\core\vdom\create-component.js
+
+```js
+export function createComponent(
+  Ctor: Class<Component> | Function | Object | void,
+  data: ?VNodeData,
+  context: Component,
+  children: ?Array<VNode>,
+  tag?: string
+): VNode | Array<VNode> | void {
+
+  // context.$options._base 在 initGlobalAPI 中定义， 就是 Vue 本身
+  const baseCtor = context.$options._base;
+
+  // 组件局部注册
+  if (isObject(Ctor)) {
+    // 相当于调用 Vue.extend
+    Ctor = baseCtor.extend(Ctor);
+  }
+
+  // 对异步组件的处理
+  let asyncFactory;
+  if (isUndef(Ctor.cid)) {
+    asyncFactory = Ctor;
+    Ctor = resolveAsyncComponent(asyncFactory, baseCtor);
+    if (Ctor === undefined) {
+      // 是创建一个注释节点vnode
+      return createAsyncPlaceholder(asyncFactory, data, context, children, tag);
+    }
+  }
+
+  data = data || {};
+
+  // 构造器配置合并
+  resolveConstructorOptions(Ctor);
+
+  // 组件的 v-model
+  if (isDef(data.model)) {
+    transformModel(Ctor.options, data);
+  }
+
+  // ...
+
+  // 安装一些组件的钩子
+  // install component management hooks onto the placeholder node
+  installComponentHooks(data);
+
+  // 组件名
+  const name = Ctor.options.name || tag;
+  // 创建组件 VNode
+  const vnode = new VNode(
+    `vue-component-${Ctor.cid}${name ? `-${name}` : ""}`,
+    data,
+    undefined,
+    undefined,
+    undefined,
+    context,
+    { Ctor, propsData, listeners, tag, children },
+    asyncFactory
+  );
+
+  return vnode;
 }
 ```
 
--   通过在 create-component.js 的 createComponent 中安装一些组件的钩子 installComponentHooks(data)
--   在 create-component.js 中创建组件 VNode。组件 VNode 与 普通 VNode 区别: 没有 children, 多了 componentOptions
+- 在 create-component.js 的 createComponent 中，会调用 Vue.extend(组件)(即: Ctor = baseCtor.extend(Ctor)), 这里的 extend 主要就是把 Vue 的功能赋给组件，并且合并配置, 在 extend 中会对组件做缓存
+- 通过在 create-component.js 的 createComponent 中安装一些组件的钩子 installComponentHooks(data)
+- 在 create-component.js 中创建组件 VNode。组件 VNode 与 普通 VNode 区别: 没有 children，children 传的是 undefined, 多了 componentOptions
 
+
+
+再来看看组件通过 installComponentHooks 安装一些自身个钩子的过程：
+
+> vue\src\core\vdom\create-component.js
+
+```js
+// 将 componentVNodeHooks 钩子函数合并到组件 data.hook 中
+function installComponentHooks(data: VNodeData) {
+  const hooks = data.hook || (data.hook = {});
+  for (let i = 0; i < hooksToMerge.length; i++) {
+    const key = hooksToMerge[i];
+    const existing = hooks[key];
+    const toMerge = componentVNodeHooks[key];
+    if (existing !== toMerge && !(existing && existing._merged)) {
+      hooks[key] = existing ? mergeHook(toMerge, existing) : toMerge;
+    }
+  }
+}
 ```
-const vnode = new VNode(
-  `vue-component-${Ctor.cid}${name ? `-${name}` : ''}`,
-  data, undefined, undefined, undefined, context,
-  { Ctor, propsData, listeners, tag, children },
-  asyncFactory
-)
+
+- 遍历 hooksToMerge，将 hooksToMerge 的每一个 hook 到组件的 data.hook 中
+
+> vue\src\core\vdom\create-component.js
+
+```js
+const hooksToMerge = Object.keys(componentVNodeHooks);
+
+const componentVNodeHooks = {
+  init(vnode: VNodeWithData, hydrating: boolean): ?boolean {
+    if (
+      vnode.componentInstance &&
+      !vnode.componentInstance._isDestroyed &&
+      vnode.data.keepAlive
+    ) {
+      // keep-alive 包裹的组件走这里
+      const mountedNode: any = vnode; // work around flow
+      // 只调用 prepatch 更新实例属性
+      componentVNodeHooks.prepatch(mountedNode, mountedNode);
+    } else {
+      // createComponentInstanceForVnode 会 new Vue 构造组件实例并赋值到 componentInstance
+      const child = (vnode.componentInstance = createComponentInstanceForVnode(
+        vnode,
+        activeInstance
+      ));
+      // 挂载组件
+      child.$mount(hydrating ? vnode.elm : undefined, hydrating);
+    }
+  },
+
+  prepatch(oldVnode: MountedComponentVNode, vnode: MountedComponentVNode) {
+    const options = vnode.componentOptions;
+    const child = (vnode.componentInstance = oldVnode.componentInstance);
+    updateChildComponent(
+      child,
+      options.propsData, // updated props
+      options.listeners, // updated listeners
+      vnode, // new parent vnode
+      options.children // new children
+    );
+  },
+
+  insert(vnode: MountedComponentVNode) {
+    const { context, componentInstance } = vnode;
+    // 首次渲染，执行的是 mounted 钩子，不会去执行 updated 钩子
+    if (!componentInstance._isMounted) {
+      componentInstance._isMounted = true;
+      callHook(componentInstance, "mounted");
+    }
+    if (vnode.data.keepAlive) {
+      if (context._isMounted) {
+        queueActivatedComponent(componentInstance);
+      } else {
+        activateChildComponent(componentInstance, true /* direct */);
+      }
+    }
+  },
+
+  destroy(vnode: MountedComponentVNode) {
+    const { componentInstance } = vnode;
+    if (!componentInstance._isDestroyed) {
+      if (!vnode.data.keepAlive) {
+        componentInstance.$destroy();
+      } else {
+        deactivateChildComponent(componentInstance, true /* direct */);
+      }
+    }
+  },
+};
 ```
+
+这些组件的 hook，主要就是四个：init、prepatch、insert、destroy
 
 
 
