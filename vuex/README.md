@@ -243,8 +243,8 @@ export default function (Vue) {
 - 首先，会获取 vue 版本，vuex 会兼容到 vue1.x 版本（这里不讨论 vue1.x 版本的 vuex）
 - 当 vue 版本大于 2，通过 `Vue.minxin` 方法做了一个全局的混入，在每个组件 `beforeCreate` 生命周期时会调用 `vuexInit` 方法
 - `vuexInit` 方法：
-  - 判断当前组件实例的 options 上是否有 store，有，将 $options.store 赋值给 this.$store，这里一般是根组建上面会有 options.store，因为在 `new Vue({ el: '#app', store })` 时将 store 挂载到 options 上
-  - options 没有 store，这种一般是子组件，将父组件的 $store拿到，赋值给当前的 this.$store
+  - 判断当前组件实例的 options 上是否有 store，有，将 \$options.store 赋值给 this.\$store，这里一般是根组建上面会有 options.store，因为在 `new Vue({ el: '#app', store })` 时将 store 挂载到 options 上
+  - options 没有 store，这种一般是子组件，将父组件的 \$store拿到，赋值给当前的 this.\$store
   - 上面两步，可以做到：保证在任意组件访问的 $store 属性都指向同一个 store 对象
 
 
@@ -1323,7 +1323,7 @@ function resetStoreVM (store, state, hot) {
   const computed = {}
   // function forEachValue (obj, fn) {
   //   Object.keys(obj).forEach(key => fn(obj[key], key))
-  // }
+  // }7
   // 遍历 wrappedGetters 中存储的 getters 
   forEachValue(wrappedGetters, (fn, key) => {
     // function partial (fn, arg) {
@@ -1419,6 +1419,9 @@ class Store {
      type: 'mutations方法名',
      amount: 10 // 值
    })
+   
+   // 如果是调用某个模块下面的
+   this.$store.commit('moduleA/xxx', 'aa')
    ```
 
 2. dispatch：用来调用 action 的，它是异步的，写法有两种：
@@ -1432,6 +1435,9 @@ class Store {
      type: 'actions方法名',
      amount: 10 // 值
    })
+   
+   // 如果是某个模块下的
+   this.$store.dispatch('moduleA/xxx', 'aa')
    ```
 
 
@@ -1447,6 +1453,7 @@ class Store {
   // 主要用来调用 mutation，同步的，两种调用方式：
   //  1、this.$store.commit('mutation方法名', 值)
   //  2、this.$store.commit({ type: 'mutation方法名', amount: 10 })
+  // 如果是某个模块下的：this.$store.commit('moduleA/xxx', 'aa')
   commit (_type, _payload, _options) {
     // 主要就是处理兼容 commit 的两种调用方式
     const {
@@ -1537,6 +1544,7 @@ class Store {
   // 主要用来调用 action，异步的，两种调用方式：
   //  1、this.$store.dispatch('action方法名', 值)
   //  2、this.$store.dispatch({ type: 'action方法名', amount: 10 })
+  // 如果是某个模块下的：this.$store.dispatch('moduleA/xxx', 'aa')
   dispatch (_type, _payload) {
     // check object-style dispatch
     // 兼容处理两种 action 调用方法
